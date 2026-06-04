@@ -60,10 +60,10 @@ All four open PRs get closed; salvage first. Nothing is destroyed (recoverable f
 - [x] Commit planning docs to the main line — branch `docs/revival-planning`, **PR #22**.
 - [x] Verify the data-pipeline suite on master: **85/85 green**. (The "3 failing tests" exist only on the #21 content branch — templates were expanded, tests not updated → moved to **Phase 3**.)
 - [x] Close PRs #1, #19, #20, #21 (with comments; branches **kept** as salvage sources). Pruned stale worktrees; deleted merged branch `feature/modern-main-page`.
-- [ ] Local smoke test: `cd docker && docker compose up` from `master` (run interactively — couldn't run in the planning sandbox).
+- [x] Local smoke test: `cd docker && docker compose up` from `master` — wiki boots cleanly (confirmed 2026-06-04).
 - [ ] CI enforcement (re-timed, not a gap): the **test** steps already block. **ruff** → enforce with the Phase 3 pipeline fixes (its 7 issues overlap the broken transfers spider). **PHP/JS** lint → enforce after the Phase 1 skin re-fork (runs on the skin we replace).
 - **Salvage-source branches kept on purpose:** `feature/content-sections-and-skin-enhancements` (#19), `upgrade/mediawiki-1.45-citizen-3.14` (#20), `feature/drawer-fixes-and-content-expansion` (#21), `archive/wip-content`. Optional later cleanup: `claude/sidebar-quick-icons-mxHrR`, `worktree-revert-pr`, `feature/hebrew-localization`.
-- **Exit:** ✅ green tests, clean baseline, planning docs in PR #22, stale PRs closed. (Local docker smoke test pending an interactive run.)
+- **Exit:** ✅ **Phase 0 complete** — green tests, clean baseline, local wiki boots, planning docs in PR #22, stale PRs closed.
 
 ### Phase 1 — Modernize the base (local)  *(decided to do first)*
 *Goal: the local wiki runs on the final, modern platform before we invest in relaunch/content/design.*
