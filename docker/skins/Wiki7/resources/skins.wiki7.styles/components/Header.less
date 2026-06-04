@@ -9,7 +9,14 @@
 	flex-direction: var( --header-direction );
 	gap: var( --space-xxs );
 	padding: ~'var( --space-xs ) max( env( safe-area-inset-right ), var( --space-xs ) ) max( env( safe-area-inset-bottom ), var( --space-xs ) ) max( env( safe-area-inset-left ), var( --space-xs ) )';
-	background-color: var( --color-surface-0 );
+	// Brand-red header bar (Hapoel Beer Sheva)
+	background-color: ~'oklch( var( --color-progressive-oklch__l--base ) var( --color-progressive-oklch__c ) var( --color-progressive-oklch__h ) )';
+	// Override theme-dependent button quiet states for the fixed red header bar
+	--background-color-button-quiet--hover: ~'oklch( 92% 0.04 var( --color-progressive-oklch__h ) / 0.9 )';
+	--background-color-button-quiet--active: ~'oklch( 96% 0.02 var( --color-progressive-oklch__h ) / 0.95 )';
+	--background-color-button-quiet-menu--hover: ~'oklch( 92% 0.04 var( --color-progressive-oklch__h ) / 0.9 )';
+	--background-color-button-quiet-menu--active: ~'oklch( 96% 0.02 var( --color-progressive-oklch__h ) / 0.95 )';
+	--filter-invert: none;
 	border-color: var( --border-color-base );
 	border-style: solid;
 	border-width: 0;
@@ -17,6 +24,16 @@
 	border-block-end-width: var( --header-border-block-end-width );
 	border-inline-start-width: var( --header-border-inline-start-width );
 	border-inline-end-width: var( --header-border-inline-end-width );
+
+	// White icons on the brand-red header
+	.wiki7-ui-icon {
+		color: white;
+	}
+
+	.cdx-button:hover .wiki7-ui-icon,
+	.wiki7-dropdown-details[ open ] .wiki7-ui-icon {
+		color: var( --color-progressive );
+	}
 
 	&__item {
 		display: flex;

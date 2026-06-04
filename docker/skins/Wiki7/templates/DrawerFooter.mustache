@@ -1,12 +1,12 @@
 {{#array-drawer-footer-items}}
 <footer class="wiki7-drawer__footer">
-    <div class="wiki7-drawer__footer-links">
-        {{#.}}
-        <a href="{{href}}" class="wiki7-drawer__footer-link" title="{{label}}" {{#external}}target="_blank" rel="noopener"{{/external}}>
-            <span class="wiki7-ui-icon mw-ui-icon-wikimedia-{{icon}}"></span>
-            <span>{{label}}</span>
-        </a>
-        {{/.}}
-    </div>
+	<div class="wiki7-drawer__footer-links">
+		{{#.}}
+		<a href="{{href}}" class="wiki7-drawer__footer-link" title="{{label}}" {{#external}}target="_blank" rel="noopener"{{/external}}>
+			<span class="wiki7-drawer__footer-icon wiki7-drawer__footer-icon--{{icon}}" aria-hidden="true"></span>
+			<span>{{label}}</span>
+		</a>
+		{{/.}}
+	</div>
 </footer>
 {{/array-drawer-footer-items}}
