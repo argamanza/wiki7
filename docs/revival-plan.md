@@ -54,15 +54,16 @@ All four open PRs get closed; salvage first. Nothing is destroyed (recoverable f
 
 ## 4. The phased roadmap *(modernize-first order)*
 
-### Phase 0 — Clean slate & alignment
+### Phase 0 — Clean slate & alignment  *(substantially complete, 2026-06-04)*
 *Goal: a clean, trustworthy baseline + a free local test env.*
-- [x] Preserve untracked WIP to `archive/wip-content` (commit `5d84083`, 2026-06-04).
-- [ ] Close PRs #1, #19, #20, #21 (after salvaging per §3); delete stale branches; prune worktrees.
-- [ ] Commit these planning docs (this plan + architecture rewrite) to the main line.
-- [ ] Confirm local `docker compose up` brings the wiki up cleanly from `master`; document any breakage.
-- [ ] Fix the **3 failing data-pipeline tests** (`data/tests/test_wiki_import.py` — stale template counts 7→13, 4→10).
-- [ ] Make CI **enforce**: remove the three `continue-on-error: true` in `.github/workflows/lint-and-test.yml`.
-- **Exit:** green tests, enforcing CI, one clean working branch, local wiki loads.
+- [x] Preserve untracked WIP to `archive/wip-content` (commit `5d84083`).
+- [x] Commit planning docs to the main line — branch `docs/revival-planning`, **PR #22**.
+- [x] Verify the data-pipeline suite on master: **85/85 green**. (The "3 failing tests" exist only on the #21 content branch — templates were expanded, tests not updated → moved to **Phase 3**.)
+- [x] Close PRs #1, #19, #20, #21 (with comments; branches **kept** as salvage sources). Pruned stale worktrees; deleted merged branch `feature/modern-main-page`.
+- [ ] Local smoke test: `cd docker && docker compose up` from `master` (run interactively — couldn't run in the planning sandbox).
+- [ ] CI enforcement (re-timed, not a gap): the **test** steps already block. **ruff** → enforce with the Phase 3 pipeline fixes (its 7 issues overlap the broken transfers spider). **PHP/JS** lint → enforce after the Phase 1 skin re-fork (runs on the skin we replace).
+- **Salvage-source branches kept on purpose:** `feature/content-sections-and-skin-enhancements` (#19), `upgrade/mediawiki-1.45-citizen-3.14` (#20), `feature/drawer-fixes-and-content-expansion` (#21), `archive/wip-content`. Optional later cleanup: `claude/sidebar-quick-icons-mxHrR`, `worktree-revert-pr`, `feature/hebrew-localization`.
+- **Exit:** ✅ green tests, clean baseline, planning docs in PR #22, stale PRs closed. (Local docker smoke test pending an interactive run.)
 
 ### Phase 1 — Modernize the base (local)  *(decided to do first)*
 *Goal: the local wiki runs on the final, modern platform before we invest in relaunch/content/design.*
