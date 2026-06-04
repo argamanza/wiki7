@@ -1,5 +1,10 @@
 # wiki7 Revival Plan
 
+> ⚠️ **Superseded (2026-06-04).** The current roadmap and sequencing live in
+> [`docs/revival-plan.md`](docs/revival-plan.md). This document is retained as a **detailed
+> task bank** — its Stage 1 infrastructure/security fixes are still a valid checklist for the
+> rebuild. Note that the production stacks have since been torn down (clean-slate rebuild).
+
 Comprehensive plan to bring wiki7 from a stale project to a production-grade, scalable community wiki for Hapoel Beer Sheva FC.
 
 Each stage is designed to be **independently researched, planned, and implemented** by separate agents. Stages touch distinct file domains with minimal overlap.
