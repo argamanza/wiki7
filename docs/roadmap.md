@@ -1,5 +1,9 @@
 # 📘 Wiki7 Project Roadmap
 
+> ⚠️ **Historical (2026-06-04).** This early roadmap is kept for context only. Parts are
+> outdated (e.g. it references PostgreSQL and AWS CodePipeline; the project actually uses
+> MariaDB and GitHub Actions). The current plan is [`revival-plan.md`](revival-plan.md).
+
 A structured plan for building the Hapoel Beer Sheva fan wiki on MediaWiki using AWS-managed infrastructure and modern DevOps practices.
 
 ---

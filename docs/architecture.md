@@ -1,216 +1,108 @@
 # Wiki7 Architecture
 
-This document outlines the architecture and infrastructure design for the Wiki7 project.
+> **Updated 2026-06-04.** This document was previously aspirational and described
+> components that were never built (CodePipeline, Nginx, sidecar containers, Multi-AZ
+> RDS, private subnets, PostgreSQL). It now reflects (a) what the CDK code actually
+> provisions, (b) the current deployed state, and (c) the target for the rebuild.
+> See [`revival-plan.md`](revival-plan.md) for the roadmap.
 
-## System Overview
+## TL;DR current state
 
-Wiki7 is built on MediaWiki with custom extensions and skins, deployed on AWS using containerization and managed services. The architecture focuses on scalability, reliability, security, and ease of maintenance.
+The application is **not currently deployed.** The "heavy" stacks were torn down for
+cost. What remains in AWS (account `368127906643`, `il-central-1`):
 
-## Infrastructure Components
+- `Wiki7DnsStack` — the `wiki7.co.il` Route53 hosted zone (the **`.co.il` domain itself
+  has lapsed → NXDOMAIN**).
+- `CDKToolkit` bootstrap stacks (both regions).
+- **No** RDS, ECS, ALB, CloudFront, WAF, or media S3 bucket.
+- ⚠️ **No RDS snapshots and an empty backup vault** — the prior production database is
+  unrecoverable. A rebuild reconstructs content from git seed pages + the data pipeline.
+- Current cost ≈ **$0.50/mo** (hosted zone).
 
-### AWS Services
+---
 
-The infrastructure leverages the following AWS services:
+## What the CDK code provisions (`cdk/`)
 
-1. **Amazon ECS (Elastic Container Service)**
-   - Container orchestration for MediaWiki application
-   - Managed Fargate compute for serverless container deployment
-   - Auto-scaling based on demand
+When deployed, the CDK app (TypeScript, entry `cdk/bin/wiki7.ts`) creates **five stacks**
+across two regions. Note: the `*-stack.ts` files under `cdk/lib/` are mostly `Construct`s
+that synthesize into the single `Wiki7CdkStack` template — not separate CloudFormation stacks.
 
-2. **Amazon RDS (Relational Database Service)**
-   - MySQL database for MediaWiki
-   - Multi-AZ deployment for high availability
-   - Automated backups and maintenance
+| Stack | Region | Provisions |
+|---|---|---|
+| `Wiki7DnsStack` | il-central-1 | Route53 hosted zone; exports zone id/name to SSM |
+| `Wiki7CertificateStack` | us-east-1 | ACM cert for apex + www (CloudFront requires us-east-1); SSM-synced to il-central-1 |
+| `Wiki7WafStack` | us-east-1 | CLOUDFRONT-scoped WAF WebACL (geo-block, managed rules, rate limit); SSM-synced |
+| `Wiki7CdkStack` | il-central-1 | The app: VPC, RDS, ECS/Fargate, ALB, S3, CloudFront, backups |
+| `Wiki7GitHubOidcStack` | il-central-1 | GitHub Actions OIDC role (no long-lived keys) |
 
-3. **Amazon S3 (Simple Storage Service)**
-   - Storage for wiki media files (images, videos, documents)
-   - Version control of uploaded media
-   - Integration with CloudFront for delivery
+Cross-region wiring is done via **SSM Parameter Store** (a custom `CrossRegionSsmSync`
+construct copies the cert ARN and WAF ARN from us-east-1 to il-central-1), because native
+CDK cross-stack refs don't cross regions.
 
-4. **Amazon CloudFront**
-   - Content Delivery Network for static assets
-   - Edge caching to improve global performance
-   - HTTPS termination and SSL management
+### Components (as coded)
 
-5. **AWS WAF (Web Application Firewall)**
-   - Protection against common web exploits
-   - Rate limiting to prevent abuse
-   - Custom security rules
+- **Networking** — VPC, `maxAzs: 2`, **no NAT gateway** (cost), **public subnets only**.
+  S3 gateway endpoint. (There is *no* private subnet tier, despite older docs.)
+- **Database** — single **RDS MariaDB 10.5**, `db.t3.micro`, single-AZ, encrypted, in a
+  public subnet but `publiclyAccessible: false`. ⚠️ `removalPolicy: DESTROY` +
+  `deletionProtection: false` (the cause of the data loss — must change to SNAPSHOT +
+  protection in the rebuild).
+- **Compute** — ECS Fargate, **1 task** (512 CPU / 1024 MiB), no autoscaling, MediaWiki
+  image built from `docker/`. Public subnet + public IP (needed for image pulls, no NAT).
+- **Load balancing** — internet-facing ALB, **HTTP :80 only** (TLS terminates at CloudFront).
+- **CDN** — CloudFront: default behavior → ALB (no caching, dynamic); `images/*` + `assets/*`
+  → S3 via OAC (long TTL); www→apex redirect function; security-headers policy.
+- **WAF** — geo-block (17 countries), AWS managed Common + KnownBadInputs, per-IP rate limit,
+  MediaWiki pattern rules. ⚠️ bot-allow rule is ordered *after* the bot-block rule
+  (legitimate crawlers get blocked).
+- **Storage** — versioned S3 bucket (`RETAIN`). ⚠️ all four `BlockPublicAccess` flags are
+  `false` (should be locked down; CloudFront uses OAC).
+- **Backups** — AWS Backup vault + KMS key, daily RDS backup, 7-day retention. (Was empty at
+  teardown — backup coverage must be verified in the rebuild.)
+- **CI/CD** — GitHub Actions via OIDC: `lint-and-test.yml` (advisory-only — `continue-on-error`),
+  `cdk-diff.yml` (PR comment), `deploy.yml` (`cdk deploy --all` on push to master).
 
-6. **AWS Route 53**
-   - DNS management
-   - Health checks and failover routing
-   - Domain registration and management
-
-7. **AWS CodePipeline**
-   - CI/CD pipeline automation
-   - Source integration with GitHub
-   - Build and deployment stages
-
-8. **AWS Secrets Manager**
-   - Secure storage of credentials and secrets
-   - Rotation of database credentials
-   - Integration with ECS for secure access
-
-9. **AWS CloudWatch**
-   - Monitoring and logging
-   - Alerts and notifications
-   - Dashboard for system health
-
-### Containerization
-
-Docker is used for containerization with the following components:
-
-1. **MediaWiki Container**
-   - Core MediaWiki application
-   - Custom extensions and skins
-   - PHP-FPM for processing
-
-2. **Nginx Container**
-   - Web server for serving MediaWiki
-   - SSL termination (if not using CloudFront)
-   - Static file serving
-
-3. **Sidecar Containers** (as needed)
-   - For specific tasks like cron jobs
-   - Maintenance scripts
-   - Utility functions
-
-## Network Architecture
+### Request flow (when deployed)
 
 ```
-                                   ┌─────────────────┐
-                                   │                 │
-                                   │  Route 53 DNS   │
-                                   │                 │
-                                   └────────┬────────┘
-                                            │
-                                            ▼
-┌─────────────────┐             ┌─────────────────┐
-│                 │             │                 │
-│   CloudFront    │◄────────────│      WAF        │
-│                 │             │                 │
-└────────┬────────┘             └────────┬────────┘
-         │                               │
-         │                               │
-         ▼                               ▼
-┌─────────────────┐             ┌─────────────────┐
-│                 │             │                 │
-│   S3 Bucket     │             │ Load Balancer   │
-│  (Media Files)  │             │                 │
-│                 │             └────────┬────────┘
-└─────────────────┘                      │
-                                         │
-                                         ▼
-                                ┌─────────────────┐
-                                │                 │
-                                │   ECS Fargate   │
-                                │   (MediaWiki)   │
-                                │                 │
-                                └────────┬────────┘
-                                         │
-                                         ▼
-                                ┌─────────────────┐
-                                │                 │
-                                │   Amazon RDS    │
-                                │    (MySQL)      │
-                                │                 │
-                                └─────────────────┘
+User → Route53 (wiki7.co.il) → CloudFront → WAF
+                                   ├── images/*, assets/*  → S3 (OAC, cached)
+                                   └── everything else      → ALB :80 → Fargate (MediaWiki) → RDS MariaDB
+TLS terminates at CloudFront; ALB↔origin and DB traffic are HTTP/SQL inside the VPC.
 ```
 
-## Data Flow
+---
 
-1. **User Request Flow**
-   - User request → CloudFront → WAF → Load Balancer → ECS (MediaWiki) → RDS
-   - Media requests → CloudFront → S3
+## Application layer (`docker/`)
 
-2. **Content Creation Flow**
-   - Admin/Editor creates content → ECS (MediaWiki) → RDS
-   - Media uploads → ECS → S3 → CloudFront (for delivery)
+- **Image:** official `mediawiki:1.43` (PHP 8.1, Apache). Extensions: **Cargo** + **PageForms**
+  (git submodules), **AWS S3** (composer), **TabberNeue**; core-bundled extensions enabled in
+  `LocalSettings.php`. Skins: **Wiki7** (default), Citizen, Vector.
+- **Skin:** `Wiki7` is a full fork/rename of **Citizen 3.1.0** with brand-red theming, a drawer
+  footer (social links), Hebrew web fonts, and a search keyboard hint.
+- **Content model:** **Cargo** — table-definition templates `#cargo_declare`, infoboxes
+  `#cargo_store`, collection pages `#cargo_query`. Seed pages live in `docker/wiki-pages/` and are
+  imported idempotently on container start by `import-pages.php` (+ `cargo-repopulate.php`).
+- **Config:** `LocalSettings.php` branches on `WIKI_ENV` (production hardens + uses S3 storage;
+  development is verbose + local storage). Hebrew is the content language; anonymous edits disabled.
 
-3. **Deployment Flow**
-   - Code push → GitHub → CodePipeline → Build → Test → Deploy to ECS
+## Data layer (`data/`)
 
-## Security Considerations
+Python pipeline (Scrapy → Pydantic → Jinja2 → mwclient) that scrapes Transfermarkt, normalizes,
+merges multi-season, auto-translates to Hebrew, and imports player/match/season/club pages. See
+[`revival-plan.md`](revival-plan.md) §7 for known gaps.
 
-1. **Network Security**
-   - Private subnets for database and application tiers
-   - Security groups with least privilege access
-   - VPC endpoints for AWS services
+---
 
-2. **Application Security**
-   - HTTPS everywhere
-   - WAF protection
-   - Regular security updates
-   - Input validation and sanitization
+## Target architecture (rebuild — decision pending)
 
-3. **Data Security**
-   - Encryption at rest for RDS and S3
-   - Encryption in transit (HTTPS)
-   - Database backups
-   - Access control for S3 objects
+The rebuild prioritizes **low cost** and **safe backups**. Two options are under consideration
+(see [`revival-plan.md`](revival-plan.md) §5):
 
-## Scalability and High Availability
+- **A. Single small instance** (~$10–16/mo) — one ARM instance running the existing
+  `docker-compose` (MediaWiki + co-located MariaDB) on EBS, EBS snapshots for backup, optional
+  CloudFront. *Recommended for cost.*
+- **B. Optimized Fargate** (~$45–55/mo) — keep the CDK Fargate/RDS design, right-sized.
 
-1. **Scalability**
-   - ECS auto-scaling based on CPU/memory usage
-   - RDS instance scaling (vertical) as needed
-   - CloudFront for edge caching
-
-2. **High Availability**
-   - Multi-AZ deployment for RDS
-   - ECS tasks across multiple availability zones
-   - CloudFront global edge locations
-
-## Monitoring and Logging
-
-1. **CloudWatch**
-   - Custom metrics for MediaWiki performance
-   - Logs for ECS, RDS, and other services
-   - Alarms for critical thresholds
-
-2. **Application Logging**
-   - MediaWiki logs to CloudWatch
-   - Error tracking and reporting
-   - User activity auditing
-
-## Disaster Recovery
-
-1. **Backup Strategy**
-   - Automated RDS backups
-   - S3 versioning for media files
-   - Configuration backups via CodePipeline
-
-2. **Recovery Procedures**
-   - RDS point-in-time recovery
-   - ECS task replacement
-   - Infrastructure recreation via CloudFormation/CDK
-
-## Cost Optimization
-
-1. **Resource Sizing**
-   - Right-sized ECS tasks
-   - RDS instance type selection
-   - Auto-scaling for demand
-
-2. **Storage Optimization**
-   - S3 lifecycle policies
-   - RDS storage optimization
-   - CloudFront caching policies
-
-## Future Considerations
-
-1. **Caching Layer**
-   - ElastiCache for database query caching
-   - Enhanced CloudFront configurations
-
-2. **Content Search**
-   - Amazon OpenSearch Service for enhanced wiki search
-
-3. **Localization**
-   - Support for multiple languages
-   - Region-specific content delivery
-
-4. **Analytics**
-   - Integration with AWS analytics services
-   - User behavior tracking and analysis
+Either way, the rebuild must fix: DB snapshot-on-delete + deletion protection, verified restore,
+S3 public-access lockdown, WAF bot-rule ordering, MariaDB ≥10.6, and CI enforcement.
