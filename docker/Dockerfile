@@ -1,4 +1,4 @@
-FROM mediawiki:1.43
+FROM mediawiki:1.45.3
 
 # Install tools for image handling and extensions
 RUN apt-get update && apt-get install -y \
@@ -11,7 +11,7 @@ RUN wget -cO - https://getcomposer.org/composer-2.phar > composer.phar \
     && chmod +x /usr/local/bin/composer
 
 # Clone and configure the AWS extension
-ENV COMPOSER_ROOT_VERSION=1.43.0
+ENV COMPOSER_ROOT_VERSION=1.45.0
 RUN cd /var/www/html && \
 git clone --depth 1 https://github.com/edwardspec/mediawiki-aws-s3.git extensions/AWS && \
 echo '{"extra":{"merge-plugin":{"include":["extensions/AWS/composer.json"]}}}' > composer.local.json && \
@@ -26,6 +26,9 @@ COPY .htaccess /var/www/html/.htaccess
 
 # Copy LocalSettings.php
 COPY LocalSettings.php /var/www/html/LocalSettings.php
+
+# Install TabberNeue extension (tabbed content for stats, lyrics, galleries)
+RUN git clone --depth 1 https://github.com/StarCitizenTools/mediawiki-extensions-TabberNeue.git extensions/TabberNeue
 
 # Copy extensions
 COPY extensions/Cargo/ /var/www/html/extensions/Cargo/
