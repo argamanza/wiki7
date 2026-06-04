@@ -2,9 +2,9 @@
  * Citizen
  *
  * Module: mediawiki.skinning.interface-subtitle
- * Version: REL1_39
+ * Version: REL1_43
  *
- * Date: 2023-06-06
+ * Date: 2025-06-25
  */
 
 #siteSub,
@@ -12,9 +12,13 @@
 #contentSub2 {
 	overflow: hidden;
 	text-overflow: ellipsis;
-	font-size: var( --font-size-x-small );
-	line-height: var( --line-height-xxx-small );
 	color: var( --color-subtle );
+	.mixin-citizen-font-styles( 'small' );
+}
+
+#siteSub {
+	// Reduced line height for siteSub
+	line-height: var( --line-height-x-small );
 }
 
 // Reduced spacing if both sub1 and 2 exists

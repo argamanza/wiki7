@@ -1,0 +1,111 @@
+<?php
+
+declare( strict_types=1 );
+
+namespace MediaWiki\Skins\Wiki7\Components;
+
+/**
+ * Wiki7ComponentStickyHeader component
+ */
+class Wiki7ComponentStickyHeader implements Wiki7Component {
+
+	private const SHARE_ICON = [
+		'id' => 'wiki7-share-sticky-header',
+		'clickTarget' => '#wiki7-share',
+		'icon' => 'wikimedia-share'
+	];
+
+	private const TALK_ICON = [
+		'id' => 'ca-talk-sticky-header',
+		'clickTarget' => '#ca-talk > a',
+		'icon' => 'speechBubbles'
+	];
+
+	private const SUBJECT_ICON = [
+		'id' => 'ca-subject-sticky-header',
+		'clickTarget' => '#ca-subject > a',
+		'icon' => 'eye'
+	];
+
+	private const HISTORY_ICON = [
+		'id' => 'ca-history-sticky-header',
+		'clickTarget' => '#ca-history > a',
+		'icon' => 'wikimedia-history'
+	];
+
+	private const EDIT_VE_ICON = [
+		'id' => 'ca-ve-edit-sticky-header',
+		'clickTarget' => '#ca-ve-edit > a',
+		'icon' => 'wikimedia-edit'
+	];
+
+	private const EDIT_WIKITEXT_ICON = [
+		'id' => 'ca-edit-sticky-header',
+		'clickTarget' => '#ca-edit > a',
+		'icon' => 'wikimedia-wikiText'
+	];
+
+	private const EDIT_PROTECTED_ICON = [
+		'id' => 'ca-viewsource-sticky-header',
+		'clickTarget' => '#ca-viewsource > a',
+		'icon' => 'wikimedia-editLock'
+	];
+
+	private const ADD_SECTION_ICON = [
+		'id' => 'ca-addsection-sticky-header',
+		'clickTarget' => '#ca-addsection > a',
+		'icon' => 'speechBubbleAdd'
+	];
+
+	public function __construct(
+		private readonly bool $visualEditorTabPositionFirst = false,
+		private readonly bool $enableShare = true
+	) {
+	}
+
+	/**
+	 * Creates array of Button components in the sticky header
+	 */
+	private function getIconButtons(): array {
+		$icons = [];
+
+		if ( $this->enableShare ) {
+			$icons[] = self::SHARE_ICON;
+		}
+
+		array_push( $icons,
+			self::HISTORY_ICON,
+			$this->visualEditorTabPositionFirst ? self::EDIT_VE_ICON : self::EDIT_WIKITEXT_ICON,
+			$this->visualEditorTabPositionFirst ? self::EDIT_WIKITEXT_ICON : self::EDIT_VE_ICON,
+			self::EDIT_PROTECTED_ICON,
+			self::ADD_SECTION_ICON,
+			self::TALK_ICON,
+			self::SUBJECT_ICON
+		);
+		$iconButtons = [];
+		foreach ( $icons as $icon ) {
+			$button = new Wiki7ComponentButton(
+				icon: $icon['icon'],
+				id: $icon['id'],
+				// @phan-suppress-next-line PhanCoalescingAlwaysNullInLoop
+				class: $icon['class'] ?? '',
+				attributes: [
+					'tabindex' => '-1',
+					// @phan-suppress-next-line PhanCoalescingNeverNullInLoop
+					'data-mw-wiki7-click-target' => $icon['clickTarget'] ?? null,
+				],
+				weight: 'quiet',
+				size: 'large',
+				iconOnly: true,
+			);
+			$iconButtons[] = $button->getTemplateData();
+		}
+		return $iconButtons;
+	}
+
+	public function getTemplateData(): array {
+		return [
+			'array-icon-buttons' => $this->getIconButtons()
+		];
+	}
+}

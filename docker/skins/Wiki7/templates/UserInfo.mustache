@@ -11,10 +11,14 @@
 			</ul>
 		{{/data-user-groups}}
 	</div>
-	{{#data-user-edit}}
-		<div class="wiki7-userInfo-edits">
-			<div class="wiki7-userInfo-edits-count">{{count}}</div>
-			<div class="wiki7-userInfo-edits-label">{{label}}</div>
+	{{#data-user-stats}}
+		<div class="wiki7-userInfo-stats">
+			{{#array-stats-items}}
+				<div class="wiki7-userInfo-stats-item">
+					<div class="wiki7-userInfo-stats-item-label">{{label}}</div>
+					<div class="wiki7-userInfo-stats-item-value">{{{value}}}</div>
+				</div>
+			{{/array-stats-items}}
 		</div>
-	{{/data-user-edit}}
+	{{/data-user-stats}}
 </div>

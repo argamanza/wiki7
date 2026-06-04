@@ -1,101 +1,132 @@
-const
-	Vue = require( 'vue' ),
-	{ createPinia } = require( 'pinia' ),
-	App = require( './components/App.vue' ),
-	config = require( './config.json' );
+const Vue = require( 'vue' );
+const App = require( './components/App.vue' );
+const config = require( './config.json' );
+
+// Services
+const createRecentItems = require( './services/recentItems.js' );
+const createRestSearchClient = require( './services/searchClient.js' );
+const createPaletteRegistry = require( './services/paletteRegistry.js' );
+const { defineMode, defineCommand } = require( './services/defineMode.js' );
+const previewService = require( './services/instantDiffs.js' );
+
+// Provider factories
+const createSearchProvider = require( './providers/SearchProvider.js' );
+const createPaletteCommandProvider = require( './providers/PaletteCommandProvider.js' );
+const createRecentItemsProvider = require( './providers/RecentItemsProvider.js' );
+const createRelatedArticlesProvider = require( './providers/RelatedArticlesProvider.js' );
+
+// Modes
+const namespaceMode = require( './modes/namespace.js' );
+const createActionMode = require( './modes/action.js' );
+const createUserMode = require( './modes/user.js' );
+const createCategoryMode = require( './modes/category.js' );
+const createHistoryMode = require( './modes/history.js' );
+const createFileMode = require( './modes/file.js' );
+const helpMode = require( './modes/help.js' );
+
+// Result decorator
+const createAppendQueryActions = require( './utils/appendQueryActions.js' );
 
 /**
- * Initialize the command palette
+ * Mount the command palette into the provided overlay element.
  *
- * @return {void}
+ * Caller (commandPalette.js) owns the trigger lifecycle: this function
+ * only mounts. Opening is the caller's responsibility — calling
+ * `open()` after mount lets Vue's standard enter transition play, so
+ * the first trigger on every fresh page gets a real open animation
+ * rather than a snap-in.
+ *
+ * @param {HTMLElement} overlayEl
+ * @param {Object} [options]
+ * @param {Function} [options.onClose] Called when the palette is dismissed from inside (Esc, backdrop).
+ * @return {Object} mounted palette instance with `open(prefill?)` and `close()`
  */
-function initApp() {
-	const teleportTarget = require( 'mediawiki.page.ready' ).teleportTarget;
+function initApp( overlayEl, options ) {
+	const opts = options || {};
 
-	// We can't mount directly to the teleportTarget or it will break OOUI overlays
-	const overlay = document.createElement( 'div' );
-	overlay.classList.add( 'wiki7-command-palette-overlay' );
-	teleportTarget.appendChild( overlay );
+	const recentItemsService = createRecentItems();
+	const searchClient = createRestSearchClient( mw.config.get( 'wgScriptPath' ) );
+	const paletteRegistry = createPaletteRegistry();
+
+	paletteRegistry.register( namespaceMode );
+	paletteRegistry.register( createActionMode( document, mw.Api ) );
+	paletteRegistry.register( createUserMode( mw.Api ) );
+	paletteRegistry.register( createCategoryMode( mw.Api ) );
+	paletteRegistry.register( createHistoryMode( mw.Api ) );
+	paletteRegistry.register( createFileMode( mw.Api ) );
+	paletteRegistry.register( helpMode );
+
+	// `defineMode` / `defineCommand` are exposed on the hook payload so
+	// extension authors get the same registration-time diagnostics that
+	// built-in modes do — typo warnings, layout/compactResults coercion,
+	// and hard-fails for missing-id/missing-getResults shapes. Using them
+	// stays optional; the registry still accepts plain object literals.
+	const hookData = {
+		register: paletteRegistry.register,
+		defineMode,
+		defineCommand
+	};
+	mw.hook( 'wiki7.commandPalette.register' ).fire( hookData );
+
+	mw.hook( 'skins.wiki7.commandPalette.registerCommand' ).fire( {
+		registerCommand: function ( command ) {
+			mw.log.warn(
+				'[Wiki7] The "skins.wiki7.commandPalette.registerCommand" hook is deprecated. ' +
+				'Use "wiki7.commandPalette.register" instead.'
+			);
+			paletteRegistry.register( command );
+		}
+	} );
+
+	if ( config.isSemanticMediaWikiEnabled ) {
+		mw.loader.using( 'skins.wiki7.commandPalette.smw' ).then( ( req ) => {
+			const smwMode = req( 'skins.wiki7.commandPalette.smw' );
+			paletteRegistry.register( smwMode );
+		} ).catch( ( e ) => {
+			mw.log.error( '[commandPalette] Failed to load SMW mode:', e );
+		} );
+	}
+
+	const recentItemsProvider = createRecentItemsProvider( recentItemsService );
+	const relatedArticlesProvider = createRelatedArticlesProvider( mw.loader );
+	const providers = [
+		createPaletteCommandProvider( paletteRegistry ),
+		createSearchProvider( searchClient )
+	];
+
+	const appendQueryActions = createAppendQueryActions();
 
 	const app = Vue.createMwApp( App, {}, config );
-
-	const pinia = createPinia();
-	app.use( pinia );
-
-	const commandPalette = app.mount( overlay );
-
-	registerButton( commandPalette );
-	bindKeyboardShortcuts( commandPalette );
-}
-
-/**
- * Setup the button to open the command palette
- * This is very hacky, but it works for now.
- *
- * @param {Vue} commandPalette
- * @return {void}
- */
-function registerButton( commandPalette ) {
-	const details = document.getElementById( 'wiki7-search-details' );
-	// Remove the search card from the DOM so it won't be triggered by the button
-	document.getElementById( 'wiki7-search__card' )?.remove();
-
-	details.open = false;
-	details.addEventListener( 'click', () => {
-		commandPalette.open();
-	} );
-}
-
-/**
- * Manually toggle the details state when the keyboard button is SLASH is pressed.
- *
- * @param {Vue} commandPalette
- * @return {void}
- */
-function bindKeyboardShortcuts( commandPalette ) {
-	const onExpandOnSlash = ( event ) => {
-		const isKeyPressed = () => {
-			// "/"
-			if ( event.key === '/' ) {
-				return true;
-			// "Ctrl" + "K" (or "Command" + "K" on Mac)
-			} else if ( ( event.ctrlKey || event.metaKey ) && event.key.toLowerCase() === 'k' ) {
-				return true;
-			// "Alt" + "Shift" + "F" is the MW standard key
-			// Shift key might makes F key goes capital, so we need to make it lowercase
-			} else if ( event.altKey && event.shiftKey && event.key.toLowerCase() === 'f' ) {
-				return true;
-			} else {
-				return false;
-			}
+	app.provide( 'providers', providers );
+	app.provide( 'recentItemsService', recentItemsService );
+	app.provide( 'resultDecorator', appendQueryActions );
+	app.provide( 'recentItemsProvider', recentItemsProvider );
+	app.provide( 'relatedArticlesProvider', relatedArticlesProvider );
+	app.provide( 'findModeByTrigger', paletteRegistry.findModeByTrigger );
+	app.provide( 'findModeByQuery', paletteRegistry.findModeByQuery );
+	app.provide( 'getTokenPatterns', paletteRegistry.getTokenPatterns );
+	app.provide( 'getHandler', paletteRegistry.getHandler );
+	app.provide( 'getHelpCatalogItems', () => paletteRegistry.getCommandListItems()
+		.filter( ( item ) => item.source !== 'command:help' ) );
+	// Preview-handler service — currently the InstantDiffs gadget bridge,
+	// but the consumer (useResultRouter + the App-level processContext /
+	// onReady wiring) only depends on the duck-typed
+	// `{ isAvailable, processContext, triggerForAnchor, onReady }` shape.
+	// Future preview integrations become a swap of this provider, not a
+	// code change in the dispatcher.
+	app.provide( 'previewService', previewService );
+	// Called from App.vue's close() so the orchestrator can hide its
+	// overlay wrapper and reset the trigger's `<details>` open state when
+	// the palette is dismissed from inside (Esc, backdrop click). Falls
+	// back to just hiding the wrapper if no callback was supplied.
+	const externalClose = ( typeof opts.onClose === 'function' ) ?
+		opts.onClose :
+		() => {
+			overlayEl.hidden = true;
 		};
-		if ( isKeyPressed() && !isFormField( event.target ) ) {
-			// Since Firefox quickfind interfere with this
-			event.preventDefault();
-			commandPalette.open();
-		}
-	};
+	app.provide( 'paletteExternalClose', externalClose );
 
-	document.addEventListener( 'keydown', onExpandOnSlash, true );
+	return app.mount( overlayEl );
 }
 
-/**
- * Check if the element is a HTML form element or content editable
- * This is to prevent trigger search box when user is typing on a textfield, input, etc.
- *
- * @param {HTMLElement} element
- * @return {boolean}
- */
-function isFormField( element ) {
-	if ( !( element instanceof HTMLElement ) ) {
-		return false;
-	}
-	const name = element.nodeName.toLowerCase();
-	const type = ( element.getAttribute( 'type' ) || '' ).toLowerCase();
-	return ( name === 'select' ||
-        name === 'textarea' ||
-        ( name === 'input' && type !== 'submit' && type !== 'reset' && type !== 'checkbox' && type !== 'radio' ) ||
-        element.isContentEditable );
-}
-
-initApp();
+module.exports = { initApp };

@@ -1,25 +1,4 @@
 <?php
-/**
- * Wiki7 - A responsive skin developed for the Star Wiki7 Wiki
- *
- * This file is part of Wiki7.
- *
- * Wiki7 is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Wiki7 is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Wiki7.  If not, see <https://www.gnu.org/licenses/>.
- *
- * @file
- * @ingroup Skins
- */
 
 declare( strict_types=1 );
 
@@ -27,8 +6,12 @@ namespace MediaWiki\Skins\Wiki7\Hooks;
 
 use MediaWiki\Config\Config;
 use MediaWiki\MainConfigNames;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Registration\ExtensionRegistry;
 use MediaWiki\ResourceLoader as RL;
+use MediaWiki\Skins\Wiki7\OnWikiJsonReader;
+use MediaWiki\Skins\Wiki7\PreferencesConfigProvider;
+use MediaWiki\Skins\Wiki7\ShareConfigProvider;
 
 /**
  * Hooks to run relating to the resource loader
@@ -49,8 +32,7 @@ class ResourceLoaderHooks {
 			'wgWiki7EnablePreferences' => $config->get( 'Wiki7EnablePreferences' ),
 			'wgWiki7OverflowInheritedClasses' => $config->get( 'Wiki7OverflowInheritedClasses' ),
 			'wgWiki7OverflowNowrapClasses' => $config->get( 'Wiki7OverflowNowrapClasses' ),
-			'wgWiki7SearchModule' => $config->get( 'Wiki7SearchModule' ),
-			'wgWiki7EnableCommandPalette' => $config->get( 'Wiki7EnableCommandPalette' ),
+			'wgWiki7ShareMode' => $config->get( 'Wiki7ShareMode' ),
 		];
 	}
 
@@ -70,27 +52,6 @@ class ResourceLoaderHooks {
 	}
 
 	/**
-	 * Passes config variables to skins.wiki7.search ResourceLoader module.
-	 * @param RL\Context $context
-	 * @param Config $config
-	 * @return array
-	 */
-	public static function getWiki7SearchResourceLoaderConfig(
-		RL\Context $context,
-		Config $config
-	) {
-		return [
-			'isAdvancedSearchExtensionEnabled' => ExtensionRegistry::getInstance()->isLoaded( 'AdvancedSearch' ),
-			'isMediaSearchExtensionEnabled' => ExtensionRegistry::getInstance()->isLoaded( 'MediaSearch' ),
-			'wgWiki7SearchGateway' => $config->get( 'Wiki7SearchGateway' ),
-			'wgWiki7SearchDescriptionSource' => $config->get( 'Wiki7SearchDescriptionSource' ),
-			'wgWiki7MaxSearchResults' => $config->get( 'Wiki7MaxSearchResults' ),
-			'wgScriptPath' => $config->get( MainConfigNames::ScriptPath ),
-			'wgSearchSuggestCacheExpiry' => $config->get( MainConfigNames::SearchSuggestCacheExpiry )
-		];
-	}
-
-	/**
 	 * Passes config variables to skins.wiki7.commandPalette ResourceLoader module.
 	 * @param RL\Context $context
 	 * @param Config $config
@@ -100,8 +61,67 @@ class ResourceLoaderHooks {
 		RL\Context $context,
 		Config $config
 	) {
+		$extensionRegistry = ExtensionRegistry::getInstance();
+
 		return [
+			'isSemanticMediaWikiEnabled' => $extensionRegistry->isLoaded( 'SemanticMediaWiki' ),
 			'wgSearchSuggestCacheExpiry' => $config->get( MainConfigNames::SearchSuggestCacheExpiry )
 		];
+	}
+
+	/**
+	 * Passes config variables to skins.wiki7.share ResourceLoader module.
+	 * @param RL\Context $context
+	 * @param Config $config
+	 * @return array{services: array, urlShortener: array{available: bool, qrAvailable: bool}}
+	 */
+	public static function getWiki7ShareResourceLoaderConfig(
+		RL\Context $context,
+		Config $config
+	): array {
+		$mwServices = MediaWikiServices::getInstance();
+		$provider = new ShareConfigProvider(
+			new OnWikiJsonReader(
+				$mwServices->getRevisionLookup(),
+				$mwServices->getTitleFactory()
+			),
+			$mwServices->getUrlUtils()
+		);
+
+		$extensionRegistry = ExtensionRegistry::getInstance();
+		$urlShortenerLoaded = $extensionRegistry->isLoaded( 'UrlShortener' );
+		$qrAvailable = $urlShortenerLoaded
+			&& $config->has( 'UrlShortenerEnableQrCode' )
+			&& (bool)$config->get( 'UrlShortenerEnableQrCode' );
+
+		return [
+			'services' => $provider->getServiceOptions() ?? [],
+			'urlShortener' => [
+				'available' => $urlShortenerLoaded,
+				'qrAvailable' => $qrAvailable,
+			],
+		];
+	}
+
+	/**
+	 * Return on-wiki preferences overrides with pre-resolved message texts.
+	 *
+	 * @param RL\Context $context
+	 * @param Config $config
+	 * @return array{overrides: ?array, messages: \stdClass|array<string, string>}
+	 */
+	public static function getWiki7PreferencesOverrides(
+		RL\Context $context,
+		Config $config
+	): array {
+		$services = MediaWikiServices::getInstance();
+		$provider = new PreferencesConfigProvider(
+			new OnWikiJsonReader(
+				$services->getRevisionLookup(),
+				$services->getTitleFactory()
+			),
+			$context
+		);
+		return $provider->getOverrides( $context->getLanguage() );
 	}
 }

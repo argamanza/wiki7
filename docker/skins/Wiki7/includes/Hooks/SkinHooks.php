@@ -1,44 +1,20 @@
 <?php
-/**
- * Wiki7 - A responsive skin developed for the Star Wiki7 Wiki
- *
- * This file is part of Wiki7.
- *
- * Wiki7 is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Wiki7 is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Wiki7.  If not, see <https://www.gnu.org/licenses/>.
- *
- * @file
- * @ingroup Skins
- */
-
 declare( strict_types=1 );
 
 namespace MediaWiki\Skins\Wiki7\Hooks;
 
 use MediaWiki\Hook\SidebarBeforeOutputHook;
 use MediaWiki\Hook\SkinBuildSidebarHook;
-use MediaWiki\Hook\SkinEditSectionLinksHook;
 use MediaWiki\Html\Html;
-use MediaWiki\Language\Language;
 use MediaWiki\Output\Hook\BeforePageDisplayHook;
 use MediaWiki\Output\Hook\OutputPageAfterGetHeadLinksArrayHook;
 use MediaWiki\Output\OutputPage;
 use MediaWiki\Registration\ExtensionRegistry;
 use MediaWiki\ResourceLoader as RL;
 use MediaWiki\Skin\SkinComponentUtils;
-use MediaWiki\Skins\Wiki7\GetConfigTrait;
+use MediaWiki\Skins\Wiki7\SkinWiki7;
 use MediaWiki\Skins\Hook\SkinPageReadyConfigHook;
-use MediaWiki\Title\Title;
+use MediaWiki\SpecialPage\SpecialPage;
 use Skin;
 use SkinTemplate;
 
@@ -50,13 +26,13 @@ class SkinHooks implements
 	OutputPageAfterGetHeadLinksArrayHook,
 	SidebarBeforeOutputHook,
 	SkinBuildSidebarHook,
-	SkinEditSectionLinksHook,
 	SkinPageReadyConfigHook
 {
-	use GetConfigTrait;
+	private static ?string $inlineScript = null;
 
 	/**
-	 * Adds the inline theme switcher script to the page
+	 * Adds the inline theme switcher script and resolves the active
+	 * color-token pipeline for the current request.
 	 *
 	 * @param OutputPage $out
 	 * @param Skin $skin
@@ -67,11 +43,52 @@ class SkinHooks implements
 			return;
 		}
 
-		if ( $this->getConfigValue( 'Wiki7EnablePreferences', $out ) === true ) {
-			$script = file_get_contents( MW_INSTALL_PATH . '/skins/Wiki7/resources/skins.wiki7.scripts/inline.js' );
-			$script = Html::inlineScript( $script );
-			$script = RL\ResourceLoader::filter( 'minify-js', $script );
-			$out->addHeadItem( 'skin.wiki7.inline', $script );
+		if ( $out->getConfig()->get( 'Wiki7EnablePreferences' ) === true ) {
+			self::$inlineScript ??= Html::inlineScript(
+				RL\ResourceLoader::filter(
+					'minify-js',
+					file_get_contents( __DIR__ . '/../../resources/skins.wiki7.scripts/inline.js' )
+				)
+			);
+			$out->addHeadItem( 'skin.wiki7.inline', self::$inlineScript );
+		}
+
+		self::resolveColorMode( $out );
+	}
+
+	/**
+	 * Pick the color-token module for this request and add it.
+	 *
+	 * Priority: ?wiki7usenewtoken=0|1 URL param > wiki7usenewtoken
+	 * cookie > $wgWiki7UseNewToken config. The URL param also writes
+	 * a 24-hour cookie. Mode flip takes effect on the next request —
+	 * exactly one token module ships per request.
+	 */
+	private static function resolveColorMode( OutputPage $out ): void {
+		$request = $out->getRequest();
+		$urlVal = $request->getRawVal( 'wiki7usenewtoken' );
+
+		if ( $urlVal === '0' || $urlVal === '1' ) {
+			$useNew = $urlVal === '1';
+			$request->response()->setCookie(
+				'wiki7usenewtoken',
+				$urlVal,
+				time() + 86400
+			);
+		} else {
+			$cookieVal = $request->getCookie( 'wiki7usenewtoken', null, '' );
+			if ( $cookieVal === '0' || $cookieVal === '1' ) {
+				$useNew = $cookieVal === '1';
+			} else {
+				$useNew = (bool)$out->getConfig()->get( 'Wiki7UseNewToken' );
+			}
+		}
+
+		if ( $useNew ) {
+			$out->addModuleStyles( [ 'skins.wiki7.tokens.new' ] );
+			$out->addHtmlClasses( 'wiki7-token-new' );
+		} else {
+			$out->addModuleStyles( [ 'skins.wiki7.tokens' ] );
 		}
 	}
 
@@ -114,10 +131,12 @@ class SkinHooks implements
 	 */
 	public function onSidebarBeforeOutput( $skin, &$sidebar ): void {
 		// Be extra safe because it might be active on other skins with caching
-		if ( $skin->getSkinName() === 'wiki7' && $sidebar ) {
-			if ( isset( $sidebar['TOOLBOX'] ) ) {
-				self::updateToolboxMenu( $sidebar );
-			}
+		if ( $skin->getSkinName() !== 'wiki7' ) {
+			return;
+		}
+
+		if ( isset( $sidebar['TOOLBOX'] ) ) {
+			self::updateToolboxMenu( $sidebar );
 		}
 	}
 
@@ -131,74 +150,66 @@ class SkinHooks implements
 	 */
 	public function onSkinBuildSidebar( $skin, &$bar ): void {
 		// Be extra safe because it might be active on other skins with caching
-		if ( $skin->getSkinName() !== 'wiki7' || !$bar ) {
+		if ( $skin->getSkinName() !== 'wiki7' ) {
 			return;
 		}
 
-		$out = $skin->getOutput();
-		$globalToolsId = $this->getConfigValue( 'Wiki7GlobalToolsPortlet', $out );
-		// remove initial p- for backward compatibility
-		$name = empty( $globalToolsId ) ? 'navigation' : preg_replace( '/^p-/', '', $globalToolsId );
-		$bar[$name]['specialpages'] = [
-			'text'  => $skin->msg( 'specialpages' ),
-			'href'  => SkinComponentUtils::makeSpecialUrl( 'Specialpages' ),
-			'title' => $skin->msg( 'tooltip-t-specialpages' ),
-			'icon'  => 'specialPages',
-			'id'    => 't-specialpages',
+		$this->addSiteTools( $skin, $bar );
+
+		$iconMap = [
+			// TODO: Remove when we drop MW 1.43 support AND T405413 is resolved
+			'n-specialpages' => 'specialPages',
+			// TODO: Remove when we drop MW 1.43 support
+			't-specialpages' => 'specialPages',
+			't-upload' => 'upload',
 		];
 
-		if ( $this->getConfigValue( 'EnableUploads', $out ) === true ) {
+		foreach ( $bar as &$menu ) {
+			// Sidebar links do not have a string as key, so we need to loop through each item
+			foreach ( $menu as &$item ) {
+				if ( isset( $item['id'] ) && array_key_exists( $item['id'], $iconMap ) ) {
+					$item['icon'] = $iconMap[$item['id']];
+				}
+
+				if ( !empty( $item['icon'] ) ) {
+					$item['link-html'] = self::getIconHtml( $item['icon'] );
+				}
+			}
+		}
+		unset( $menu, $item );
+	}
+
+	private function addSiteTools( Skin $skin, array &$bar ): void {
+		$out = $skin->getOutput();
+		$customSiteToolsMenuId = $out->getConfig()->get( 'Wiki7GlobalToolsPortlet' );
+
+		$siteToolsMenuId = $customSiteToolsMenuId === ''
+			? array_key_first( $bar )
+			// remove initial p- for backward compatibility
+			: preg_replace( '/^p-/', '', $customSiteToolsMenuId );
+
+		// Do not override specialpages if it already exists (#1116)
+		// TODO: Revisit in next LTS release (T333211)
+		if ( version_compare( MW_VERSION, '1.44', '<' ) ) {
+			$bar[$siteToolsMenuId][] = [
+				'text'  => $skin->msg( 'specialpages' ),
+				'href'  => SkinComponentUtils::makeSpecialUrl( 'Specialpages' ),
+				'title' => $skin->msg( 'tooltip-t-specialpages' ),
+				'id'    => 't-specialpages',
+			];
+		}
+
+		if ( !isset( $bar[$siteToolsMenuId]['upload'] ) && $out->getConfig()->get( 'EnableUploads' ) === true ) {
 			$isUploadWizardEnabled = ExtensionRegistry::getInstance()->isLoaded( 'Upload Wizard' );
-			$bar[$name]['upload'] = [
+			$bar[$siteToolsMenuId][] = [
 				'text'  => $skin->msg( 'upload' ),
 				'href'  => SkinComponentUtils::makeSpecialUrl( $isUploadWizardEnabled ?
 					'UploadWizard' :
 					'Upload'
 				),
 				'title' => $skin->msg( 'tooltip-t-upload' ),
-				'icon'  => 'upload',
 				'id'    => 't-upload',
 			];
-		}
-
-		foreach ( $bar as $key => $item ) {
-			self::addIconsToMenuItems( $bar, $key );
-		}
-	}
-
-	/**
-	 * Modify editsection links
-	 *
-	 * @see https://www.mediawiki.org/wiki/Manual:Hooks/SkinEditSectionLinks
-	 * @param Skin $skin
-	 * @param Title $title
-	 * @param string $section
-	 * @param string $sectionTitle
-	 * @param array &$result
-	 * @param Language $lang
-	 */
-	public function onSkinEditSectionLinks( $skin, $title, $section, $sectionTitle, &$result, $lang ) {
-		// Be extra safe because it might be active on other skins with caching
-		if ( $skin->getSkinName() !== 'wiki7' || !$result ) {
-			return;
-		}
-
-		// Add icon to edit section link
-		// If VE button is present, use wikiText icon
-		if ( isset( $result['veeditsection'] ) ) {
-			self::appendClassToItem(
-				$result['veeditsection']['attribs']['class'],
-				'wiki7-ui-icon mw-ui-icon-wikimedia-edit'
-			);
-			self::appendClassToItem(
-				$result['editsection']['attribs']['class'],
-				'wiki7-ui-icon mw-ui-icon-wikimedia-wikiText'
-			);
-		} elseif ( isset( $result['editsection'] ) ) {
-			self::appendClassToItem(
-				$result['editsection']['attribs']['class'],
-				'wiki7-ui-icon mw-ui-icon-wikimedia-edit'
-			);
 		}
 	}
 
@@ -245,7 +256,7 @@ class SkinHooks implements
 		}
 
 		if ( isset( $links['notifications'] ) ) {
-			self::updateNotificationsMenu( $links );
+			self::updateNotificationsMenu( $sktemplate, $links );
 		}
 
 		if ( isset( $links['user-menu'] ) ) {
@@ -253,7 +264,7 @@ class SkinHooks implements
 		}
 
 		if ( isset( $links['user-interface-preferences'] ) ) {
-			self::updateUserInterfacePreferencesMenu( $sktemplate, $links );
+			self::updateUserInterfacePreferencesMenu( $links );
 		}
 
 		if ( isset( $links['views'] ) ) {
@@ -265,9 +276,8 @@ class SkinHooks implements
 	 * Update actions menu items
 	 *
 	 * @internal used inside Hooks\SkinHooks::onSkinTemplateNavigation
-	 * @param array &$links
 	 */
-	private static function updateActionsMenu( &$links ) {
+	private static function updateActionsMenu( array &$links ): void {
 		// Most icons are not mapped yet in the actions menu
 		$iconMap = [
 			'delete' => 'trash',
@@ -291,9 +301,8 @@ class SkinHooks implements
 	 * Update associated pages menu items
 	 *
 	 * @internal used inside Hooks\SkinHooks::onSkinTemplateNavigation
-	 * @param array &$links
 	 */
-	private static function updateAssociatedPagesMenu( &$links ) {
+	private static function updateAssociatedPagesMenu( array &$links ): void {
 		// Most icons are not mapped yet in the associated pages menu
 		$iconMap = [
 			'main' => 'article',
@@ -306,11 +315,9 @@ class SkinHooks implements
 		// Since talk keys have namespace as prefix
 		foreach ( $links['associated-pages'] as $key => $item ) {
 			$keyStr = (string)$key;
-			// TODO: use str_ends_with when we drop PHP 7.X
-			if ( substr( $keyStr, -5 ) === '_talk' ) {
+			if ( str_ends_with( $keyStr, '_talk' ) ) {
 				// Extract the namespace key from the talk key (e.g. Project from Project_talk)
-				// TODO: use str_starts_with when we drop PHP 7.X
-				$namespace = substr( $keyStr, 0, -5 );
+				$namespace = substr( $keyStr, 0, -strlen( '_talk' ) );
 				$links['associated-pages'][$key]['icon'] = 'speechBubbles';
 				$links['associated-pages'][$namespace]['icon'] = 'arrowPrevious';
 			}
@@ -318,15 +325,15 @@ class SkinHooks implements
 
 		self::mapIconsToMenuItems( $links, 'associated-pages', $iconMap );
 		self::addIconsToMenuItems( $links, 'associated-pages' );
+		self::addButtonClassesToMenuItems( $links, 'associated-pages' );
 	}
 
 	/**
 	 * Update toolbox menu items
 	 *
 	 * @internal used inside Hooks\SkinHooks::onSkinTemplateNavigation
-	 * @param array &$links
 	 */
-	private static function updateToolboxMenu( &$links ) {
+	private static function updateToolboxMenu( array &$links ): void {
 		// Most icons are not mapped yet in the toolbox menu
 		$iconMap = [
 			'recentchangeslinked' => 'recentChanges',
@@ -334,13 +341,13 @@ class SkinHooks implements
 			'contributions' => 'userContributions',
 			'emailuser' => 'message',
 			// Extension:Cargo
-			'cargo-pagevalues' => 'database',
+			'cargo-pagevalues' => 'table',
 			// Extension:CiteThisPage
 			'citethispage' => 'quotes',
 			// Extension:CreateRedirect
 			'createredirect' => 'articleRedirect',
 			// Extension:SemanticMediaWiki
-			'smwbrowselink' => 'database',
+			'smwbrowselink' => 'table',
 			// Extension:UrlShortener
 			'urlshortener' => 'link',
 			'urlshortener-qrcode' => 'qrCode',
@@ -348,64 +355,81 @@ class SkinHooks implements
 			'wikibase' => 'logoWikidata'
 		];
 
+		// Remove upload and specialpages from toolbox as we moved them to drawer
+		// TODO: Check again in the next LTS release, in case it's handled there
+		$siteTools = [
+			'upload',
+			'specialpages'
+		];
+
+		foreach ( $siteTools as $siteTool ) {
+			unset( $links['TOOLBOX'][$siteTool] );
+		}
+
 		self::mapIconsToMenuItems( $links, 'TOOLBOX', $iconMap );
 		self::addIconsToMenuItems( $links, 'TOOLBOX' );
 	}
 
 	/**
-	 * Update notifications menu
+	 * Capture Echo's two notification badges (alert + notice) as merged data
+	 * for Wiki7's own notifications dropdown (Notifications.mustache), then
+	 * drop Echo's portlet so there is no duplicate control. The merged unread
+	 * count is handed to the skin, which exposes it as template data; the
+	 * dropdown renders a single bell that opens a panel showing both streams
+	 * (and links to Special:Notifications without JS).
 	 *
 	 * @internal used inside Hooks\SkinHooks::onSkinTemplateNavigation
-	 * @param array &$links
 	 */
-	private static function updateNotificationsMenu( &$links ) {
-		$iconMap = [
-			'notifications-alert' => 'bell',
-			'notifications-notice' => 'tray'
-		];
+	private static function updateNotificationsMenu( SkinTemplate $sktemplate, array &$links ): void {
+		$alert = $links['notifications']['notifications-alert'] ?? null;
+		$notice = $links['notifications']['notifications-notice'] ?? null;
 
-		self::mapIconsToMenuItems( $links, 'notifications', $iconMap );
-		self::addIconsToMenuItems( $links, 'notifications' );
-
-		/**
-		 * Echo has styles that control icons rendering in places we don't want them.
-		 * Based on fixEcho() from Vector, see T343838
-		 */
-		foreach ( $links['notifications'] as &$item ) {
-			$icon = $item['icon'] ?? null;
-			if ( $icon ) {
-				$linkClass = $item['link-class'] ?? [];
-				$newLinkClass = [
-					// Allows Echo to react to clicks
-					'wiki7-echo-notification-badge',
-					'wiki7-header__button',
-					'mw-echo-notification-badge-nojs'
-				];
-				if ( in_array( 'mw-echo-unseen-notifications', $linkClass ) ) {
-					$newLinkClass[] = 'mw-echo-unseen-notifications';
-				}
-				$item['link-class'] = $newLinkClass;
-			}
+		// Nothing to do if Echo did not provide its badges.
+		if ( $alert === null && $notice === null ) {
+			return;
 		}
+
+		$alertCount = (int)( $alert['data']['counter-num'] ?? 0 );
+		$noticeCount = (int)( $notice['data']['counter-num'] ?? 0 );
+
+		if ( $sktemplate instanceof SkinWiki7 ) {
+			$sktemplate->setNotificationData( [
+				'count' => $alertCount + $noticeCount,
+				'href' => $alert['href'] ?? $notice['href']
+					?? SpecialPage::getTitleFor( 'Notifications' )->getLocalURL(),
+			] );
+		}
+
+		// Wiki7 renders its own notifications dropdown, so drop Echo's
+		// portlet badges to avoid a duplicate control in the header.
+		unset( $links['notifications'] );
 	}
 
 	/**
 	 * Update user menu
 	 *
 	 * @internal used inside Hooks\SkinHooks::onSkinTemplateNavigation
-	 * @param SkinTemplate $sktemplate
-	 * @param array &$links
 	 */
-	private static function updateUserMenu( $sktemplate, &$links ) {
+	private static function updateUserMenu( SkinTemplate $sktemplate, array &$links ): void {
 		$user = $sktemplate->getUser();
 		$isRegistered = $user->isRegistered();
 		$isTemp = $user->isTemp();
 
 		if ( $isTemp ) {
-			// Remove temporary user page text from user menu and recreate it in user info
+			// Remove temporary user page text and the temp username link from
+			// user menu — both are already shown in the user info header
 			unset( $links['user-menu']['tmpuserpage'] );
-			// Remove links as they are added to the bottom of user menu later
-			// unset( $links['user-menu']['logout'] );
+			unset( $links['user-menu']['userpage'] );
+
+			// Move account links to appear right before the exit session link
+			$tail = [];
+			foreach ( [ 'createaccount', 'login', 'logout' ] as $key ) {
+				if ( isset( $links['user-menu'][$key] ) ) {
+					$tail[$key] = $links['user-menu'][$key];
+					unset( $links['user-menu'][$key] );
+				}
+			}
+			$links['user-menu'] += $tail;
 		} elseif ( $isRegistered ) {
 			// Remove user page link from user menu and recreate it in user info
 			unset( $links['user-menu']['userpage'] );
@@ -421,10 +445,8 @@ class SkinHooks implements
 	 * Update user interface preferences menu
 	 *
 	 * @internal used inside Hooks\SkinHooks::onSkinTemplateNavigation
-	 * @param SkinTemplate $sktemplate
-	 * @param array &$links
 	 */
-	private static function updateUserInterfacePreferencesMenu( $sktemplate, &$links ) {
+	private static function updateUserInterfacePreferencesMenu( array &$links ): void {
 		self::addIconsToMenuItems( $links, 'user-interface-preferences' );
 	}
 
@@ -432,12 +454,11 @@ class SkinHooks implements
 	 * Update views menu items
 	 *
 	 * @internal used inside Hooks\SkinHooks::onSkinTemplateNavigation
-	 * @param array &$links
 	 */
-	private static function updateViewsMenu( &$links ) {
+	private static function updateViewsMenu( array &$links ): void {
 		// Most icons are not mapped yet in the views menu
 		$iconMap = [
-			'view' => 'article',
+			'view' => 'eye',
 			// View source button only appears when the user do not have permission
 			'viewsource' => 'editLock',
 			'history' => 'history',
@@ -446,7 +467,9 @@ class SkinHooks implements
 			// Extension:VisualEditor
 			've-edit' => 'edit',
 			// Extension:DiscussionTools
-			'addsection' => 'speechBubbleAdd'
+			'addsection' => 'speechBubbleAdd',
+			// Extension:Page Forms
+			'formedit' => 'tableAddRowBefore'
 		];
 
 		// If both visual edit and source edit buttons are present
@@ -460,16 +483,20 @@ class SkinHooks implements
 
 		self::mapIconsToMenuItems( $links, 'views', $iconMap );
 		self::addIconsToMenuItems( $links, 'views' );
+		self::addButtonClassesToMenuItems( $links, 'views' );
+
+		// Make edit buttons progressive primary instead of quiet
+		foreach ( [ 'edit', 've-edit' ] as $key ) {
+			if ( isset( $links['views'][$key] ) ) {
+				self::setProgressiveAction( $links['views'][$key]['link-class'] );
+			}
+		}
 	}
 
 	/**
 	 * Set the icon parameter of the menu item based on the mapping
-	 *
-	 * @param array &$links
-	 * @param string $menu identifier
-	 * @param array $map icon mapping
 	 */
-	private static function mapIconsToMenuItems( &$links, $menu, $map ) {
+	private static function mapIconsToMenuItems( array &$links, string $menu, array $map ): void {
 		foreach ( $map as $key => $icon ) {
 			if ( isset( $links[$menu][$key] ) ) {
 				$links[$menu][$key]['icon'] ??= $icon;
@@ -478,34 +505,69 @@ class SkinHooks implements
 	}
 
 	/**
-	 * Add the HTML needed for icons to menu items
-	 *
-	 * @param array &$links
-	 * @param string $menu identifier
+	 * Add Codex button classes to menu items
 	 */
-	private static function addIconsToMenuItems( &$links, $menu ) {
-		// Loop through each menu to check/append its link classes.
-		foreach ( $links[$menu] as $key => $item ) {
-			$icon = $item['icon'] ?? '';
+	private static function addButtonClassesToMenuItems( array &$links, string $menu ): void {
+		$buttonClasses = [
+			'wiki7-cdx-button--size-large',
+			'cdx-button',
+			'cdx-button--fake-button',
+			'cdx-button--fake-button--enabled',
+			'cdx-button--weight-quiet',
+		];
 
-			if ( $icon ) {
-				// Html::makeLink will pass this through rawElement
-				// Avoid using mw-ui-icon in case its styles get loaded
-				// Sometimes extension includes the "wikimedia-" part in the icon key (e.g. ULS),
-				// so we apply both classes just to be safe
-				$links[$menu][$key]['link-html'] = '<span class="wiki7-ui-icon mw-ui-icon-' . $icon . ' mw-ui-icon-wikimedia-' . $icon . '"></span>';
+		foreach ( $links[$menu] as &$item ) {
+			if ( is_array( $item ) ) {
+				self::appendClassToItem( $item['link-class'], $buttonClasses );
 			}
 		}
 	}
 
 	/**
+	 * Add the HTML needed for icons to menu items
+	 */
+	private static function addIconsToMenuItems( array &$links, string $menu ): void {
+		// Loop through each menu to check/append its link classes.
+		foreach ( $links[$menu] as $key => $item ) {
+			$icon = $item['icon'] ?? '';
+
+			if ( $icon ) {
+				$links[$menu][$key]['link-html'] = self::getIconHtml( $icon );
+			}
+		}
+	}
+
+	/**
+	 * Get the HTML for an icon
+	 */
+	private static function getIconHtml( string $icon ): string {
+		// Html::makeLink will pass this through rawElement
+		// Avoid using mw-ui-icon in case its styles get loaded
+		// Sometimes extension includes the "wikimedia-" part in the icon key (e.g. ULS),
+		// so we apply both classes just to be safe
+		return '<span class="wiki7-ui-icon mw-ui-icon-' . $icon . ' mw-ui-icon-wikimedia-' . $icon . '"></span>';
+	}
+
+	/**
+	 * Promote a menu item from quiet to progressive primary
+	 */
+	private static function setProgressiveAction( array|string|null &$linkClass ): void {
+		if ( is_array( $linkClass ) ) {
+			$linkClass = array_values( array_diff( $linkClass, [ 'cdx-button--weight-quiet' ] ) );
+		} elseif ( is_string( $linkClass ) ) {
+			$linkClass = trim( str_replace( 'cdx-button--weight-quiet', '', $linkClass ) );
+		}
+		self::appendClassToItem( $linkClass, [
+			'cdx-button--weight-primary',
+			'cdx-button--action-progressive',
+		] );
+	}
+
+	/**
 	 * Adds class to a property
 	 * Based on Vector
-	 *
-	 * @param array|string &$item to update
-	 * @param array|string $classes to add to the item
 	 */
-	private static function appendClassToItem( &$item, $classes ) {
+	private static function appendClassToItem( array|string|null &$item, array|string $classes ): void {
 		$existingClasses = $item;
 
 		if ( is_array( $existingClasses ) ) {

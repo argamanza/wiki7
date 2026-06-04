@@ -6,66 +6,28 @@
 @import 'variables.less';
 
 .mixin-citizen-opaque-background( @surface: 1 ) {
-	background: ~'oklch( var( --color-surface-@{surface}-oklch__l ) var( --color-surface-@{surface}-oklch__c ) var( --color-progressive-oklch__h ) / var( --backdrop-opacity ) )';
-
-	@supports not ( color: oklch( 100% 0 0 ) ) {
-		background: ~'hsl( var( --color-surface-@{surface}-hsl__h ), var( --color-surface-@{surface}-hsl__s ), var( --color-surface-@{surface}-hsl__l ) / var( --backdrop-opacity ) )';
-	}
+	// Use color-mix on the public --color-surface-@{surface} token instead of
+	// reaching into legacy-only OKLCH derivation primitives. Works in both
+	// legacy and new color modes (both define --color-surface-N), and picks up
+	// the active surface value rather than legacy's idea of it.
+	background-color: ~'color-mix( in oklch, var( --color-surface-@{surface} ) calc( var( --opacity-glass ) * 100% ), transparent )';
 }
 
-.mixin-citizen-frosted-glass-simple( @surface: 1 ) {
+.mixin-citizen-frosted-glass( @surface: 1 ) {
 	.mixin-citizen-opaque-background( @surface );
-
-	@supports ( backdrop-filter: blur( 16px ) ) or ( -webkit-backdrop-filter: blur( 16px ) ) {
-		-webkit-backdrop-filter: var( --backdrop-filter-frosted-glass );
-		backdrop-filter: var( --backdrop-filter-frosted-glass );
-	}
+	-webkit-backdrop-filter: var( --backdrop-filter-frosted-glass );
+	backdrop-filter: var( --backdrop-filter-frosted-glass );
 }
 
-/**
- * Frosted glass effect
- * @see https://www.joshwcomeau.com/css/backdrop-filter
- */
-.mixin-citizen-frosted-glass( @backdropClass, @surface: 1 ) {
-	.mixin-citizen-opaque-background( @surface );
-
-	.@{backdropClass} {
-		position: absolute;
-		inset: 0;
-		z-index: @z-index-bottom;
-		overflow: hidden;
-		pointer-events: none;
-		transition: none !important; // cancel out card content transition
-	}
-
-	@supports ( backdrop-filter: blur( 16px ) ) or ( -webkit-backdrop-filter: blur( 16px ) ) {
-		.@{backdropClass} {
-			// Backdrop
-			&::before {
-				position: absolute;
-				inset: 0;
-				content: '';
-				background: ~'linear-gradient( to bottom, var( --color-surface-@{surface} ), transparent 50% )';
-				-webkit-backdrop-filter: var( --backdrop-filter-frosted-glass );
-				backdrop-filter: var( --backdrop-filter-frosted-glass );
-			}
-		}
-	}
-
-	@supports ( mask-image: none ) or ( -webkit-mask-image: none ) {
-		.@{backdropClass} {
-			&::before {
-				height: 200%;
-				-webkit-mask-image: linear-gradient( to bottom, #000 0% 50%, transparent 50% 100% );
-				mask-image: linear-gradient( to bottom, #000 0% 50%, transparent 50% 100% );
-			}
-		}
-	}
+// Pick the closed-state direction for a card.
+// @direction: up | down | left | right (trigger sits on the OPPOSITE side).
+.mixin-citizen-card-expand( @direction ) {
+	--citizen-clip-closed: ~'var( --citizen-clip-expand-@{direction} )';
+	--citizen-translate-closed: ~'var( --citizen-translate-expand-@{direction} )';
 }
 
 // Header card popups
 .mixin-citizen-header-card( @position ) {
-	position: absolute;
 	right: 0;
 	bottom: 100%;
 	left: 0;
@@ -97,7 +59,10 @@
 }
 
 .mixin-citizen-sticky-header-element() {
-	top: var( --height-sticky-header ) !important;
+	top: var( --header-offset-block-start ) !important;
+	transition-timing-function: var( --transition-timing-function-ease );
+	transition-duration: var( --transition-duration-medium );
+	transition-property: top;
 }
 
 .mixin-citizen-sticky-header-background() {
@@ -145,27 +110,27 @@
 // Button Styles
 .mixin-citizen-button-progressive() {
 	color: var( --color-inverted-primary ) !important;
-	background-color: var( --color-progressive );
+	background-color: var( --background-color-progressive );
 
 	&:hover {
-		background-color: var( --color-progressive--hover );
+		background-color: var( --background-color-progressive--hover );
 	}
 
 	&:active {
-		background-color: var( --color-progressive--active );
+		background-color: var( --background-color-progressive--active );
 	}
 }
 
 .mixin-citizen-button-destructive() {
 	color: var( --color-inverted-fixed ) !important;
-	background-color: var( --color-destructive );
+	background-color: var( --background-color-destructive );
 
 	&:hover {
-		background-color: var( --color-destructive--hover );
+		background-color: var( --background-color-destructive--hover );
 	}
 
 	&:active {
-		background-color: var( --color-destructive--active );
+		background-color: var( --background-color-destructive--active );
 	}
 }
 
@@ -200,6 +165,109 @@
 	filter: saturate( 0% ) brightness( 0% ) invert( @lightness ) opacity( @a );
 
 	// color filter
-	@svg-filter-id: "recolor";
+	@svg-filter-id: 'recolor';
 	filter: url( ';data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg"><filter id="@{svg-filter-id}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 @{r} 0 0 0 0 @{g} 0 0 0 0 @{b} 0 0 0 @{a} 0"/></filter></svg> #@{svg-filter-id}' );
+}
+
+.citizen-cdx-mixin-link-base-overrides() {
+	// We don't want to use color-progressive for link colors
+	color: var( --color-link );
+
+	&:hover {
+		color: var( --color-link--hover );
+	}
+
+	&:active {
+		color: var( --color-link--active );
+	}
+
+	// FIX: Visited hover color is missing in MW 1.43
+	&:visited:hover {
+		color: var( --color-visited--hover );
+	}
+
+	&:visited:active {
+		color: var( --color-visited--active );
+	}
+}
+
+// Based on Codex 2.0 typography tokens from T363845
+// TODO: Revisit when T333890 is resolved
+.mixin-citizen-font-styles( @type ) {
+	& when ( @type = 'heading-1' ) {
+		font-size: var( --font-size-xxx-large );
+		font-weight: var( --font-weight-semi-bold );
+		line-height: var( --line-height-xxx-large );
+	}
+
+	& when ( @type = 'heading-2' ) {
+		font-size: var( --font-size-xx-large );
+		font-weight: var( --font-weight-semi-bold );
+		line-height: var( --line-height-xx-large );
+	}
+
+	& when ( @type = 'heading-3' ) {
+		font-size: var( --font-size-x-large );
+		font-weight: var( --font-weight-semi-bold );
+		line-height: var( --line-height-x-large );
+	}
+
+	& when ( @type = 'heading-4' ) {
+		font-size: var( --font-size-large );
+		font-weight: var( --font-weight-semi-bold );
+		line-height: var( --line-height-large );
+	}
+
+	& when ( @type = 'body' ) {
+		font-size: var( --font-size-medium );
+		// font-weight: var( --font-weight-normal ); - No need to specify
+		line-height: var( --line-height-medium );
+	}
+
+	& when ( @type = 'small' ) {
+		font-size: var( --font-size-small );
+		// font-weight: var( --font-weight-normal ); - No need to specify
+		line-height: var( --line-height-small );
+	}
+
+	& when ( @type = 'overline' ) {
+		font-family: var( --font-family-overline );
+		font-size: var( --font-size-overline );
+		font-weight: var( --font-weight-overline );
+		line-height: var( --line-height-overline );
+		text-transform: var( --text-transform-overline );
+		letter-spacing: var( --letter-spacing-overline );
+	}
+}
+
+// Used to retrofit input element into Codex styles
+.mixin-citizen-cdx-input() {
+	min-height: @min-size-interactive-pointer;
+	padding: @spacing-25 @spacing-50;
+	font-size: @font-size-medium;
+	line-height: @line-height-small;
+	border-radius: @border-radius-base;
+	box-shadow: @box-shadow-inset-small @box-shadow-color-transparent;
+	transition-duration: @transition-duration-medium;
+	transition-property: @transition-property-base;
+
+	&:focus {
+		outline: @outline-base--focus;
+		border-color: @border-color-progressive--focus;
+		box-shadow: @box-shadow-inset-small @box-shadow-color-progressive--focus;
+	}
+}
+
+.mixin-citizen-mask-gradient(@direction, @color1, @color2, @color3: null, @color4: null) {
+	& when (@color3 =null),
+	(@color4 =null) {
+		-webkit-mask-image: linear-gradient( @direction, @color1, @color2 );
+		mask-image: linear-gradient( @direction, @color1, @color2 );
+	}
+
+	& when not(@color3 =null),
+	not(@color4 =null) {
+		-webkit-mask-image: linear-gradient( @direction, @color1, @color2, @color3, @color4 );
+		mask-image: linear-gradient( @direction, @color1, @color2, @color3, @color4 );
+	}
 }

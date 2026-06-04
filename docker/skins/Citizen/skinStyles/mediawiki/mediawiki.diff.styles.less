@@ -4,6 +4,7 @@
 */
 
 @import '../../resources/variables.less';
+@import '../../resources/mixins.less';
 
 .diff {
 	display: table; // So that it does not break layout in mobile
@@ -25,33 +26,28 @@
 
 	&-addedline {
 		border-color: var( --color-success );
-
-		.diffchange {
-			background: var( --background-color-success-subtle );
-		}
 	}
 
 	&-deletedline {
 		border-color: var( --color-destructive );
-
-		.diffchange {
-			background: var( --background-color-destructive-subtle );
-		}
 	}
 
 	&-addedline,
 	&-deletedline,
 	&-context {
-		font-size: var( --font-size-x-small ); // relative font size
+		.mixin-citizen-font-styles( 'small' );
 	}
 
 	&-editfont-monospace {
-		.diff {
-			&-addedline,
-			&-deletedline,
-			&-context {
-				font-family: var( --font-family-monospace );
-			}
+		.diff-addedline,
+		.diff-deletedline,
+		.diff-context,
+		.mw-diff-inline-added,
+		.mw-diff-inline-deleted,
+		.mw-diff-inline-moved,
+		.mw-diff-inline-changed,
+		.mw-diff-inline-context {
+			font-family: var( --font-family-monospace );
 		}
 	}
 }

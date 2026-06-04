@@ -1,10 +1,31 @@
 .wiki7-drawer {
 	&__card {
 		.mixin-wiki7-header-card( start );
-		transform-origin: var( --transform-origin-offset-start ) var( --transform-origin-offset-end );
 
 		@media ( min-width: @min-width-breakpoint-desktop ) {
-			transform-origin: var( --transform-origin-offset-start ) var( --transform-origin-offset-start );
+			.wiki7-header-position-left & {
+				right: unset;
+				left: 100%;
+			}
+
+			.wiki7-header-position-right & {
+				right: 100%;
+				left: unset;
+			}
+
+			.wiki7-header-position-top & {
+				top: 100%;
+				right: unset;
+				bottom: unset;
+				left: 0;
+			}
+
+			.wiki7-header-position-bottom & {
+				top: unset;
+				right: unset;
+				bottom: 100%;
+				left: 0;
+			}
 		}
 	}
 
@@ -14,7 +35,7 @@
 		align-items: center;
 		justify-content: center;
 		padding: var( --space-md );
-		border-bottom: var( --border-width-base ) solid var( --border-color-base );
+		border-bottom: var( --border-subtle );
 	}
 
 	// Keep aspect ratio
@@ -26,7 +47,7 @@
 	&__siteinfo {
 		display: flex;
 		flex-direction: column;
-		gap: var( --space-xs );
+		gap: var( --space-xxs );
 	}
 
 	&__menu {
@@ -38,7 +59,6 @@
 		max-width: inherit;
 		padding: var( --space-xs );
 		margin-bottom: var( --space-xs );
-		font-size: var( --font-size-small ); // TODO: Make this a variable
 
 		.mw-list-item a {
 			border-radius: var( --border-radius-base );
@@ -61,26 +81,4 @@
 			justify-content: flex-start;
 		}
 	}
-}
-
-.rtl {
-	#wiki7-drawer__card {
-		// Force transform origin to top right for RTL layout
-		transform-origin: calc(100% - var(--space-xs)) top !important;
-	}
-}
-
-/* Override for theme switching when using skin classes instead of prefers-color-scheme */
-@media (prefers-color-scheme: dark) {
-	.wiki7-drawer__logo img.mw-logo-icon {
-		content: url("/assets/logo-white.svg");
-	}
-}
-
-.skin-wiki7-dark .wiki7-drawer__logo img.mw-logo-icon {
-	content: url("/assets/logo-white.svg");
-}
-
-.skin-wiki7-light .wiki7-drawer__logo img.mw-logo-icon {
-	content: url("/assets/logo.svg");
 }

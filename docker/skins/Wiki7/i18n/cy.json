@@ -1,0 +1,20 @@
+{
+	"@metadata": {
+		"authors": [
+			"Afalau",
+			"Ceirios"
+		]
+	},
+	"wiki7-prefs-talkpage": "[[mw:Skin_talk:Wiki7|Sgwrs]]",
+	"wiki7-languages-toggle": "Mwy o ieithoedd",
+	"wiki7-actions-more-toggle": "Mwy o weithredoedd",
+	"wiki7-sitestats-articles-label": "erthyglau",
+	"wiki7-sitestats-images-label": "ffeiliau",
+	"wiki7-sitestats-users-label": "defnyddwyr",
+	"wiki7-sitestats-edits-label": "golygiadau",
+	"wiki7-page-info-copyright": "Hawlfraint",
+	"wiki7-page-info-credits": "Cydnabyddiaeth",
+	"wiki7-share": "Rhannu'r dudalen hon",
+	"wiki7-tagline-user-regdate": "Ymunodd $1",
+	"wiki7-command-palette-mode-user-empty-title": "Chwilio defnyddwyr"
+}

@@ -1,0 +1,23 @@
+{
+	"@metadata": {
+		"authors": [
+			"Alistair3149",
+			"Chaduvari",
+			"Veeven"
+		]
+	},
+	"wiki7-languages-toggle": "మరిన్ని భాషలు",
+	"wiki7-actions-more-toggle": "మరిన్ని చర్యలు",
+	"wiki7-sitestats-articles-label": "వ్యాసాలు",
+	"wiki7-sitestats-users-label": "వాడుకరులు",
+	"wiki7-sitestats-edits-label": "మార్పులు",
+	"wiki7-page-info-lastmod": "చివరి మార్పు",
+	"wiki7-action-addsection": "అంశాన్ని చేర్చు",
+	"wiki7-jumptotop": "తిరిగి పైకి",
+	"wiki7-tagline-ns-project": "{{SITENAME}} గురించిన సమాచారం",
+	"wiki7-tagline-ns-template": "మూస పేజీ",
+	"wiki7-tagline-ns-help": "సహాయం పేజీ",
+	"wiki7-tagline-ns-category": "వర్గం పేజీ",
+	"wiki7-command-palette-keyhint-close": "మూసివేయి",
+	"wiki7-command-palette-mode-history-placeholder": "ఎడిటరును బట్టి లేదా దిద్దుబాటు సారాంశాన్ని బట్టి వడపోయండి"
+}

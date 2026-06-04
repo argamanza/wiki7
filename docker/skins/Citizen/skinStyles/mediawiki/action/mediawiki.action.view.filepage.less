@@ -100,7 +100,7 @@
 
 	// Add affordance for full res image
 	> a:hover > img {
-		transform: scale( 1.1 );
+		transform: var( --transform-image-hover );
 	}
 }
 
@@ -108,7 +108,7 @@
 	> a {
 		overflow: hidden;
 		border-radius: var( --border-radius-medium );
-		box-shadow: var( --box-shadow-drop-medium );
+		box-shadow: var( --box-shadow-medium );
 	}
 }
 

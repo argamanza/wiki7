@@ -323,7 +323,7 @@
 		background-color: var( --color-surface-1 );
 		border-color: transparent;
 		border-radius: var( --border-radius-medium );
-		box-shadow: var( --box-shadow-drop-xx-large );
+		box-shadow: var( --box-shadow-large );
 	}
 
 	&__header {
@@ -521,7 +521,7 @@
 	background-color: var( --color-surface-1 );
 	border-color: var( --border-color-interactive );
 	border-radius: 0 0 var( --border-radius-base ) var( --border-radius-base );
-	// box-shadow: var( --box-shadow-drop-xx-large );
+	// box-shadow: var( --box-shadow-large );
 
 	&__list-item {
 		color: var( --color-emphasized );
@@ -619,7 +619,7 @@
 		box-shadow: none; // disable default style
 
 		img {
-			transform: scale( 1.1 );
+			transform: var( --transform-image-hover );
 		}
 	}
 
@@ -667,7 +667,7 @@
 		box-shadow: none;
 
 		.sdms-video-result__thumbnail {
-			transform: scale( 1.1 );
+			transform: var( --transform-image-hover );
 		}
 	}
 
@@ -765,6 +765,7 @@
 		&--expanded {
 			top: var( --space-md );
 			height: ~'calc( 100vh - var( --space-md ) * 2 )';
+			padding-bottom: var( --header-size-block-end ); // So that header won't hide the bottom
 			background-color: var( --color-surface-2 );
 			border-radius: var( --border-radius-large );
 
@@ -776,7 +777,6 @@
 				left: 0;
 				width: 100%;
 				max-height: 40vh;
-				padding-bottom: var( --header-size ); // So that header won't hide the bottom
 				border-bottom-right-radius: 0;
 				border-bottom-left-radius: 0;
 			}

@@ -1,8 +1,32 @@
-<button
-	id="wiki7-share"
-	class="wiki7-share wiki7-button wiki7-dropdown-summary"
-	title="{{msg-wiki7-share}}"
->
-	<span class="wiki7-ui-icon mw-ui-icon-wikimedia-share"></span>
-	<span>{{msg-wiki7-share}}</span>
-</button>
+{{!
+	string msg-wiki7-share The label used by the share button.
+	boolean has-share-panel-markup When true, render the dialog scaffolding alongside the button.
+}}
+<div class="wiki7-share-trigger wiki7-header__item">
+	<button
+		type="button"
+		id="wiki7-share"
+		class="wiki7-share wiki7-cdx-button--size-large cdx-button cdx-button--weight-quiet cdx-button--icon-only"
+		title="{{msg-wiki7-share}}"
+		aria-label="{{msg-wiki7-share}}"
+		{{#has-share-panel-markup}}aria-haspopup="dialog"{{/has-share-panel-markup}}
+	>
+		<span class="wiki7-ui-icon mw-ui-icon-wikimedia-share"></span>
+		<span>{{msg-wiki7-share}}</span>
+	</button>
+	{{#has-share-panel-markup}}
+	<dialog
+		id="wiki7-share-dialog"
+		class="wiki7-share-dialog"
+		aria-label="{{msg-wiki7-share}}"
+	>
+		<div id="wiki7-share-dialog-content" class="wiki7-share-dialog__content">
+			<div class="wiki7-share-skeleton" role="status" aria-busy="true" aria-live="polite">
+				<div class="wiki7-share-skeleton__bar wiki7-share-skeleton__bar--short"></div>
+				<div class="wiki7-share-skeleton__bar wiki7-share-skeleton__bar--wide"></div>
+				<div class="wiki7-share-skeleton__bar wiki7-share-skeleton__bar--medium"></div>
+			</div>
+		</div>
+	</dialog>
+	{{/has-share-panel-markup}}
+</div>

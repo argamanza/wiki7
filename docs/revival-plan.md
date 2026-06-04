@@ -65,14 +65,14 @@ All four open PRs get closed; salvage first. Nothing is destroyed (recoverable f
 - **Salvage-source branches kept on purpose:** `feature/content-sections-and-skin-enhancements` (#19), `upgrade/mediawiki-1.45-citizen-3.14` (#20), `feature/drawer-fixes-and-content-expansion` (#21), `archive/wip-content`. Optional later cleanup: `claude/sidebar-quick-icons-mxHrR`, `worktree-revert-pr`, `feature/hebrew-localization`.
 - **Exit:** ✅ **Phase 0 complete** — green tests, clean baseline, local wiki boots, planning docs in PR #22, stale PRs closed.
 
-### Phase 1 — Modernize the base (local)  *(decided to do first)*
+### Phase 1 — Modernize the base (local)  *(substantially complete, 2026-06-05)*
 *Goal: the local wiki runs on the final, modern platform before we invest in relaunch/content/design.*
-- [ ] MediaWiki **1.43 → 1.45** (Docker base image + `update.php`), using PR #20 as the recipe.
-- [ ] Re-fork the Wiki7 skin from the latest **Citizen** (3.14+); re-apply brand-red theming, drawer footer, Hebrew fonts, RTL fixes.
-- [ ] Bump Cargo / PageForms submodules to MW-1.45-compatible versions.
-- [ ] Update `LocalSettings.php` for 1.45; verify all extensions load and Cargo tables work.
-- [ ] Validate locally: main page, VisualEditor, Cargo queries, search.
-- **Exit:** local wiki runs clean on 1.45 + upgraded skin; visual sanity-check passes.
+- [x] MediaWiki **1.43 → 1.45.3** (Docker base image + `update.php` in `docker-entrypoint.sh`), using PR #20 as the recipe.
+- [x] Re-fork the Wiki7 skin from the latest **Citizen v3.17.0** (fresh tarball, scripted Citizen→Wiki7 rename, brand deltas re-applied: progressive-color tokens for #C8102E, IconAnimation hover, Hebrew fonts module, `Wiki7DrawerFooterLinks` config + `DrawerFooter.mustache` partial, dark-mode-disabled, header-position auto-flip).
+- [x] Bump Cargo (3.9.1) / PageForms (REL1_45 tip `85a09be`) submodules.
+- [x] Update `LocalSettings.php` for 1.45 (TabberNeue, `wgWiki7HeaderPosition`, `wgWiki7DrawerFooterLinks`); all extensions load and Cargo schema migrations succeed.
+- [x] Validate locally (`docker compose up` from `phase1/modernize-mediawiki`): main page renders (Hebrew RTL), brand-red tokens served, drawer footer rendered, Cargo API responsive, VisualEditor API responsive, Search 200. Screenshot vs master deferred to PR review.
+- **Exit:** local wiki runs clean on 1.45.3 + Citizen-3.17-based Wiki7; smoke tests green; PR opened into master.
 
 ### Phase 2 — Cheap + safe relaunch (modern stack)  *(priorities #1 + #2)*
 *Goal: the modern site is back online at wiki7.co.il, cheap, hardened, with working backups.*

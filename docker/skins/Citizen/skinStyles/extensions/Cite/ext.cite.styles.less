@@ -1,12 +1,19 @@
 /*
- * Citizen - Cite styles
- * https://starcitizen.tools
+ * Citizen
+ *
+ * SkinStyles for Extension:Cite
+ * Module: ext.cite.styles
+ * Version: REL1_43
+ *
+ * Date: 2025-06-25
 */
+
+@import '../../../resources/mixins.less';
 
 .mw-references-wrap {
 	margin-top: var( --space-md );
-	font-size: var( --font-size-x-small );
 	color: var( --color-base );
+	.mixin-citizen-font-styles( 'small' );
 }
 
 .mw-body-content {
@@ -16,16 +23,5 @@
 		li {
 			margin-bottom: var( --space-xxs );
 		}
-	}
-}
-
-span.reference {
-	font-size: 80%;
-}
-
-.skin-citizen {
-	ol.references li:target,
-	sup.reference:target {
-		background-color: var( --background-color-progressive-subtle );
 	}
 }

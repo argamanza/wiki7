@@ -1,20 +1,52 @@
 {{!
 	string msg-wiki7-preferences-toggle The label used by the preferences button.
+	string msg-wiki7-preferences-load-error Message shown when the preferences module fails to load.
+	string msg-wiki7-preferences-load-retry Label of the retry button shown alongside the load error.
 }}
-<div class="wiki7-preferences wiki7-header__item wiki7-dropdown">
+<div class="wiki7-preferences-dropdown wiki7-header__item wiki7-dropdown">
 	<details id="wiki7-preferences-details" class="wiki7-dropdown-details">
 		<summary
-			class="wiki7-dropdown-summary"
+			class="wiki7-dropdown-summary wiki7-cdx-button--size-large cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only"
 			title="{{msg-wiki7-preferences-toggle}}"
-			aria-details="wiki7-preferences__card">
-			<span class="wiki7-ui-icon mw-ui-icon-wikimedia-settings"></span>
+			aria-details="wiki7-preferences-dropdown__card">
+			<span class="wiki7-ui-icon mw-ui-icon-wikimedia-configure"></span>
 			<span>{{msg-wiki7-preferences-toggle}}</span>
 		</summary>
 	</details>
-	<div id="wiki7-preferences__card" class="wiki7-menu__card">
-		<div class="wiki7-menu__card-backdrop"></div>
+	<div id="wiki7-preferences-dropdown__card" class="wiki7-menu__card">
 		<div class="wiki7-menu__card-content">
-			<div id="wiki7-preferences-content" class="wiki7-preferences-content"></div>
+			<div id="wiki7-preferences-content" class="wiki7-preferences">
+				<div class="wiki7-preferences-skeleton" role="status" aria-busy="true" aria-live="polite">
+					<div class="wiki7-preferences-skeleton__heading"></div>
+					<div class="wiki7-preferences-skeleton__row">
+						<div class="wiki7-preferences-skeleton__label"></div>
+						<div class="wiki7-preferences-skeleton__description"></div>
+					</div>
+					<div class="wiki7-preferences-skeleton__row">
+						<div class="wiki7-preferences-skeleton__label"></div>
+						<div class="wiki7-preferences-skeleton__description"></div>
+					</div>
+					<div class="wiki7-preferences-skeleton__row">
+						<div class="wiki7-preferences-skeleton__label"></div>
+						<div class="wiki7-preferences-skeleton__description"></div>
+					</div>
+					<div class="wiki7-preferences-skeleton__heading"></div>
+					<div class="wiki7-preferences-skeleton__row">
+						<div class="wiki7-preferences-skeleton__label"></div>
+						<div class="wiki7-preferences-skeleton__description"></div>
+					</div>
+					<div class="wiki7-preferences-skeleton__row">
+						<div class="wiki7-preferences-skeleton__label"></div>
+						<div class="wiki7-preferences-skeleton__description"></div>
+					</div>
+				</div>
+				<div class="wiki7-preferences-error" role="alert" hidden>
+					<p class="wiki7-preferences-error__message">{{msg-wiki7-preferences-load-error}}</p>
+					<button class="cdx-button wiki7-preferences-error__retry" type="button">
+						{{msg-wiki7-preferences-load-retry}}
+					</button>
+				</div>
+			</div>
 		</div>
 	</div>
 </div>

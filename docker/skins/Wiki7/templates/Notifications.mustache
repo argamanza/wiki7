@@ -1,0 +1,54 @@
+{{!
+	object data-notifications Merged notification data: count, href.
+	string msg-wiki7-notifications-label The accessible label for the notifications button.
+	string msg-wiki7-notifications-error Message shown when the notifications module fails to load.
+	string msg-wiki7-notifications-retry Label of the retry button shown alongside the load error.
+	string msg-wiki7-notifications-see-all Label of the link to Special:Notifications.
+}}
+<div class="wiki7-notifications-dropdown wiki7-header__item wiki7-dropdown">
+	<details id="wiki7-notifications-details" class="wiki7-dropdown-details">
+		<summary
+			class="wiki7-dropdown-summary wiki7-notifications-button wiki7-cdx-button--size-large cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only"
+			title="{{msg-wiki7-notifications-label}}"
+			data-counter-text="{{data-notifications.count}}"
+			aria-details="wiki7-notifications-dropdown__card">
+			<span class="wiki7-ui-icon mw-ui-icon-wikimedia-bell"></span>
+			<span>{{msg-wiki7-notifications-label}}</span>
+		</summary>
+	</details>
+	<div id="wiki7-notifications-dropdown__card" class="wiki7-menu__card">
+		<div class="wiki7-menu__card-content">
+			<div id="wiki7-notifications-content" class="wiki7-notifications">
+				<div class="wiki7-notifications__skeleton" role="status" aria-busy="true" aria-live="polite">
+					<div class="wiki7-notifications__skeleton-item">
+						<span class="wiki7-notifications__skeleton-line wiki7-notifications__skeleton-line--title"></span>
+						<span class="wiki7-notifications__skeleton-line wiki7-notifications__skeleton-line--meta"></span>
+					</div>
+					<div class="wiki7-notifications__skeleton-item">
+						<span class="wiki7-notifications__skeleton-line wiki7-notifications__skeleton-line--title"></span>
+						<span class="wiki7-notifications__skeleton-line wiki7-notifications__skeleton-line--meta"></span>
+					</div>
+					<div class="wiki7-notifications__skeleton-item">
+						<span class="wiki7-notifications__skeleton-line wiki7-notifications__skeleton-line--title"></span>
+						<span class="wiki7-notifications__skeleton-line wiki7-notifications__skeleton-line--meta"></span>
+					</div>
+					<div class="wiki7-notifications__skeleton-item">
+						<span class="wiki7-notifications__skeleton-line wiki7-notifications__skeleton-line--title"></span>
+						<span class="wiki7-notifications__skeleton-line wiki7-notifications__skeleton-line--meta"></span>
+					</div>
+					<div class="wiki7-notifications__skeleton-item">
+						<span class="wiki7-notifications__skeleton-line wiki7-notifications__skeleton-line--title"></span>
+						<span class="wiki7-notifications__skeleton-line wiki7-notifications__skeleton-line--meta"></span>
+					</div>
+				</div>
+				<div class="wiki7-notifications__error" role="alert" hidden>
+					<p>{{msg-wiki7-notifications-error}}</p>
+					<button class="cdx-button wiki7-notifications__retry" type="button">
+						{{msg-wiki7-notifications-retry}}
+					</button>
+				</div>
+				<a class="wiki7-notifications__see-all" href="{{data-notifications.href}}">{{msg-wiki7-notifications-see-all}}</a>
+			</div>
+		</div>
+	</div>
+</div>

@@ -11,28 +11,25 @@
  *
 */
 
-/* Imports */
-/*
- * MediaWiki mixins
- * @see https://github.com/wikimedia/mediawiki/blob/master/resources/src/mediawiki.less/mediawiki.mixins.less
- */
+// Imports
+
+// MediaWiki mixins
+// @see https://github.com/wikimedia/mediawiki/blob/master/resources/src/mediawiki.less/mediawiki.mixins.less
 @import 'mediawiki.mixins';
-/*
- * MediaWiki skin variables
- * mediawiki.less/mediawiki.skin.variables.less
- * @see https://github.com/wikimedia/mediawiki/blob/master/resources/src/mediawiki.less/mediawiki.skin.defaults.less
- */
+
+// MediaWiki skin variables
+// mediawiki.less/mediawiki.skin.variables.less
+// @see https://github.com/wikimedia/mediawiki/blob/master/resources/src/mediawiki.less/mediawiki.skin.defaults.less
 @import 'mediawiki.skin.variables.less';
 
-/* == Spacing == */
+// Spacing
 @space-unit: 1rem;
 
-/* == Fonts == */
-/*
- * --font-family-wiki7-base-xx are default fonts prioritized by Wiki7.
- * --font-family-language-xx are language-specific fonts from language RL module.
- * It is empty by default but populated by Wiki7 language modules such as the CJK one.
- */
+// Fonts
+// --font-family-wiki7-base-xx are default fonts prioritized by Wiki7.
+// --font-family-language-xx are language-specific fonts from language RL module.
+// It is empty by default but populated by Wiki7 language modules such as the CJK one.
+
 // Wiki7 sans-serif fonts
 @font-family-base: var( --font-family-wiki7-base ), var( --font-family-language-base ), system-ui, -apple-system, sans-serif;
 // Wiki7 serif fonts
@@ -40,17 +37,11 @@
 // Wiki7 monospace fonts
 @font-family-monospace: var( --font-family-wiki7-monospace ), var( --font-family-language-monospace ), 'Menlo', 'Consolas', 'Liberation Mono', 'Fira Code', 'Courier New', monospace;
 
-/* == Colors == */
-/* Base theme */
-@color-primary__h: 220;
-@color-primary__s: 60%;
-@color-primary__l: 50%;
+// Colors
 
-/*
- * Syntax highlight colors
- * Based on Material Theme Lighter
- * https://material-theme.site
-*/
+// Syntax highlight colors
+// Based on Material Theme Lighter
+// https://material-theme.site
 @color-syntax-red: #e53935;
 @color-syntax-orange: #f76d47;
 @color-syntax-yellow: #e2931d;
@@ -64,11 +55,9 @@
 @color-syntax-violet: #945eb8;
 @color-syntax-grey: #90a4ae;
 
-/*
- * Syntax highlight colors
- * Based on Material Theme Palenight
- * https://material-theme.site
-*/
+// Syntax highlight colors
+// Based on Material Theme Palenight
+// https://material-theme.site
 @color-syntax-red-dark: #f07178;
 @color-syntax-orange-dark: #f78c6c;
 @color-syntax-yellow-dark: #ffcb6b;
@@ -82,8 +71,8 @@
 @color-syntax-violet-dark: #bb80b3;
 @color-syntax-grey-dark: #676E95;
 
-/* == Box model properties == */
-/* `--*size` variables are used for `*width` & `*height` properties. */
+// Box model properties
+// `--*size` variables are used for `*width` & `*height` properties.
 @size-icon:		1.25rem;
 // Not in the header section it is also used outside of header
 @header-size:	3.5rem;
@@ -93,48 +82,20 @@
 // TODO: Revise this number, fixed value isn't great but we need it for b
 @width-toc: 240px;
 
-/* Paddings */
+// Paddings
 @padding-page:	16px;
 
-/* Transitions */
+// Transitions
 @transition-hover: var( --transition-duration-base ) var( --transition-timing-function-ease );
 @transition-menu: var( --transition-duration-medium ) var( --transition-timing-function-ease-out );
 
-/*
- * Framework
-*/
-@html-font-size: 100%;
-@icon-size: 1.125rem; // 18px, TODO: Replace this var
-@icon-box-size: @icon-size + @icon-margin * 2;
-@icon-margin: 3px;
-
-/*
- * Legacy colors
- *
- * They are used by the SMW skinstyles and a few MW UI stuff.
- * Those styles should be updated to the new standard.
- * After that we can remove all theses LESS variables.
-*/
-@color-base:				#54595d;
-@color-base--emphasized:	#202122;
-@color-base--subtle:		#72777d;
-
-@color-primary:				#36c;
-@color-primary--hover:		#5b84d6;
-@color-primary--active:		#2a4b8d;
-
+// Legacy colors
+// They are used by the SMW skinstyles and a few MW UI stuff.
+// Those styles should be updated to the new standard.
+// After that we can remove all theses LESS variables.
 @dark-bg-10: #1d2129;
 @dark-bg-20: #22262d;
 @dark-bg-30: #24272f;
 @dark-bg-40: #2b2f36;
 @dark-bg-50: #33363d;
 @dark-bg-60: #34383f;
-
-/*
- * Used by Math and WikiHiero for recolor
- * TODO: Figure out a way to do recolor with CSS variable
- * e.g. If the primary color is changed on wiki, it won't be reflected here.
-*/
-@dark-color-base:				hsl( @color-primary__h, 25%, 80% );
-@dark-color-base--emphasized:	hsl( @color-primary__h, 80%, 95% );
-@dark-color-base--subtle:		hsl( @color-primary__h, 25%, 65% );

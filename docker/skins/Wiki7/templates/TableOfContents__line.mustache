@@ -1,10 +1,6 @@
 <li id="toc-{{anchor}}"
 	class="wiki7-toc-list-item wiki7-toc-level-{{toclevel}}">
-	{{! 
-		^linkAnchor anchor /linkAnchor is needed for MW 1.39 compatability
-	}}
-	<a class="wiki7-toc-link" href="#{{linkAnchor}}{{^linkAnchor}}{{anchor}}{{/linkAnchor}}">
-		<div class="wiki7-toc-indicator"></div>
+	<a class="wiki7-toc-link cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet" href="#{{linkAnchor}}" role="button">
 		<div class="wiki7-toc-content">
 			<div class="wiki7-toc-text">
 				<span class="wiki7-toc-numb">{{number}}</span>
@@ -14,7 +10,7 @@
 		</div>
 	</a>
 	{{#is-top-level-section}}{{#is-parent-section}}
-		<button aria-controls="toc-{{anchor}}-sublist" class="wiki7-toc-toggle">
+		<button aria-controls="toc-{{anchor}}-sublist" class="wiki7-toc-toggle cdx-button cdx-button--weight-quiet cdx-button--icon-only cdx-button--size-medium">
 			<span class="wiki7-ui-icon mw-ui-icon-wikimedia-collapse"></span>
 			<span>{{{wiki7-button-label}}}</span>
 		</button>

@@ -1,0 +1,19 @@
+{
+	"@metadata": {
+		"authors": [
+			"Georg101",
+			"Kareyac",
+			"Want"
+		]
+	},
+	"wiki7-sitestats-articles-label": "články",
+	"wiki7-sitestats-images-label": "Soubory",
+	"wiki7-sitestats-users-label": "uživatelé",
+	"wiki7-sitestats-edits-label": "Úpravy",
+	"wiki7-page-info-copyright": "Autorská práva",
+	"wiki7-jumptotop": "Zpět nahoru",
+	"wiki7-tagline-ns-project": "Informace o {{SITENAME}}",
+	"wiki7-tagline-ns-template": "Stránka šablony",
+	"wiki7-tagline-ns-help": "Nápověda",
+	"wiki7-tagline-ns-category": "Stránka kategorie"
+}

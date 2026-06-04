@@ -11,13 +11,13 @@ use Countable;
  */
 class Wiki7ComponentMenu implements Wiki7Component, Countable {
 
-	public function __construct( private array $data ) {
+	public function __construct(
+		private readonly array $data
+	) {
 	}
 
 	/**
 	 * Counts how many items the menu has.
-	 *
-	 * @return int
 	 */
 	public function count(): int {
 		$items = $this->data['array-list-items'] ?? null;
@@ -28,9 +28,6 @@ class Wiki7ComponentMenu implements Wiki7Component, Countable {
 		return substr_count( $htmlItems, '<li' );
 	}
 
-	/**
-	 * @inheritDoc
-	 */
 	public function getTemplateData(): array {
 		return $this->data + [
 			'class' => '',

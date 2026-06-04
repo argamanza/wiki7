@@ -1,15 +1,15 @@
 {
 	"@metadata": {
 		"authors": [
-			"Adriendelucca"
+			"Adriendelucca",
+			"Huñvreüs"
 		]
 	},
 	"citizen-theme-name": "Liv",
-	"citizen-theme-description": "Cheñch tem ar wiki",
+	"citizen-theme-description": "Dibab mod sklaer pe teñval",
 	"citizen-theme-day-label": "Sklaer",
 	"citizen-theme-night-label": "Teñval",
 	"citizen-theme-os-label": "Emgefre",
-	"citizen-theme-exclusion-notice": "E mod sklaer e vez ar bajenn-mañ atav.",
 	"citizen-feature-pure-black-name": "Mod peurzu",
 	"citizen-feature-pure-black-0-label": "Lazhet",
 	"citizen-feature-pure-black-1-label": "Enaouet",

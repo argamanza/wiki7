@@ -16,7 +16,7 @@
 }
 
 .pi-caption {
-	font-size: var( --font-size-x-small );
+	font-size: var( --font-size-small );
 	font-style: normal;
 	font-weight: var( --font-weight-medium );
 	// Align with Citizen caption styles
@@ -29,18 +29,20 @@
 
 .portable-infobox .pi-title {
 	font-size: var( --font-size-x-large );
-	line-height: var( --line-height-xx-small );
+	line-height: var( --line-height-small );
 }
 
 .portable-infobox .pi-header {
 	font-size: var( --font-size-medium );
 	font-weight: var( --font-weight-semi-bold );
-	line-height: var( --line-height-xx-small );
+	line-height: var( --line-height-small );
 }
 
 .client-js .pi-collapse {
 	.pi-header:first-child {
 		// So that clicking the header won't highlight the entire section
+
+		-webkit-user-select: none;
 		user-select: none;
 	}
 }

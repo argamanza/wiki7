@@ -7,6 +7,7 @@
 */
 
 @import '../../../resources/variables.less';
+@import '../../../resources/mixins.less';
 
 .mw-mmv {
 	&-post-image {
@@ -15,9 +16,14 @@
 		width: auto;
 		padding-block: var( --space-xs ) var( --space-md );
 		padding-inline: var( --space-md );
+		border-top: var( --border-base );
 		border-top-left-radius: var( --border-radius-medium );
 		border-top-right-radius: var( --border-radius-medium );
 		transform: ~'translateY( calc( var( --space-xs ) * -1 ) )'; // counteract top positioning
+		transition-timing-function: var( --transition-timing-function-ease );
+		transition-duration: var( --transition-duration-medium );
+		transition-property: background-color, border-color, color;
+		.mixin-wiki7-frosted-glass;
 
 		&.mw-mmv-untruncated {
 			box-shadow: none;
@@ -30,6 +36,9 @@
 		align-items: center;
 		height: auto;
 		padding-bottom: 0;
+		transition-timing-function: var( --transition-timing-function-ease );
+		transition-duration: var( --transition-duration-medium );
+		transition-property: margin, padding, border;
 	}
 
 	&-progress {
@@ -58,7 +67,7 @@
 		padding: var( --space-xs ) 0 !important;
 		margin: 0 !important;
 		font-size: var( --font-size-medium ) !important;
-		line-height: var( --line-height-xx-small ) !important;
+		line-height: var( --line-height-small ) !important;
 
 		.mw-mmv-ttf-ellipsis {
 			display: none !important;
@@ -170,14 +179,15 @@
 			inset: unset;
 			padding: ~'calc( var( --mmv-error-icon-size ) + var( --space-xxl ) )' 0 0 0;
 			margin: var( --space-md ) 4.5rem;
-			line-height: var( --line-height-xx-small );
-			word-break: break-word;
+			line-height: var( --line-height-small );
+			overflow-wrap: break-word;
 			background-size: var( --mmv-error-icon-size );
 
 			.mw-mmv-error {
 				&-text {
 					font-size: var( --font-size-xxx-large );
 					font-weight: var( --font-weight-semi-bold );
+					color: ~'hsl( var( --color-progressive-hsl__h ), 35%, 65% )';
 				}
 
 				&-description {
@@ -188,11 +198,23 @@
 			}
 		}
 	}
+
+	&-dialog {
+		// Prevent the dialog from being too wide on mobile
+		// 66px is the right offset of mw-mmv-dialog
+		max-width: calc( 100vw - 66px - var( --padding-page ) );
+		background-color: var( --color-surface-1 );
+		border: var( --border-base );
+		border-radius: var( --border-radius-base );
+	}
 }
 
 .mw-mmv-post-image:not( .mw-mmv-untruncated ) {
 	color: ~'hsl( var( --color-progressive-hsl__h ), 45%, 80% )'; // color-base in dark mode
 	background-color: transparent;
+	border-color: transparent;
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
 
 	.mw-mmv {
 		&-title-para {

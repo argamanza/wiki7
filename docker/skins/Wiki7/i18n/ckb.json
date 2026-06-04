@@ -1,0 +1,30 @@
+{
+	"@metadata": {
+		"authors": [
+			"Alistair3149"
+		]
+	},
+	"skinname-wiki7": "هاوڵاتی",
+	"wiki7-skin-desc": "ڕووکارێکی وەڵامدەرەوە پەرەی پێدراوە بۆ ویکی شارستانی ئەستێرە",
+	"wiki7-drawer-toggle": "داخستن و کردنەوەی پێڕست",
+	"wiki7-usermenu-toggle": "داخستن و کردنەوەی پێڕستی کەسی",
+	"wiki7-search-toggle": "داخستن و کردنەوەی گەڕان",
+	"wiki7-languages-toggle": "زمانی زیاتر",
+	"wiki7-actions-more-toggle": "کرداری زیاتر",
+	"wiki7-sitestats-articles-label": "وتارەکان",
+	"wiki7-sitestats-images-label": "پەڕگەکان",
+	"wiki7-sitestats-users-label": "بەکارهێنەران",
+	"wiki7-sitestats-edits-label": "دەستکاریکردنەکان",
+	"wiki7-footer-desc": "دەستکاری ئەم دەقە لەسەر [[MediaWiki:Wiki7-footer-desc]]",
+	"wiki7-footer-tagline": "دەستکاری ئەم دەقە لەسەر [[MediaWiki:Wiki7-footer-tagline]]",
+	"wiki7-action-addsection": "بابەت دابنێ",
+	"wiki7-jumptotop": "گەڕانەوە بۆ سەرەوە",
+	"wiki7-search-empty-desc": "بنوسە بۆ گەڕان",
+	"wiki7-tagline-ns-talk": "لاپەڕەی گفتوگۆی {{SUBJECTPAGENAME}}",
+	"wiki7-tagline-ns-project": "زانیاری لەبارەی {{SITENAME}}",
+	"wiki7-tagline-ns-file": "پەڕگە لەسەر {{SITENAME}}",
+	"wiki7-tagline-ns-mediawiki": "پەڕەی ڕووکاری میدیاویکی",
+	"wiki7-tagline-ns-template": "لاپەڕەی ڕووکار",
+	"wiki7-tagline-ns-help": "لاپەڕەی یارمەتی",
+	"wiki7-tagline-ns-category": "لاپەڕەی هاوپۆل"
+}

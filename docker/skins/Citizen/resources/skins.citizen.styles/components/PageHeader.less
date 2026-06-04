@@ -1,4 +1,5 @@
 .citizen-page-header {
+	position: relative;
 	z-index: @z-index-above-content;
 	padding-inline: var( --padding-page );
 	margin-top: var( --space-xl );
@@ -8,14 +9,13 @@
 		flex-wrap: wrap;
 		gap: var( --space-md );
 		align-items: center;
-		/* max-width should sync with .citizen-body-container */
-		max-width: var( --width-layout );
+		max-width: var( --width-layout ); // max-width should sync with .citizen-body-container
 		padding-block: var( --space-md );
 		margin-inline: auto;
 
 		@media ( min-width: @min-width-breakpoint-desktop ) {
 			.citizen-toc-enabled & {
-				max-width: ~'calc( var( --width-layout ) + var( --width-toc ) + var( --space-xl ) )';
+				max-width: var( --width-page );
 			}
 		}
 	}
@@ -33,7 +33,7 @@
 
 .firstHeading {
 	margin-block: 0;
-	word-break: break-word;
+	line-height: 2rem; // Reduced line height to make the heading more compact
 	overflow-wrap: break-word;
 }
 
@@ -48,7 +48,7 @@
 	}
 
 	&-parenthesis {
-		font-size: var( --font-size-x-large );
 		color: var( --color-subtle );
+		.mixin-citizen-font-styles( 'heading-4' );
 	}
 }

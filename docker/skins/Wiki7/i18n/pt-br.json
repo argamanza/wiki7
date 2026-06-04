@@ -1,0 +1,42 @@
+{
+	"@metadata": {
+		"authors": [
+			"Eduardo Addad de Oliveira",
+			"Eduardoaddad",
+			"Fúlvio",
+			"Leosls",
+			"Mariagarbin",
+			"Rafaelff"
+		]
+	},
+	"wiki7-skin-desc": "Uma aparência MediaWiki bonita, utilizável e responsiva que torna as extensões parte da experiência coesa. Inicialmente criado para o [https://starwiki7.tools/ Star Wiki7 Wiki].",
+	"wiki7-prefs-talkpage": "[[mw:Skin_talk:Wiki7|Discussão]]",
+	"wiki7.css": "/* Todo o CSS aqui será carregado para usuários do tema Wiki7 */",
+	"wiki7.js": "/* Todo o JavaScript aqui será carregado para os usuários do tema Wiki7 */",
+	"wiki7-drawer-toggle": "Ativa o menu",
+	"wiki7-usermenu-toggle": "Alternar menu pessoal",
+	"wiki7-preferences-toggle": "Alternar menu de preferências",
+	"wiki7-search-toggle": "Ativa a pesquisa",
+	"wiki7-languages-toggle": "Mais idiomas",
+	"wiki7-actions-more-toggle": "Mais ações",
+	"wiki7-sitestats-articles-label": "artigos",
+	"wiki7-sitestats-images-label": "arquivos",
+	"wiki7-sitestats-users-label": "usuários",
+	"wiki7-sitestats-edits-label": "edições",
+	"wiki7-page-info-copyright": "Direitos autorais",
+	"wiki7-page-info-credits": "Créditos",
+	"wiki7-page-info-lastmod": "Última modificação",
+	"wiki7-footer-desc": "Edite este texto em [[MediaWiki:Wiki7-footer-desc/pt-br]]",
+	"wiki7-footer-tagline": "Edite este texto em [[MediaWiki:Wiki7-footer-tagline/pt-br]]",
+	"wiki7-action-addsection": "Adicionar tópico",
+	"wiki7-jumptotop": "Voltar ao topo",
+	"wiki7-search-empty-desc": "Tipo para começar a pesquisar",
+	"wiki7-search-noresults-title": "Uh oh! Nenhum resultado para $1",
+	"wiki7-tagline-ns-talk": "Página de discussão de {{SUBJECTPAGENAME}}",
+	"wiki7-tagline-ns-project": "Informações sobre {{SITENAME}}",
+	"wiki7-tagline-ns-file": "Arquivo em {{SITENAME}}",
+	"wiki7-tagline-ns-mediawiki": "Página de Interface do MediaWiki",
+	"wiki7-tagline-ns-template": "Página da predefinição",
+	"wiki7-tagline-ns-help": "Página de ajuda",
+	"wiki7-tagline-ns-category": "Página da categoria"
+}

@@ -3,7 +3,6 @@
  *
  * Inline script used in includes/Hooks/SkinHooks.php
  */
-const LEGACY_PREFIX = 'skin-citizen-';
 
 /**
  * Backported from MW 1.42
@@ -11,34 +10,26 @@ const LEGACY_PREFIX = 'skin-citizen-';
  */
 window.clientPrefs = () => {
 	let className = document.documentElement.className;
-	const storage = localStorage.getItem( 'mwclientpreferences' );
+	let storage;
+	try {
+		// mw.storage is not available in this context
+		// eslint-disable-next-line mediawiki/no-storage
+		storage = localStorage.getItem( 'mwclientpreferences' );
+	} catch ( e ) {
+		// localStorage is not available, ignore
+	}
 	if ( storage ) {
 		// TODO: Just use array for localStorage
 		storage.split( ',' ).forEach( ( pref ) => {
-			className = className.replace(
-
-				new RegExp( '(^| )' + pref.replace( /-clientpref-\w+$|[^\w-]+/g, '' ) + '-clientpref-\\w+( |$)' ),
-				'$1' + pref + '$2'
+			const pattern = new RegExp(
+				'(^| )' + pref.replace( /-clientpref-\w+$|[^\w-]+/g, '' ) + '-clientpref-\\w+( |$)'
 			);
-
-			// Legacy support
-			if ( pref.startsWith( 'skin-theme-clientpref-' ) ) {
-				const CLIENTPREFS_THEME_MAP = {
-					os: 'auto',
-					day: 'light',
-					night: 'dark'
-				};
-				const matchedKey = CLIENTPREFS_THEME_MAP[ pref.replace( 'skin-theme-clientpref-', '' ) ];
-				if ( matchedKey ) {
-					// eslint-disable-next-line max-len, es-x/no-object-values
-					const classesToRemove = Object.values( CLIENTPREFS_THEME_MAP ).map( ( theme ) => LEGACY_PREFIX + theme );
-					className = className.replace(
-
-						new RegExp( classesToRemove.join( '|' ), 'g' ),
-						''
-					);
-					className += ` ${ LEGACY_PREFIX }${ matchedKey }`;
-				}
+			if ( pattern.test( className ) ) {
+				// Replace existing class (built-in prefs rendered by PHP)
+				className = className.replace( pattern, '$1' + pref + '$2' );
+			} else {
+				// Append class (custom prefs not rendered server-side)
+				className += ' ' + pref;
 			}
 		} );
 		document.documentElement.className = className;

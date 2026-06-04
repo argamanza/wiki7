@@ -1,8 +1,8 @@
 .wiki7-page-container {
-	/* Include margin of child elements as part of the height */
+	// Include margin of child elements as part of the height
 	display: flex;
 	flex-direction: column;
-	/* Make page container take the whole page height on short page */
+	// Make page container take the whole page height on short page
 	min-height: inherit;
 }
 
@@ -13,9 +13,11 @@
 
 .wiki7-body-container {
 	display: grid;
+	// stylelint-disable
 	grid-template-areas:
- 'content'
+		'content'
 		'footer';
+	// stylelint-enable
 	// Using auto as min value will cause overflow
 	grid-template-columns: minmax( 0, var( --width-layout ) );
 	gap: 0 var( --space-lg );
@@ -38,34 +40,39 @@
 @media ( min-width: @min-width-breakpoint-desktop ) {
 	.wiki7-page-container {
 		// Reserve space for header
-		margin-left: var( --header-size );
+		padding-block: var( --header-size-block-start ) var( --header-size-block-end );
+		padding-inline: var( --header-size-inline-start ) var( --header-size-inline-end );
 	}
 
 	.wiki7-toc-enabled {
+		--width-page: calc( var( --width-layout ) + var( --width-toc ) + var( --space-lg ) );
+
 		.wiki7-body-container {
+			// stylelint-disable
 			grid-template-areas:
- 'content sidebar'
+				'content sidebar'
 				'footer footer';
+			// stylelint-enable
 			grid-template-columns: minmax( 0, var( --width-layout ) ) var( --width-toc );
 		}
 	}
 
-	.wiki7-page-header-inner,
+	.wiki7-page-header,
 	.wiki7-body-container {
 		transition-timing-function: var( --transition-timing-function-ease );
 		transition-duration: var( --transition-duration-medium );
 	}
 
-	.wiki7-page-header-inner {
+	.wiki7-page-header {
 		transition-property: max-width;
 	}
 
-	.wiki7-page-header-inner,
+	.wiki7-page-header,
 	.firstHeading-container {
 		flex-wrap: nowrap;
 	}
 
-	.page-actions {
+	.wiki7-page-actions {
 		.mw-list-item {
 			text-wrap: nowrap;
 		}
@@ -76,7 +83,7 @@
 	}
 }
 
-/* Wider page width for certain namespaces */
+// Wider page width for certain namespaces
 @media ( min-width: @min-width-breakpoint-desktop-wide ) {
 	// 1 - Special, 6 - File, 14 - Category
 	.ns {
@@ -84,6 +91,7 @@
 		&-6,
 		&-14 {
 			--width-layout: var( --width-layout--extended );
+			--width-page: calc( var( --width-layout--extended ) + var( --width-toc ) + var( --space-lg ) );
 		}
 	}
 }

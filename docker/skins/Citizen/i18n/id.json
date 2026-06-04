@@ -2,7 +2,8 @@
 	"@metadata": {
 		"authors": [
 			"Agam Riyandana",
-			"Leapofod"
+			"Leapofod",
+			"Penyuwangi"
 		]
 	},
 	"citizen-skin-desc": "Kulit MediaWiki yang indah, mudah digunakan, dan responsif yang membuat ekstensi menjadi bagian dari pengalaman kohesif. Awalnya dibuat untuk [https://starcitizen.tools/ Star Citizen Wiki].",
@@ -23,12 +24,8 @@
 	"citizen-footer-tagline": "Sunting teks ini di [[MediaWiki:Citizen-footer-tagline]]",
 	"citizen-action-addsection": "Tambah topik",
 	"citizen-jumptotop": "Kembali ke atas",
-	"citizen-search-fulltext": "Telusuri teks",
-	"citizen-search-mediasearch": "Telusuri media",
-	"citizen-search-editpage": "Sunting atau buat halaman",
 	"citizen-search-empty-desc": "Ketik untuk mulai mencari",
 	"citizen-search-noresults-title": "Uh oh! Tidak ada hasil untuk $1",
-	"citizen-search-noresults-desc": "Mungkin coba pilihan di atas?",
 	"citizen-share": "Bagi halaman ini",
 	"citizen-tagline-ns-talk": "Halaman diskusi {{SUBJECTPAGENAME}}",
 	"citizen-tagline-ns-project": "Informasi tentang {{SITENAME}}",
@@ -43,7 +40,6 @@
 	"citizen-theme-day-label": "Terang",
 	"citizen-theme-night-label": "Gelap",
 	"citizen-theme-os-label": "Otomatis",
-	"citizen-theme-exclusion-notice": "Halaman ini selalu menggunakan mode terang.",
 	"citizen-feature-autohide-navigation-name": "Sembunyikan navigasi secara otomatis",
 	"citizen-feature-autohide-navigation-0-label": "Mati",
 	"citizen-feature-autohide-navigation-1-label": "Hidup",
@@ -59,5 +55,5 @@
 	"citizen-feature-custom-width-wide-label": "Lebar",
 	"citizen-feature-custom-width-full-label": "Penuh",
 	"citizen-user-info-text-anon": "Alamat IP anda akan terlihat secara publik jika Anda membuat penyuntingan.",
-	"citizen-user-info-text-temp": "Akun sementara ini dibuat setelah terjadi penyuntingan tanpa akun di browser dan perangkat ini."
+	"citizen-user-info-text-temp": "Akun sementara ini dibuat setelah terjadi penyuntingan tanpa akun di peramban dan perangkat ini."
 }

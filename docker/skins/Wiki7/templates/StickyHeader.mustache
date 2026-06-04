@@ -1,0 +1,29 @@
+<div class="wiki7-sticky-header-container">
+	<div id="wiki7-sticky-header" class="wiki7-sticky-header">
+		<div class="wiki7-sticky-header-background"></div>
+		<div class="wiki7-sticky-header-inner">
+			<div class="wiki7-sticky-header-start">
+				<a
+					href="#top"
+					title="{{msg-wiki7-jumptotop}}"
+					class="wiki7-sticky-header-backtotop cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--size-large cdx-button--weight-quiet"
+					tabindex="-1"
+					aria-hidden="true"
+				>
+					<div class="wiki7-ui-icon mw-ui-icon-wikimedia-arrowUp"></div>
+					<div class="wiki7-sticky-header-page-info">
+						<div class="wiki7-sticky-header-page-title">{{{html-title}}}</div>
+						<div class="wiki7-sticky-header-page-tagline">{{{html-sticky-header-tagline}}}</div>
+					</div>
+				</a>
+			</div>
+			<div class="wiki7-sticky-header-end" aria-hidden="true">
+				{{#array-icon-buttons}}
+					{{>Button}}
+				{{/array-icon-buttons}}
+				<div id="wiki7-sticky-header-languages" class="wiki7-sticky-header-dropdown-container"></div>
+				<div id="wiki7-sticky-header-more" class="wiki7-sticky-header-dropdown-container"></div>
+			</div>
+		</div>
+	</div>
+</div>

@@ -1,8 +1,8 @@
 {{#data-toc}}
-<div id="wiki7-toc" class="wiki7-toc wiki7-dropdown">
+<div id="wiki7-toc" class="wiki7-toc wiki7-dropdown{{#wiki7-is-collapse-sections-enabled}} wiki7-toc--collapse-enabled{{/wiki7-is-collapse-sections-enabled}}">
 	<details class="wiki7-dropdown-details">
 		<summary
-			class="wiki7-dropdown-summary"
+			class="wiki7-dropdown-summary" 
 			title="{{msg-toc}}"
 			aria-details="mw-panel-toc">
 			<span class="wiki7-ui-icon mw-ui-icon-wikimedia-listBullet"></span>
@@ -10,10 +10,9 @@
 		</summary>
 	</details>
 	<nav id="mw-panel-toc" class="wiki7-toc-card wiki7-menu__card" role="navigation" aria-labelledby="mw-panel-toc-label">
-		<div class="wiki7-menu__card-backdrop"></div>
 		<div class="wiki7-menu__card-content">
-			<a class="wiki7-toc-top wiki7-toc-link" title="{{html-wiki7-jumptotop}}" href="#top">
-				<div class="wiki7-ui-icon mw-ui-icon-first mw-ui-icon-wikimedia-first"></div>
+			<a class="wiki7-toc-top wiki7-toc-link cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet" title="{{html-wiki7-jumptotop}}" href="#top" role="button">
+				<div class="wiki7-ui-icon mw-ui-icon-wikimedia-arrowUp"></div>
 				<div class="wiki7-toc-text">{{msg-wiki7-jumptotop}}</div>
 			</a>
 			<div class="wiki7-menu__heading">{{msg-toc}}</div>

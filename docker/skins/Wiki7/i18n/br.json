@@ -1,0 +1,24 @@
+{
+	"@metadata": {
+		"authors": [
+			"Adriendelucca",
+			"Huñvreüs"
+		]
+	},
+	"wiki7-theme-name": "Liv",
+	"wiki7-theme-description": "Dibab mod sklaer pe teñval",
+	"wiki7-theme-day-label": "Sklaer",
+	"wiki7-theme-night-label": "Teñval",
+	"wiki7-theme-os-label": "Emgefre",
+	"wiki7-feature-pure-black-name": "Mod peurzu",
+	"wiki7-feature-pure-black-0-label": "Lazhet",
+	"wiki7-feature-pure-black-1-label": "Enaouet",
+	"wiki7-feature-custom-font-size-name": "Testenn",
+	"wiki7-feature-custom-font-size-small-label": "Bihan",
+	"wiki7-feature-custom-font-size-standard-label": "Standard",
+	"wiki7-feature-custom-font-size-large-label": "Bras",
+	"wiki7-feature-custom-width-name": "Ledander",
+	"wiki7-feature-custom-width-standard-label": "Standard",
+	"wiki7-feature-custom-width-wide-label": "Ledan",
+	"wiki7-feature-custom-width-full-label": "Leun"
+}
