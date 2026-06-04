@@ -11,11 +11,15 @@
 
 <div class="wiki7-home__grid">
 {{עמוד ראשי/ציטוט}}
+{{עמוד ראשי/הידעת}}
+</div>
+
+<div class="wiki7-home__grid">
 {{עמוד ראשי/ערך מומלץ}}
+{{עמוד ראשי/תמונה}}
 </div>
 
 <div class="wiki7-home__grid wiki7-home__grid--three">
-{{עמוד ראשי/תמונה}}
 {{עמוד ראשי/קישורים}}
 {{עמוד ראשי/צור קשר}}
 </div>
