@@ -92,6 +92,7 @@ All four open PRs get closed; salvage first. Nothing is destroyed (recoverable f
 - [ ] Re-curate the major content sections with fresh eyes: Did You Know, Fan Culture, kits, anthems, museum, records — using `archive/wip-content` as reference.
 - [ ] Fill homepage `TODO` placeholders (current manager/captain, real featured image, attributed quote).
 - [ ] **Finalize the visual design** on the modern skin (all design polish lives here).
+- [ ] Add a **favicon** (`docker/assets/favicon.{ico,svg}` + `$wgFavicon` in LocalSettings.php). Currently unconfigured — browsers see MW's article-path 301 redirect at `/favicon.ico`. *Carried over from Phase 2 polish discussion.*
 - [ ] Decide on **PageForms** (wire up editor forms, or remove if unused).
 - **Exit:** pipeline runs clean end-to-end; core content correct; design done; no placeholder TODOs.
 

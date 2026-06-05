@@ -77,18 +77,38 @@ export class CloudFrontConstruct extends Construct {
     });
 
     // === Response headers — HSTS + frame/XSS protection =======================================
+    const securityHeadersBehavior: cloudfront.ResponseSecurityHeadersBehavior = {
+      contentTypeOptions: { override: true },
+      frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
+      xssProtection: { protection: true, modeBlock: true, override: true },
+      strictTransportSecurity: {
+        accessControlMaxAge: cdk.Duration.days(365),
+        includeSubdomains: true,
+        override: true,
+      },
+    };
+
     const responseHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeadersPolicy', {
       responseHeadersPolicyName: 'Wiki7SecurityHeaders',
       comment: 'Security headers for Wiki7',
-      securityHeadersBehavior: {
-        contentTypeOptions: { override: true },
-        frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
-        xssProtection: { protection: true, modeBlock: true, override: true },
-        strictTransportSecurity: {
-          accessControlMaxAge: cdk.Duration.days(365),
-          includeSubdomains: true,
-          override: true,
-        },
+      securityHeadersBehavior,
+    });
+
+    // Same security headers + a long browser Cache-Control for versioned static paths
+    // (/skins/*, /extensions/*, /resources/*). These URLs include a content-hash query string
+    // (e.g. ?2cbce on the font), so 1-year + immutable is safe: any actual change ships at a new URL.
+    const staticAssetsHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, 'StaticAssetsHeadersPolicy', {
+      responseHeadersPolicyName: 'Wiki7StaticAssetsHeaders',
+      comment: 'Security headers + 1y Cache-Control for /skins/*, /extensions/*, /resources/*',
+      securityHeadersBehavior,
+      customHeadersBehavior: {
+        customHeaders: [
+          {
+            header: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+            override: true,
+          },
+        ],
       },
     });
 
@@ -124,12 +144,26 @@ export class CloudFrontConstruct extends Construct {
       cookieBehavior: cloudfront.CacheCookieBehavior.none(),
     });
 
-    const mediawikiAssetsBehavior: cloudfront.BehaviorOptions = {
+    // Behavior for /load.php — keep MediaWiki's own Cache-Control (5 min). MW generates load.php
+    // responses dynamically; its short browser TTL is intentional, and CloudFront caches at the
+    // edge for 1 day per the cache policy regardless of the browser-facing header.
+    const loadPhpBehavior: cloudfront.BehaviorOptions = {
       origin: ec2Origin,
       viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
       cachePolicy: mediawikiAssetsCachePolicy,
-      responseHeadersPolicy: responseHeadersPolicy,
+      responseHeadersPolicy,
+      compress: true,
+    };
+
+    // Behavior for genuinely static, content-hash-versioned paths (/skins, /extensions, /resources).
+    // Identical to loadPhpBehavior except for the Cache-Control override (1 year + immutable).
+    const versionedStaticBehavior: cloudfront.BehaviorOptions = {
+      origin: ec2Origin,
+      viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+      cachePolicy: mediawikiAssetsCachePolicy,
+      responseHeadersPolicy: staticAssetsHeadersPolicy,
       compress: true,
     };
 
@@ -165,10 +199,12 @@ export class CloudFrontConstruct extends Construct {
           responseHeadersPolicy: responseHeadersPolicy,
           compress: true,
         },
-        // MediaWiki ResourceLoader + skin/extension static files — biggest CDN win per request.
-        'load.php': mediawikiAssetsBehavior,
-        'skins/*': mediawikiAssetsBehavior,
-        'extensions/*': mediawikiAssetsBehavior,
+        // MediaWiki ResourceLoader endpoint — caches at the edge for 1 day; browser keeps MW's 5min.
+        'load.php': loadPhpBehavior,
+        // Content-hash-versioned static files: 1 year browser + edge cache.
+        'skins/*': versionedStaticBehavior,
+        'extensions/*': versionedStaticBehavior,
+        'resources/*': versionedStaticBehavior,
       },
       domainNames: [domainName, `www.${domainName}`],
       certificate,
