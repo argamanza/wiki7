@@ -5,6 +5,16 @@ RUN apt-get update && apt-get install -y \
     git unzip wget imagemagick mariadb-client \
     && rm -rf /var/lib/apt/lists/*
 
+# Install the PECL redis PHP extension so MediaWiki's RedisBagOStuff can connect
+# to a sidecar Redis container ($wgMainCacheType / $wgParserCacheType in
+# LocalSettings.php). $PHPIZE_DEPS is set by the docker-php base image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends $PHPIZE_DEPS \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
+    && apt-get purge -y --auto-remove $PHPIZE_DEPS \
+    && rm -rf /var/lib/apt/lists/*
+
 # Download Composer
 RUN wget -cO - https://getcomposer.org/composer-2.phar > composer.phar \
     && mv composer.phar /usr/local/bin/composer \

@@ -154,8 +154,24 @@ if ( getenv('WIKI_ENV') === 'production' ) {
     // Caching settings
     $wgCachePages = true; // Enable page caching
     $wgEnableParserCache = true; // Enable parsed output cache
-    $wgMainCacheType = CACHE_ACCEL; // Use object cache
-    $wgParserCacheType = CACHE_ACCEL;
+    if ( getenv( 'REDIS_HOST' ) ) {
+        // Sidecar Redis container — shared across all PHP workers (unlike APCu,
+        // which is per-process). Big speedup on ParserOutput hits because every
+        // worker reuses the same parsed page tree.
+        $wgObjectCaches['redis'] = [
+            'class'      => 'RedisBagOStuff',
+            'servers'    => [ getenv( 'REDIS_HOST' ) . ':6379' ],
+            'persistent' => true,
+        ];
+        $wgMainCacheType    = 'redis';
+        $wgParserCacheType  = 'redis';
+        $wgMessageCacheType = 'redis';
+        $wgSessionCacheType = 'redis';
+    } else {
+        // Fallback for environments without Redis available.
+        $wgMainCacheType   = CACHE_ACCEL;
+        $wgParserCacheType = CACHE_ACCEL;
+    }
     $wgCacheDirectory = "/tmp"; // Use local tmp dir for cache if needed
     
     // Resource paths
