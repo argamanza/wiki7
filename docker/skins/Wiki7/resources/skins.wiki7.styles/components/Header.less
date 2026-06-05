@@ -46,7 +46,10 @@
 		}
 	}
 
-	.wiki7-dropdown-details[ open ] > .wiki7-dropdown-summary {
+	// Extra .cdx-button is needed to outrank Citizen's open-state rule in
+	// components/Dropdown.less (which sets color: --color-emphasized using
+	// the same .cdx-button specificity bump).
+	.wiki7-dropdown-details[ open ] > .wiki7-dropdown-summary.cdx-button {
 		color: var( --color-progressive );
 		background-color: var( --background-color-button-quiet--active );
 
