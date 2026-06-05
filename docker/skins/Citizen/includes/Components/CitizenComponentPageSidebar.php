@@ -4,90 +4,61 @@ declare( strict_types=1 );
 
 namespace MediaWiki\Skins\Citizen\Components;
 
-use MediaWiki\Language\Language;
-use MediaWiki\Output\OutputPage;
-use MediaWiki\StubObject\StubUserLang;
 use MediaWiki\Title\Title;
-use MediaWiki\User\UserIdentity;
 use MessageLocalizer;
 
 /**
  * CitizenComponentPageSidebar component
- * FIXME: Need unit test
  */
 class CitizenComponentPageSidebar implements CitizenComponent {
 
 	public function __construct(
-		private MessageLocalizer $localizer,
-		private OutputPage $out,
-		private Language|StubUserLang $pageLang,
-		private Title $title,
-		private UserIdentity $user
+		private readonly MessageLocalizer $localizer,
+		private readonly Title $title,
+		private readonly array $lastModifiedData
 	) {
 	}
 
-	/**
-	 * Get the last modified data
-	 * TODO: Use core instead when update to MW 1.43
-	 */
 	private function getLastModData(): array {
-		$timestamp = $this->out->getRevisionTimestamp();
+		$lastModifiedData = $this->lastModifiedData;
+		$timestamp = $this->lastModifiedData['timestamp'];
 
-		if ( !$timestamp ) {
+		if ( $timestamp === null ) {
 			return [];
 		}
 
-		$localizer = $this->localizer;
-		$pageLang = $this->pageLang;
-		$title = $this->title;
-		$user = $this->user;
-
-		$d = $pageLang->userDate( $timestamp, $user );
-		$t = $pageLang->userTime( $timestamp, $user );
-		$s = $localizer->msg( 'lastmodifiedat', $d, $t );
-
-		// FIXME: Use CitizenComponentMenuListItem
-		$items = [
-			'item-id' => 'lm-time',
-			'item-class' => 'mw-list-item',
-			'array-links' => [
-				'array-attributes' => [
-					[
-						'key' => 'id',
-						'value' => 'citizen-lastmod-relative'
+		return [
+			'id' => 'citizen-sidebar-lastmod',
+			'label' => $this->localizer->msg( 'citizen-page-info-lastmod' ),
+			'array-list-items' => [
+				'item-id' => 'lm-time',
+				'item-class' => 'mw-list-item',
+				'array-links' => [
+					'array-attributes' => [
+						[
+							'key' => 'id',
+							'value' => 'citizen-lastmod-relative'
+						],
+						[
+							'key' => 'href',
+							'value' => $this->title->getLocalURL( [ 'diff' => '' ] )
+						],
+						[
+							'key' => 'title',
+							'value' => trim( $lastModifiedData['text'] )
+						],
+						[
+							'key' => 'data-timestamp',
+							'value' => wfTimestamp( TS_UNIX, $lastModifiedData['timestamp'] )
+						]
 					],
-					[
-						'key' => 'href',
-						'value' => $title->getLocalURL( [ 'diff' => '' ] )
-					],
-					[
-						'key' => 'title',
-						'value' => $s
-					],
-					[
-						'key' => 'data-timestamp',
-						'value' => wfTimestamp( TS_UNIX, $timestamp )
-					]
-				],
-				'icon' => 'history',
-				'text' => $d
+					'icon' => 'history',
+					'text' => $lastModifiedData['date']
+				]
 			]
 		];
-
-		$menu = new CitizenComponentMenu(
-			[
-				'id' => 'citizen-sidebar-lastmod',
-				'label' => $localizer->msg( 'citizen-page-info-lastmod' ),
-				'array-list-items' => $items
-			]
-		);
-
-		return $menu->getTemplateData();
 	}
 
-	/**
-	 * @inheritDoc
-	 */
 	public function getTemplateData(): array {
 		return [
 			'data-page-sidebar-lastmod' => $this->getLastModData()

@@ -1,0 +1,29 @@
+{
+	"@metadata": {
+		"authors": [
+			"Joetaras"
+		]
+	},
+	"wiki7-skin-desc": "'Nu skin responsive sveluppate pa Uicchi Star Wiki7",
+	"wiki7.css": "/* Tutte le CSS aqquà avène carecate pe le utinde ca ausane 'a masckere Wiki7 */",
+	"wiki7.js": "/* Tutte le JavaScript aqquà avène carecate pe le utinde ca ausane 'a masckere Wiki7 */",
+	"wiki7-drawer-toggle": "Live/mitte 'u menù",
+	"wiki7-usermenu-toggle": "Live/mitte 'u menù personale",
+	"wiki7-search-toggle": "Live/mitte 'a recerche",
+	"wiki7-sitestats-articles-label": "vôsce",
+	"wiki7-sitestats-images-label": "fail",
+	"wiki7-sitestats-users-label": "utinde",
+	"wiki7-sitestats-edits-label": "cangiaminde",
+	"wiki7-footer-desc": "Cange stu teste sus a [[MediaWiki:Wiki7-footer-desc]]",
+	"wiki7-footer-tagline": "Cange stu teste sus a [[MediaWiki:Wiki7-footer-tagline]]",
+	"wiki7-action-addsection": "Aggiunge 'n'argomende",
+	"wiki7-jumptotop": "Tuèrne sus",
+	"wiki7-search-empty-desc": "Scrive pe accumenzà 'a recerche",
+	"wiki7-tagline-ns-talk": "Pàgene de le 'ngazzaminde de {{SUBJECTPAGENAME}}",
+	"wiki7-tagline-ns-project": "'Mbormaizune sus a {{SITENAME}}",
+	"wiki7-tagline-ns-file": "Fail sus a {{SITENAME}}",
+	"wiki7-tagline-ns-mediawiki": "Pàgene de inderfacce de MediaUicchi",
+	"wiki7-tagline-ns-template": "Pàgene d'u template",
+	"wiki7-tagline-ns-help": "Pàgene d'ajute",
+	"wiki7-tagline-ns-category": "Pàgene d'a categorije"
+}

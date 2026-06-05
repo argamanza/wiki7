@@ -8,6 +8,8 @@
  * Date: 2023-01-03
 */
 
+@import '../../../resources/mixins.less';
+
 span.cargoFieldName {
 	color: var( --color-subtle );
 }
@@ -93,9 +95,9 @@ div.specialCargoQuery-extraPane {
 // Separate Wiki7 opinionated styles so it is easy to track and debug
 .skin-wiki7 {
 	table.cargoTable {
-		font-size: var( --font-size-small );
 		border-radius: var( --border-radius-medium );
 		box-shadow: var( --box-shadow-border );
+		.mixin-wiki7-font-styles( 'small' );
 
 		tr {
 			&:first-of-type {

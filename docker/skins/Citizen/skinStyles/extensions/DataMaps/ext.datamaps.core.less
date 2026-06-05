@@ -8,6 +8,8 @@
  * Date: 2024-07-11
  */
 
+@import '../../../resources/mixins.less';
+
 // Fix width definition from share Leaflet styles
 .leaflet-bar a.oo-ui-buttonElement-button {
 	width: auto;
@@ -30,6 +32,7 @@
 	.ext-datamaps-legend-badge {
 		font-size: var( --font-size-x-small );
 		background: var( --color-subtle );
+		.mixin-citizen-font-styles( 'overline' );
 	}
 }
 
@@ -52,7 +55,7 @@ p.ext-datamaps-filters-after-text {
 	.ext-datamaps-popup-title {
 		font-size: var( --font-size-medium );
 		font-weight: var( --font-weight-semi-bold );
-		line-height: var( --line-height-xxx-small );
+		line-height: var( --line-height-x-small );
 		color: var( --color-emphasized );
 	}
 
@@ -67,7 +70,7 @@ p.ext-datamaps-filters-after-text {
 
 	.ext-datamaps-popup-subtitle,
 	.ext-datamaps-popup-location {
-		line-height: var( --line-height-xxx-small );
+		line-height: var( --line-height-x-small );
 		color: var( --color-subtle );
 	}
 }

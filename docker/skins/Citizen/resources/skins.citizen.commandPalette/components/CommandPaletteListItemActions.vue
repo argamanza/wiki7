@@ -4,31 +4,28 @@
 		class="citizen-command-palette-list-item__actions"
 		:class="{ 'citizen-command-palette-list-item__actions--visible': highlighted }"
 	>
-		<cdx-button
+		<component
+			:is="action.url ? 'a' : 'cdx-button'"
 			v-for="action in actions"
 			:key="action.id"
 			:ref="( el ) => setButtonRef( el, action.id )"
 			class="citizen-command-palette-list-item__action"
-			:aria-label="action.label"
-			weight="quiet"
-			:tabindex="-1"
-			@click.stop.prevent="onActionClick( action )"
-			@focus="onButtonFocus( action.id )"
-			@keydown="handleActionButtonKeydown"
+			v-bind="getButtonAttributes( action )"
+			@click="handleActionClick( action, $event )"
 		>
 			<cdx-icon
 				:icon="action.icon"
 				size="small"
 				class="citizen-command-palette-list-item__action__icon"
 			></cdx-icon>
-		</cdx-button>
+		</component>
 	</div>
 </template>
 
 <script>
-const { defineComponent, ref, computed, onBeforeUpdate } = require( 'vue' );
+const { defineComponent, ref, onBeforeUpdate, nextTick } = require( 'vue' );
 const { CdxIcon, CdxButton } = mw.loader.require( 'skins.citizen.commandPalette.codex' );
-const useActionNavigation = require( '../composables/useActionNavigation.js' );
+const { CommandPaletteActionEvent } = require( '../types.js' );
 
 // @vue/component
 module.exports = exports = defineComponent( {
@@ -51,13 +48,28 @@ module.exports = exports = defineComponent( {
 			required: true
 		}
 	},
-	emits: [ 'action', 'navigate-list', 'focus-action', 'blur-actions' ],
+	emits: [ 'action' ],
 	setup( props, { emit, expose } ) {
 		const buttonRefs = ref( {} );
 
-		// Use the composable here
-		const { handleActionButtonKeydown, onButtonFocus, focusFirstButton, focusLastButton } =
-			useActionNavigation( computed( () => props.actions ), buttonRefs, emit );
+		const getButtonAttributes = ( action ) => {
+			const isLink = !!action.url;
+			const attributes = {
+				'aria-label': action.label,
+				tabindex: -1
+			};
+
+			if ( isLink ) {
+				attributes.class = {
+					'cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only': true
+				};
+				attributes.href = action.url;
+			} else {
+				attributes.weight = 'quiet';
+			}
+
+			return attributes;
+		};
 
 		// Reset refs before update
 		onBeforeUpdate( () => {
@@ -72,40 +84,70 @@ module.exports = exports = defineComponent( {
 			}
 		};
 
-		// Handle clicks on action buttons
+		const focusButtonAtIndex = ( index ) => {
+			if ( index < 0 || index >= props.actions.length ) {
+				return;
+			}
+			const actionId = props.actions[ index ].id;
+			const button = buttonRefs.value[ actionId ];
+			nextTick( () => {
+				if ( button && button.$el ) {
+					button.$el.focus();
+				} else if ( button && typeof button.focus === 'function' ) {
+					button.focus();
+				}
+			} );
+		};
+
+		const clickButtonAtIndex = ( index ) => {
+			if ( index < 0 || index >= props.actions.length ) {
+				return;
+			}
+			const actionId = props.actions[ index ].id;
+			const button = buttonRefs.value[ actionId ];
+			if ( button && button.$el ) {
+				button.$el.click();
+			} else if ( button && typeof button.click === 'function' ) {
+				button.click();
+			}
+		};
+
 		const onActionClick = ( action ) => {
-			// Determine the type based on the action details
-			let actionType = 'event'; // Default to 'event' or a specific type if needed
+			let actionType = 'event';
 			if ( action.id === 'dismiss' ) {
 				actionType = 'dismiss';
 			} else if ( action.url ) {
 				actionType = 'navigate';
-			} // Add other conditions if action.id determines other types like 'edit' (that aren't navigation)
+			}
 
-			/** @type {import('../types.js').CommandPaletteActionEvent} */
+			/** @type {CommandPaletteActionEvent} */
 			const payload = {
 				type: actionType,
 				itemId: props.itemId, // Include parent item ID
 				actionId: action.id,
 				url: action.url
-				// Pass any other relevant action properties if needed
 			};
 			emit( 'action', payload );
 		};
 
-		// Expose focus methods for parent component
+		const handleActionClick = ( action, event ) => {
+			event.stopPropagation();
+			if ( !action.url ) {
+				event.preventDefault();
+			}
+			onActionClick( action );
+		};
+
 		expose( {
-			focusFirstButton,
-			focusLastButton
+			focusFirstButton: () => focusButtonAtIndex( 0 ),
+			focusButtonAtIndex,
+			clickButtonAtIndex
 		} );
 
 		return {
-			// buttonRefs needed by setButtonRef
+			getButtonAttributes,
 			setButtonRef,
-			onActionClick,
-			// Pass composable methods to template
-			handleActionButtonKeydown,
-			onButtonFocus
+			handleActionClick
 		};
 	}
 } );
@@ -125,16 +167,27 @@ module.exports = exports = defineComponent( {
 		pointer-events: none;
 		background-image: linear-gradient( to right, transparent 0%, transparent 30%, var( --actions-fade-color, inherit ) 70% );
 		opacity: 0;
-		transition: opacity var( --transition-quick );
+		transform: translateX( 16px );
+		transition-timing-function: var( --transition-timing-function-ease-in );
+		transition-duration: var( --transition-duration-base );
+		transition-property: opacity, transform;
 
 		&--visible {
 			pointer-events: auto;
 			opacity: 1;
+			transform: none;
+			transition-timing-function: var( --transition-timing-function-ease-out );
 		}
 	}
 
 	&__action {
 		border-radius: var( --border-radius-base );
+
+		// The Codex link styles somehow override the icon padding, so we need to reset it.
+		// Original selector: a:where(:not([role='button'])) .cdx-icon:not(.cdx-thumbnail__placeholder__icon--vue):last-child
+		a&.cdx-button .cdx-icon {
+			padding: 0;
+		}
 	}
 }
 </style>

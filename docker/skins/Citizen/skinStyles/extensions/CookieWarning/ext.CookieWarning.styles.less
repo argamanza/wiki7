@@ -8,6 +8,7 @@
  * Date: 2023-07-30
 */
 
+@import '../../../resources/mixins.less';
 @import '../../../resources/variables.less';
 
 .mw-cookiewarning-container {
@@ -19,16 +20,23 @@
 	max-width: @max-width-breakpoint-tablet;
 	padding: var( --space-md );
 	margin: var( --space-xs );
-	font-size: var( --font-size-small );
-	line-height: var( --line-height-xx-small );
 	background-color: var( --color-surface-1 );
 	border: var( --border-width-base ) solid var( --border-color-base );
 	border-radius: var( --border-radius-large );
-	box-shadow: var( --box-shadow-drop-xx-large );
+	box-shadow: var( --box-shadow-large );
+	.mixin-citizen-font-styles( 'small' );
 
 	@media only screen and ( min-width: @min-width-breakpoint-desktop ) {
 		right: unset;
-		left: var( --header-size );
+		left: 0;
+
+		.citizen-header-position-left & {
+			left: var( --header-size-inline-start );
+		}
+	}
+
+	.citizen-header-position-bottom & {
+		bottom: var( --header-size-block-end );
 	}
 
 	.mw-cookiewarning-text {

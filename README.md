@@ -6,8 +6,10 @@ A MediaWiki-based fan wiki for **Hapoel Beer Sheva FC** at [wiki7.co.il](https:/
 
 ```
 wiki7/
-├── docker/          # MediaWiki container (1.43), custom Wiki7 skin, LocalSettings.php
-│   ├── skins/Wiki7/ # Custom skin (forked from Citizen) — red/white theme, RTL, dark mode
+├── docker/          # MediaWiki container (1.45.3), custom Wiki7 skin, LocalSettings.php
+│   ├── skins/Wiki7/ # Custom skin (forked from Citizen v3.17.0) — brand-red #C8102E, Hebrew RTL,
+│   │                #   "you are here" indicator, drawer footer social links
+│   │                #   (see docs/wiki7-skin-customization.md for the brand-delta inventory + re-fork recipe)
 │   └── extensions/  # Cargo, PageForms
 ├── data/
 │   ├── tmk-scraper/ # Scrapy spiders scraping Transfermarkt (squad, player, fixtures, match)
@@ -114,6 +116,17 @@ make docker-update-db  # Run MediaWiki maintenance/update
 make lint              # Run Python linter (ruff)
 make test              # Run all tests
 ```
+
+## Project Documentation
+
+Living docs in [`docs/`](docs/):
+
+- [**`revival-plan.md`**](docs/revival-plan.md) — the canonical "what we're doing and in what order" plan (Phase 0 → 4). Start here for any new session.
+- [**`wiki7-skin-customization.md`**](docs/wiki7-skin-customization.md) — brand-delta inventory, re-fork recipe, gotchas. Read before touching `docker/skins/Wiki7/` or bumping the Citizen base.
+- [**`architecture.md`**](docs/architecture.md) — reflects what the CDK code actually deploys (multi-stack ECS Fargate + RDS + CloudFront, currently torn down — see revival plan for the rebuild path).
+- [`roadmap.md`](docs/roadmap.md) — *historical*. Superseded by the revival plan.
+
+Repo-root planning docs ([`PLAN.md`](PLAN.md), [`BACKLOG.md`](BACKLOG.md)) are task banks fed by the revival plan, not the other way around.
 
 ## License
 

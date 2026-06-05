@@ -1,15 +1,17 @@
-<div class="page-actions-more page-actions__item wiki7-dropdown">
+<div
+	id="wiki7-page-more-dropdown"
+	class="wiki7-page-actions-more wiki7-page-actions__item wiki7-dropdown"
+>
 	<details class="wiki7-dropdown-details">
 		<summary
-			class="wiki7-dropdown-summary"
+			class="wiki7-dropdown-summary wiki7-cdx-button--size-large cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only"
 			title="{{msg-wiki7-actions-more-toggle}}"
-			aria-details="page-actions-more__card">
+			aria-details="wiki7-page-actions-more__card">
 			<span class="wiki7-ui-icon mw-ui-icon-wikimedia-ellipsis"></span>
 			<span>{{msg-wiki7-actions-more-toggle}}</span>
 		</summary>
 	</details>
-	<aside id="page-actions-more__card" class="wiki7-menu__card">
-		<div class="wiki7-menu__card-backdrop"></div>
+	<aside id="wiki7-page-actions-more__card" class="wiki7-menu__card">
 		<div class="wiki7-menu__card-content">
 			{{#is-visible}}
 					{{#data-portlets.data-actions}}{{>Menu}}{{/data-portlets.data-actions}}

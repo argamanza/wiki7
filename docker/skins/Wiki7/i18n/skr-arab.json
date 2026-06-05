@@ -1,0 +1,37 @@
+{
+	"@metadata": {
+		"authors": [
+			"Saraiki"
+		]
+	},
+	"wiki7-notifications-tab-all": "یکے",
+	"wiki7-notifications-tab-alert": "الرٹ",
+	"wiki7-notifications-retry": "ولدا کوشش کرو",
+	"wiki7-notifications-see-all": "سارے ݙیکھو",
+	"wiki7-sitestats-articles-label": "مضمون",
+	"wiki7-sitestats-images-label": "فائلاں",
+	"wiki7-sitestats-users-label": "ورتݨ آلے",
+	"wiki7-sitestats-edits-label": "تبدیلیاں",
+	"wiki7-page-info-credits": "کریڈٹ",
+	"wiki7-feature-autohide-navigation-0-label": "بند",
+	"wiki7-feature-autohide-navigation-1-label": "آن",
+	"wiki7-feature-custom-font-size-xlarge-label": "ٻہوں وݙا",
+	"wiki7-user-info-edits-label": "تبدیلیاں",
+	"wiki7-command-palette-back": "پچھوں",
+	"wiki7-command-palette-heading-recent": "حالیہ",
+	"wiki7-command-palette-heading-related": "متعلقہ",
+	"wiki7-command-palette-keyhint-enter-select": "چݨو",
+	"wiki7-command-palette-keyhint-enter-open": "کھولو",
+	"wiki7-command-palette-keyhint-enter-search": "ڳولو",
+	"wiki7-command-palette-keyhint-navigate": "نیویگیٹ",
+	"wiki7-command-palette-keyhint-clear": "صاف",
+	"wiki7-command-palette-keyhint-close": "بند کرو",
+	"wiki7-command-palette-keyhint-exit": "نکلو",
+	"wiki7-command-palette-keyhint-actions": "عمل",
+	"wiki7-command-palette-keyhint-return": "ولدا واپس",
+	"wiki7-command-palette-type-page": "ورقہ",
+	"wiki7-command-palette-type-namespace": "ناں جاہ",
+	"wiki7-command-palette-type-command": "کمانڈ",
+	"wiki7-command-palette-type-special-page": "خاص ورقہ",
+	"wiki7-command-palette-type-user": "ورتݨ آلا"
+}

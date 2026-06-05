@@ -1,40 +1,84 @@
 <template>
-	<div class="wiki7-command-palette__search">
-		<cdx-text-input
-			ref="searchInputRef"
-			:model-value="value"
-			class="wiki7-command-palette__input"
-			input-type="search"
-			:start-icon="cdxIconSearch"
-			:clearable="true"
-			:placeholder="$i18n( 'searchsuggest-search' ).text()"
-			@update:model-value="$emit( 'update:modelValue', $event )"
-			@keydown="onKeydown"
-			@keydown.esc="$emit( 'close' )"
-			@keydown.tab="$emit( 'close' )"
-		></cdx-text-input>
+	<div
+		class="wiki7-command-palette-header"
+		:class="{ 'wiki7-command-palette-header--mode-active': activeMode || helpVisible }"
+	>
+		<transition name="wiki7-command-palette-header-back">
+			<cdx-button
+				v-if="activeMode || helpVisible"
+				class="wiki7-command-palette-header__back"
+				weight="quiet"
+				icon-only
+				:aria-label="$i18n( 'wiki7-command-palette-back' ).text()"
+				@click="onBackClick"
+			>
+				<cdx-icon
+					:icon="cdxIconArrowPrevious"
+					size="small"
+				></cdx-icon>
+			</cdx-button>
+		</transition>
+		<div class="wiki7-command-palette-header__input-area">
+			<cdx-icon
+				class="wiki7-command-palette-header__icon"
+				:icon="currentIcon"
+			></cdx-icon>
+			<cdx-info-chip
+				v-for="( token, index ) in tokens"
+				v-show="!activeMode || token.modeId === activeMode.id"
+				:key="token.id"
+				class="wiki7-command-palette-header__chip"
+				:class="{
+					'wiki7-command-palette-header__chip--selected': index === selectedTokenIndex,
+					[ 'wiki7-command-palette-header__chip--' + token.variant ]: token.variant
+				}"
+				@click="$emit( 'select-token', index )"
+			>
+				{{ token.label }}
+			</cdx-info-chip>
+			<cdx-text-input
+				ref="searchInputRef"
+				:model-value="freeText"
+				class="wiki7-command-palette-header__input"
+				input-type="search"
+				:clearable="true"
+				:placeholder="currentPlaceholder"
+				@update:model-value="$emit( 'update:freeText', $event )"
+			></cdx-text-input>
+		</div>
 		<div
 			v-if="isPending && showPending"
-			class="wiki7-command-palette__progress-indicator wiki7-loading"
+			class="wiki7-command-palette-header__progress-indicator wiki7-loading"
 		></div>
 	</div>
 </template>
 
 <script>
 const { defineComponent, ref, computed } = require( 'vue' );
-const { CdxTextInput } = mw.loader.require( 'skins.wiki7.commandPalette.codex' );
-const { cdxIconSearch } = require( '../icons.json' );
+const { CdxButton, CdxInfoChip, CdxTextInput, CdxIcon } = mw.loader.require( 'skins.wiki7.commandPalette.codex' );
+const { cdxIconArrowPrevious, cdxIconHelp, cdxIconSearch } = require( '../icons.json' );
 
 // @vue/component
 module.exports = exports = defineComponent( {
 	name: 'CommandPaletteHeader',
 	components: {
-		CdxTextInput
+		CdxButton,
+		CdxInfoChip,
+		CdxTextInput,
+		CdxIcon
 	},
 	props: {
-		modelValue: {
+		tokens: {
+			type: Array,
+			default: () => []
+		},
+		freeText: {
 			type: String,
 			default: ''
+		},
+		selectedTokenIndex: {
+			type: Number,
+			default: -1
 		},
 		isPending: {
 			type: Boolean,
@@ -43,49 +87,65 @@ module.exports = exports = defineComponent( {
 		showPending: {
 			type: Boolean,
 			default: false
+		},
+		activeMode: {
+			type: Object,
+			default: null
+		},
+		activeModeContext: {
+			type: Array,
+			default: () => []
+		},
+		helpVisible: {
+			type: Boolean,
+			default: false
 		}
 	},
-	emits: [ 'update:modelValue', 'keydown', 'close', 'focus-active-item' ],
-	setup( props, { emit, expose } ) {
+	emits: [ 'update:freeText', 'select-token', 'exit-mode', 'close-help' ],
+	setup( props, { expose, emit } ) {
 		const searchInputRef = ref( null );
-		const value = computed( () => props.modelValue );
+
+		const currentIcon = computed( () => {
+			if ( props.helpVisible ) {
+				return cdxIconHelp;
+			}
+			if ( props.activeMode && props.activeMode.icon ) {
+				return props.activeMode.icon;
+			}
+			return cdxIconSearch;
+		} );
+
+		const currentPlaceholder = computed( () => {
+			if ( props.helpVisible ) {
+				return mw.message( 'wiki7-command-palette-command-help-label' ).text();
+			}
+			if ( props.activeMode && typeof props.activeMode.headerLabel === 'function' ) {
+				const label = props.activeMode.headerLabel( props.activeModeContext );
+				if ( label ) {
+					return label;
+				}
+			}
+			if ( props.activeMode && props.activeMode.placeholder ) {
+				return props.activeMode.placeholder;
+			}
+			return mw.message( 'searchsuggest-search' ).text();
+		} );
+
+		// Help is layered on top of the active mode, so the back button
+		// closes help first; the underlying mode's back affordance reappears
+		// once help dismisses.
+		const onBackClick = () => {
+			if ( props.helpVisible ) {
+				emit( 'close-help' );
+			} else {
+				emit( 'exit-mode' );
+			}
+		};
 
 		const getInputElement = () => searchInputRef.value?.$el?.querySelector( 'input' ) || null;
 
 		const focus = () => {
 			getInputElement()?.focus();
-		};
-
-		const onKeydown = ( event ) => {
-			switch ( event.key ) {
-				case 'ArrowUp':
-				case 'ArrowDown':
-					// Prevent default input cursor movement
-					event.preventDefault();
-					// Emit the event for parent (App.vue) to handle list navigation
-					emit( 'keydown', event );
-					break;
-				case 'ArrowRight': {
-					const inputEl = event.target;
-					// Check if cursor is at the end of the input
-					if ( inputEl.selectionStart === inputEl.value.length ) {
-						// Prevent default cursor movement
-						event.preventDefault();
-						// Signal parent to focus the active list item
-						emit( 'focus-active-item' );
-					}
-					// If not at the end, allow default right arrow behavior within the input
-					// and don't emit 'keydown' to avoid potential double handling.
-					break;
-				}
-				// For other keys like Enter, alphanumeric, etc., let the parent handle or allow default.
-				// We specifically don't emit 'keydown' for ArrowRight when not at the end.
-				default:
-					// Only emit general keydown for keys not specifically handled here
-					// (e.g., Enter for selection, other keys for typing)
-					emit( 'keydown', event );
-					break;
-			}
 		};
 
 		expose( {
@@ -95,9 +155,10 @@ module.exports = exports = defineComponent( {
 
 		return {
 			searchInputRef,
-			value,
-			cdxIconSearch,
-			onKeydown
+			currentIcon,
+			currentPlaceholder,
+			onBackClick,
+			cdxIconArrowPrevious
 		};
 	}
 } );
@@ -105,18 +166,88 @@ module.exports = exports = defineComponent( {
 
 <style lang="less">
 @import 'mediawiki.skin.variables.less';
+@import '../../mixins.less';
 
-.wiki7-command-palette {
-	&__search {
-		position: relative;
-		/* 8px from CdxTextInput */
-		padding: var( --space-sm ) calc( var( --wiki7-command-palette-side-padding ) - @spacing-50 );
+.wiki7-command-palette-header {
+	--wiki7-command-palette-back-button-size: 24px;
+	position: relative;
+	/* 8px from CdxTextInput */
+	padding: var( --space-sm ) calc( var( --wiki7-command-palette-side-padding ) - @spacing-50 );
+	transition-timing-function: var( --transition-timing-function-ease );
+	transition-duration: var( --transition-duration-base );
+	transition-property: padding-inline-start;
+	.mixin-wiki7-font-styles( 'body' );
+
+	&--mode-active {
+		padding-inline-start: calc( var( --wiki7-command-palette-side-padding ) - @spacing-50 + var( --wiki7-command-palette-back-button-size ) );
+	}
+
+	&__back {
+		position: absolute;
+		inset-block: 0;
+		inset-inline-start: calc( var( --wiki7-command-palette-side-padding ) - @spacing-50 );
+		min-width: var( --wiki7-command-palette-back-button-size );
+		margin-block: auto;
+	}
+
+	&-back-enter-active,
+	&-back-leave-active {
+		transition-timing-function: var( --transition-timing-function-ease );
+		transition-duration: var( --transition-duration-base );
+		transition-property: opacity, transform;
+	}
+
+	&-back-enter-from,
+	&-back-leave-to {
+		opacity: 0;
+		transform: translateX( -25% );
+	}
+
+	&__chip {
+		flex-shrink: 0;
+		font-weight: var( --font-weight-medium );
+		background-color: var( --background-color-interactive );
+		border: var( --border-base );
+		border-radius: var( --border-radius-base );
+
+		&--outlined {
+			background-color: transparent;
+			border-style: dashed;
+		}
+
+		&--selected {
+			background-color: transparent;
+			border-color: var( --border-color-subtle );
+		}
+	}
+
+	&__input-area {
+		display: flex;
+		flex-grow: 1;
+		flex-wrap: nowrap;
+		gap: @spacing-25;
+		align-items: center;
+	}
+
+	&__icon {
+		flex-shrink: 0;
+		color: @color-placeholder;
+		transition-timing-function: var( --transition-timing-function-ease );
+		transition-duration: var( --transition-duration-base );
+		transition-property: opacity, transform;
+
+		&.cdx-icon {
+			width: 40px;
+		}
 	}
 
 	&__input {
+		flex-grow: 1;
+		min-width: 0;
+
 		.cdx-text-input__input {
 			padding-block: 0;
-			padding-left: calc( @spacing-50 + @size-icon-medium + var( --space-sm ) );
+			padding-inline-start: 0;
 			outline: 0 !important;
 			background-color: transparent !important;
 			border: 0 !important;

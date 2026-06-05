@@ -1,0 +1,16 @@
+{
+	"@metadata": {
+		"authors": [
+			"Jon Harald Søby",
+			"Yupik"
+		]
+	},
+	"wiki7-skin-desc": "Ei responsiv drakt utviklet for Star Wiki7 Wiki",
+	"wiki7.css": "/* CSS her blir lastet for de som bruker drakta Wiki7 */",
+	"wiki7.js": "/* Javascript i denne fila vil gjelde brukere av drakta Wiki7 */",
+	"wiki7-drawer-toggle": "Vis/skjul meny",
+	"wiki7-search-toggle": "Vis/skjul søk",
+	"wiki7-footer-desc": "Rediger denne teksten i [[MediaWiki:Wiki7-footer-desc/nb]]",
+	"wiki7-footer-tagline": "Rediger denne teksten i [[MediaWiki:Wiki7-footer-tagline/nb]]",
+	"wiki7-feature-custom-font-size-name": "Tekst"
+}

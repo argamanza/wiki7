@@ -4,13 +4,16 @@ declare( strict_types=1 );
 
 namespace MediaWiki\Skins\Wiki7\Components;
 
+use MediaWiki\Cache\GenderCache;
+use MediaWiki\Html\Html;
 use MediaWiki\Language\Language;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Languages\LanguageConverterFactory;
 use MediaWiki\Output\OutputPage;
 use MediaWiki\Skin\SkinComponentUtils;
-use MediaWiki\StubObject\StubUserLang;
 use MediaWiki\Title\Title;
 use MediaWiki\User\User;
+use MediaWiki\User\UserFactory;
+use MediaWiki\User\UserIdentityLookup;
 use MediaWiki\Utils\MWTimestamp;
 use MessageLocalizer;
 use Wikimedia\IPUtils;
@@ -22,12 +25,15 @@ use Wikimedia\IPUtils;
 class Wiki7ComponentPageHeading implements Wiki7Component {
 
 	public function __construct(
-		private MediaWikiServices $services,
-		private MessageLocalizer $localizer,
-		private OutputPage $out,
-		private Language|StubUserLang $pageLang,
-		private Title $title,
-		private string $titleData
+		private readonly UserFactory $userFactory,
+		private readonly GenderCache $genderCache,
+		private readonly UserIdentityLookup $userIdentityLookup,
+		private readonly LanguageConverterFactory $languageConverterFactory,
+		private readonly Language $lang,
+		private readonly MessageLocalizer $localizer,
+		private readonly OutputPage $out,
+		private readonly Title $title,
+		private readonly string $titleData
 	) {
 	}
 
@@ -41,12 +47,12 @@ class Wiki7ComponentPageHeading implements Wiki7Component {
 		$titleText = $this->title->getText();
 
 		if ( IPUtils::isIPAddress( $titleText ) ) {
-			return $this->services->getUserFactory()->newFromName( $titleText );
+			return $this->userFactory->newFromName( $titleText );
 		}
 
-		$userIdentity = $this->services->getUserIdentityLookup()->getUserIdentityByName( $titleText );
+		$userIdentity = $this->userIdentityLookup->getUserIdentityByName( $titleText );
 		if ( $userIdentity && $userIdentity->isRegistered() ) {
-			return $this->services->getUserFactory()->newFromId( $userIdentity->getId() );
+			return $this->userFactory->newFromId( $userIdentity->getId() );
 		}
 
 		return null;
@@ -58,41 +64,112 @@ class Wiki7ComponentPageHeading implements Wiki7Component {
 	 * @return string
 	 */
 	private function buildUserTagline(): string {
-		$localizer = $this->localizer;
-
 		$user = $this->buildPageUserObject();
 		if ( !$user ) {
 			return '';
 		}
 
-		$tagline = '<div id="wiki7-tagline-user">';
+		$taglineContent = $this->buildGenderTagline( $user ) .
+			$this->buildEditCountTagline( $user ) .
+			$this->buildRegistrationDateTagline( $user );
+
+		if ( $taglineContent === '' ) {
+			return '';
+		}
+
+		return Html::rawElement(
+			'div',
+			[ 'id' => 'wiki7-tagline-user' ],
+			$taglineContent
+		);
+	}
+
+	/**
+	 * Builds the HTML for the user's gender.
+	 *
+	 * @param User $user
+	 * @return string
+	 */
+	private function buildGenderTagline( User $user ): string {
+		$gender = $this->genderCache->getGenderOf( $user, __METHOD__ );
+		$msgGender = match ( $gender ) {
+			'male' => '♂',
+			'female' => '♀',
+			default => '',
+		};
+
+		if ( $msgGender ) {
+			return Html::rawElement(
+				'span',
+				[
+					'id' => 'wiki7-tagline-user-gender',
+					'data-user-gender' => $gender,
+				],
+				$msgGender
+			);
+		}
+		return '';
+	}
+
+	/**
+	 * Builds the HTML for the user's edit count.
+	 *
+	 * @param User $user
+	 * @return string
+	 */
+	private function buildEditCountTagline( User $user ): string {
 		$editCount = $user->getEditCount();
+		if ( !$editCount ) {
+			return '';
+		}
+		$msgEditCount = $this->localizer->msg( 'usereditcount' )
+			->numParams( number_format( (float)$editCount, 0 ) )
+			->text();
+		$editCountHref = SkinComponentUtils::makeSpecialUrlSubpage( 'Contributions', $user->getName() );
+		$link = Html::element( 'a', [ 'href' => $editCountHref ], $msgEditCount );
+
+		return Html::rawElement(
+			'span',
+			[
+				'id' => 'wiki7-tagline-user-editcount',
+				'data-user-editcount' => (string)$editCount
+			],
+			$link
+		);
+	}
+
+	/**
+	 * Builds the HTML for the user's registration date.
+	 *
+	 * @param User $user
+	 * @return string
+	 */
+	private function buildRegistrationDateTagline( User $user ): string {
 		$regDate = $user->getRegistration();
-		$gender = $this->services->getGenderCache()->getGenderOf( $user, __METHOD__ );
-
-		if ( $gender === 'male' ) {
-			$msgGender = '♂';
-		} elseif ( $gender === 'female' ) {
-			$msgGender = '♀';
-		}
-		if ( isset( $msgGender ) ) {
-			$tagline .= "<span id=\"wiki7-tagline-user-gender\" data-user-gender=\"$gender\">$msgGender</span>";
+		if ( !is_string( $regDate ) ) {
+			return '';
 		}
 
-		if ( $editCount ) {
-			$msgEditCount = $localizer->msg( 'usereditcount' )->numParams( sprintf( '%s', number_format( $editCount, 0 ) ) );
-			$editCountHref = SkinComponentUtils::makeSpecialUrlSubpage( 'Contributions', $user );
-			$tagline .= "<span id=\"wiki7-tagline-user-editcount\" data-user-editcount=\"$editCount\"><a href=\"$editCountHref\">$msgEditCount</a></span>";
-		}
+		$regDateTs = wfTimestamp( TS_ISO_8601, $regDate );
+		$regDateHtml = Html::rawElement(
+			'time',
+			[
+				'class' => 'wiki7-user-regdate',
+				'datetime' => $regDateTs,
+			],
+			$this->lang->userDate( new MWTimestamp( $regDate ), $user )
+		);
 
-		if ( is_string( $regDate ) ) {
-			$regDateTs = wfTimestamp( TS_UNIX, $regDate );
-			$msgRegDate = $localizer->msg( 'wiki7-tagline-user-regdate', $this->pageLang->userDate( new MWTimestamp( $regDate ), $user ) );
-			$tagline .= "<span id=\"wiki7-tagline-user-regdate\" data-user-regdate=\"$regDateTs\">$msgRegDate</span>";
-		}
+		$msgRegDate = $this->localizer->msg( 'wiki7-tagline-user-regdate', $regDateHtml )->parse();
 
-		$tagline .= '</div>';
-		return $tagline;
+		return Html::rawElement(
+			'span',
+			[
+				'id' => 'wiki7-tagline-user-regdate',
+				'data-user-regdate' => $regDateTs
+			],
+			$msgRegDate
+		);
 	}
 
 	/**
@@ -136,9 +213,11 @@ class Wiki7ComponentPageHeading implements Wiki7Component {
 			return $this->buildUserTagline();
 		}
 
-		$nsMsgKey = 'wiki7-tagline-ns-' . strtolower( $title->getNsText() );
-		if ( !$this->localizer->msg( $nsMsgKey )->isDisabled() ) {
-			return $this->localizer->msg( $nsMsgKey )->parse();
+		if ( $title->getNsText() ) {
+			$nsMsgKey = 'wiki7-tagline-ns-' . strtolower( $title->getNsText() );
+			if ( !$this->localizer->msg( $nsMsgKey )->isDisabled() ) {
+				return $this->localizer->msg( $nsMsgKey )->parse();
+			}
 		}
 
 		return $this->getWiki7Tagline( 'wiki7-tagline' );
@@ -153,7 +232,7 @@ class Wiki7ComponentPageHeading implements Wiki7Component {
 			return false;
 		}
 
-		// @phan-suppress-next-line PhanTypeMismatchArgument
+		// @phan-suppress-next-line PhanTypeMismatchArgument NS constants from SocialProfile extension
 		if ( !$this->title->inNamespaces( [ NS_USER_WIKI, NS_USER_PROFILE ] ) ) {
 			return false;
 		}
@@ -162,9 +241,11 @@ class Wiki7ComponentPageHeading implements Wiki7Component {
 	}
 
 	private function getWiki7Tagline( string $msgKey ): string {
-		return $this->localizer->msg( $msgKey )->isDisabled() ?
-			$this->localizer->msg( 'tagline' )->parse() :
-			$this->localizer->msg( $msgKey )->parse();
+		$msg = $this->localizer->msg( $msgKey );
+		if ( $msg->isDisabled() ) {
+			$msg = $this->localizer->msg( 'tagline' );
+		}
+		return $msg->parse();
 	}
 
 	/**
@@ -175,16 +256,14 @@ class Wiki7ComponentPageHeading implements Wiki7Component {
 		// from Extension:ShortDescription
 		$shortdesc = $this->out->getProperty( 'shortdesc' );
 		if ( $shortdesc ) {
-			$tagline = $shortdesc;
+			$tagline = htmlspecialchars( $shortdesc, ENT_QUOTES );
 		} else {
 			$tagline = $this->determineTagline();
 		}
 
 		if ( $tagline !== '' ) {
 			// Apply language variant conversion
-			$langConv = $this->services
-				->getLanguageConverterFactory()
-				->getLanguageConverter( $this->services->getContentLanguage() );
+			$langConv = $this->languageConverterFactory->getLanguageConverter( $this->lang );
 			$tagline = $langConv->convert( $tagline );
 		}
 
@@ -196,8 +275,8 @@ class Wiki7ComponentPageHeading implements Wiki7Component {
 	 */
 	public function getTemplateData(): array {
 		return [
-		'html-tagline' => $this->getTagline(),
-		'html-title-heading' => $this->getPageHeading()
+			'html-tagline' => $this->getTagline(),
+			'html-title-heading' => $this->getPageHeading()
 		];
 	}
 }

@@ -2,7 +2,7 @@
 	--size-icon: 0.875rem;
 	display: flex;
 	gap: var( --space-md );
-	font-size: var( --font-size-x-small );
+	.mixin-wiki7-font-styles( 'overline' );
 	white-space: nowrap;
 
 	&__item {
@@ -17,7 +17,7 @@
 	}
 }
 
-/* Can't display all in one line so let's hide file */
+// Can't display all in one line so let's hide file
 @media ( max-width: 480px ) {
 	#wiki7-siteStats__item--images {
 		display: none;

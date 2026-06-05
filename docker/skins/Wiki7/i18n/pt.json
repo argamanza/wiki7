@@ -1,0 +1,39 @@
+{
+	"@metadata": {
+		"authors": [
+			"Hamilton Abreu",
+			"Jdlrobson"
+		]
+	},
+	"wiki7-skin-desc": "Um tema agradável para o MediaWiki, com grande usabilidade e dinamismo, que torna as extensões numa parte integrante da experiência coesiva. Criado inicialmente para a [https://starwiki7.tools/ wiki Star Wiki7].",
+	"wiki7-prefs-talkpage": "[[mw:Skin_talk:Wiki7|Discussão]]",
+	"wiki7.css": "/* Todo o código CSS colocado aqui será carregado para os utilizadores do tema Wiki7 */",
+	"wiki7.js": "/* Todo o código JavaScript colocado aqui será carregado para os utilizadores do tema Wiki7 */",
+	"wiki7-drawer-toggle": "Alternar menu",
+	"wiki7-usermenu-toggle": "Alternar menu pessoal",
+	"wiki7-search-toggle": "Alternar pesquisa",
+	"wiki7-languages-toggle": "Mais línguas",
+	"wiki7-actions-more-toggle": "Mais operações",
+	"wiki7-sitestats-articles-label": "artigos",
+	"wiki7-sitestats-images-label": "ficheiros",
+	"wiki7-sitestats-users-label": "utilizadores",
+	"wiki7-sitestats-edits-label": "edições",
+	"wiki7-page-info-copyright": "Direitos de autor",
+	"wiki7-page-info-credits": "Ficha técnica",
+	"wiki7-page-info-lastmod": "Última modificação",
+	"wiki7-footer-desc": "Edite este texto em [[MediaWiki:Wiki7-footer-desc]]",
+	"wiki7-footer-tagline": "Edite este texto em [[MediaWiki:Wiki7-footer-tagline]]",
+	"wiki7-action-addsection": "Adicionar tópico",
+	"wiki7-jumptotop": "Voltar ao topo",
+	"wiki7-search-empty-desc": "Escrever para começar a procurar",
+	"wiki7-search-noresults-title": "Não há resultados para $1",
+	"wiki7-tagline-ns-talk": "Página de discussão de {{SUBJECTPAGENAME}}",
+	"wiki7-tagline-ns-project": "Informações sobre a wiki {{SITENAME}}",
+	"wiki7-tagline-ns-file": "Ficheiro na wiki {{SITENAME}}",
+	"wiki7-tagline-ns-mediawiki": "Página da interface do MediaWiki",
+	"wiki7-tagline-ns-template": "Página de predefinição",
+	"wiki7-tagline-ns-help": "Página de ajuda",
+	"wiki7-tagline-ns-category": "Página de categoria",
+	"wiki7-tagline-user-regdate": "Registou-se a $1",
+	"wiki7-theme-night-label": "Noite"
+}

@@ -1,0 +1,30 @@
+{
+	"@metadata": {
+		"authors": [
+			"Nokeoo"
+		]
+	},
+	"wiki7-prefs-talkpage": "[[mw:Skin_talk:Wiki7|Diskusija]]",
+	"wiki7-languages-toggle": "Daugiau kalbų",
+	"wiki7-actions-more-toggle": "Daugiau veiksmų",
+	"wiki7-sitestats-articles-label": "straipsniai",
+	"wiki7-sitestats-images-label": "failai",
+	"wiki7-sitestats-users-label": "naudotojai",
+	"wiki7-sitestats-edits-label": "keitimai",
+	"wiki7-page-info-copyright": "Autorinės teisės",
+	"wiki7-page-info-credits": "Kreditai",
+	"wiki7-page-info-lastmod": "Paskutinis pakeitimas",
+	"wiki7-footer-desc": "Redaguoti šį tekstą [[MediaWiki:Wiki7-footer-desc]]",
+	"wiki7-footer-tagline": "Redaguoti šį tekstą [[MediaWiki:Wiki7-footer-tagline]]",
+	"wiki7-action-addsection": "Pridėti temą",
+	"wiki7-jumptotop": "Grįžti į viršų",
+	"wiki7-search-empty-desc": "Rašykite norėdami pradėti ieškoti",
+	"wiki7-search-noresults-title": "Oi! Nėra $1 rezultatų",
+	"wiki7-tagline-ns-talk": "{{SUBJECTPAGENAME}} diskusijų puslapis",
+	"wiki7-tagline-ns-project": "Informacija apie {{SITENAME}}",
+	"wiki7-tagline-ns-file": "Failas {{SITENAME}}",
+	"wiki7-tagline-ns-mediawiki": "MediaWiki sąsajos puslapis",
+	"wiki7-tagline-ns-template": "Šablono puslapis",
+	"wiki7-tagline-ns-help": "Pagalbos puslapis",
+	"wiki7-tagline-ns-category": "Kategorijos puslapis"
+}

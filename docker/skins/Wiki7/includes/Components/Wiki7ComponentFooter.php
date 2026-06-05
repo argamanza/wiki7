@@ -8,25 +8,27 @@ use MessageLocalizer;
 
 /**
  * Wiki7ComponentFooter component
+ *
+ * Consumes the polyfilled $parentData['data-portlets'] footer slice
+ * (data-footer-places, data-footer-icons) produced by
+ * SkinWiki7::polyfillFooterPortlets().
  */
 class Wiki7ComponentFooter implements Wiki7Component {
 
 	public function __construct(
-		private MessageLocalizer $localizer,
-		private array $footerData
+		private readonly MessageLocalizer $localizer,
+		private readonly array $footerPortlets
 	) {
 	}
 
-	/**
-	 * @inheritDoc
-	 */
 	public function getTemplateData(): array {
-		$localizer = $this->localizer;
-		$footerData = $this->footerData;
-
-		return $footerData + [
-			'msg-wiki7-footer-desc' => $localizer->msg( "wiki7-footer-desc" )->inContentLanguage()->parse(),
-			'msg-wiki7-footer-tagline' => $localizer->msg( "wiki7-footer-tagline" )->inContentLanguage()->parse()
+		return [
+			'data-footer-places' => $this->footerPortlets['data-footer-places'] ?? [],
+			'data-footer-icons' => $this->footerPortlets['data-footer-icons'] ?? [],
+			'msg-wiki7-footer-desc' => $this->localizer
+				->msg( 'wiki7-footer-desc' )->inContentLanguage()->parse(),
+			'msg-wiki7-footer-tagline' => $this->localizer
+				->msg( 'wiki7-footer-tagline' )->inContentLanguage()->parse(),
 		];
 	}
 }

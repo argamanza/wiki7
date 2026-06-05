@@ -1,24 +1,6 @@
 <?php
-/**
- * Wiki7 - A responsive skin developed for the Star Wiki7 Wiki
- *
- * This file is part of Wiki7.
- *
- * Wiki7 is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Wiki7 is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Wiki7.  If not, see <https://www.gnu.org/licenses/>.
- *
- * @file
- */
+
+declare( strict_types=1 );
 
 namespace MediaWiki\Skins\Wiki7\Api;
 
@@ -26,10 +8,12 @@ use Exception;
 use MediaWiki\Api\ApiBase;
 use MediaWiki\Api\ApiMain;
 use MediaWiki\Config\Config;
+use MediaWiki\Http\HttpRequestFactory;
+use MediaWiki\Language\Language;
 use MediaWiki\MainConfigNames;
-use MediaWiki\MediaWikiServices;
 use MediaWiki\SpecialPage\SpecialPage;
 use MediaWiki\Title\Title;
+use MediaWiki\Utils\UrlUtils;
 
 /**
  * Based on the MobileFrontend extension
@@ -43,25 +27,19 @@ class ApiWebappManifest extends ApiBase {
 	/* 1 week */
 	private const CACHE_MAX_AGE = 604800;
 
-	private ApiMain $main;
+	private readonly Config $config;
 
-	private Config $config;
+	private readonly array $options;
 
-	private MediaWikiServices $services;
-
-	private array $options;
-
-	/**
-	 * @inheritDoc
-	 */
 	public function __construct(
-		ApiMain $main,
-		$moduleName
+		private readonly ApiMain $main,
+		private readonly string $moduleName,
+		private readonly Language $contentLanguage,
+		private readonly HttpRequestFactory $httpRequestFactory,
+		private readonly UrlUtils $urlUtils,
 	) {
 		parent::__construct( $main, $moduleName );
-		$this->main = $main;
 		$this->config = $this->getConfig();
-		$this->services = MediaWikiServices::getInstance();
 		$this->options = $this->config->get( 'Wiki7ManifestOptions' );
 	}
 
@@ -70,12 +48,11 @@ class ApiWebappManifest extends ApiBase {
 	 */
 	public function execute(): void {
 		$config = $this->config;
-		$services = $this->services;
 		$resultObj = $this->getResult();
 		$main = $this->main;
 		$options = $this->options;
 
-		$resultObj->addValue( null, 'dir', $services->getContentLanguage()->getDir() );
+		$resultObj->addValue( null, 'dir', $this->contentLanguage->getDir() );
 		$resultObj->addValue( null, 'lang', $config->get( MainConfigNames::LanguageCode ) );
 		$resultObj->addValue( null, 'name', $config->get( MainConfigNames::Sitename ) );
 		// Need to set it manually because the default from start_url does not include script namespace
@@ -119,7 +96,7 @@ class ApiWebappManifest extends ApiBase {
 			if ( count( $icon ) === 0 ) {
 				continue;
 			}
-			array_push( $icons, $icon );
+			$icons[] = $icon;
 		}
 		return $icons;
 	}
@@ -128,8 +105,8 @@ class ApiWebappManifest extends ApiBase {
 	 * Get icons from wgLogos
 	 */
 	private function getIconsFromLogos(): array {
-		$urlUtils = $this->services->getUrlUtils();
-		$httpRequestFactory = $this->services->getHttpRequestFactory();
+		$urlUtils = $this->urlUtils;
+		$httpRequestFactory = $this->httpRequestFactory;
 
 		$icons = [];
 		$logos = $this->config->get( MainConfigNames::Logos );
@@ -159,26 +136,28 @@ class ApiWebappManifest extends ApiBase {
 				$request = $httpRequestFactory->create( $logoUrl, [], __METHOD__ );
 				$request->execute();
 				$logoContent = $request->getContent();
-			} catch ( Exception $e ) {
+			} catch ( Exception ) {
 				// Log the exception or handle it accordingly
 				$logoContent = '';
 			}
 
 			if ( $logoContent !== '' ) {
 				$logoSize = getimagesizefromstring( $logoContent );
+			} else {
+				$logoSize = false;
 			}
 
 			$icon = [
 				'src' => $logoPath
 			];
 
-			if ( isset( $logoSize ) && $logoSize !== false ) {
+			if ( $logoSize !== false ) {
 				$icon['sizes'] = $logoSize[0] . 'x' . $logoSize[1];
 				$icon['type'] = $logoSize['mime'];
 			}
 
 			// Set sizes to any if it is a SVG
-			if ( substr( $logoPath, -3 ) === 'svg' ) {
+			if ( str_ends_with( $logoPath, 'svg' ) ) {
 				$icon['sizes'] = 'any';
 				$icon['type'] = 'image/svg+xml';
 			}

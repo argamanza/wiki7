@@ -1,8 +1,9 @@
+@import '../../resources/mixins.less';
+
 /*
  * Apply styles from .wiki7-body
  * T347199
  */
 #mw-teleport-target {
-	font-size: var( --font-size-small );
-	line-height: var( --line-height );
+	.mixin-wiki7-font-styles( 'body' );
 }

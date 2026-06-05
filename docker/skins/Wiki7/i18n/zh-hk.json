@@ -1,0 +1,38 @@
+{
+	"@metadata": {
+		"authors": [
+			"Alistair3149",
+			"Diskdance",
+			"LuciferianThomas",
+			"Tranve",
+			"Winston Sung",
+			"捍粵者"
+		]
+	},
+	"skinname-wiki7": "公民（Wiki7）",
+	"wiki7-skin-desc": "為星際公民百科而開發的響應式外觀",
+	"wiki7-prefs-talkpage": "[[mw:Skin_talk:Wiki7|討論]]",
+	"wiki7.css": "/* 此CSS會用於使用Wiki7外觀的用戶 */",
+	"wiki7.js": "/* 此Javascript會用於使用Wiki7外觀的用戶 */",
+	"wiki7-drawer-toggle": "切換菜單",
+	"wiki7-usermenu-toggle": "切換個人選單",
+	"wiki7-search-toggle": "切換搜尋",
+	"wiki7-languages-toggle": "更多語言",
+	"wiki7-actions-more-toggle": "更多操作",
+	"wiki7-sitestats-articles-label": "篇條目",
+	"wiki7-sitestats-images-label": "份檔案",
+	"wiki7-sitestats-users-label": "位用家",
+	"wiki7-sitestats-edits-label": "次修改",
+	"wiki7-footer-desc": "在[[MediaWiki:Wiki7-footer-desc]]編輯此文字",
+	"wiki7-footer-tagline": "在[[MediaWiki:Wiki7-footer-tagline]]編輯此文字",
+	"wiki7-action-addsection": "新增話題",
+	"wiki7-jumptotop": "返回頂端",
+	"wiki7-search-empty-desc": "輸入開始搜尋",
+	"wiki7-tagline-ns-talk": "{{SUBJECTPAGENAME}}的討論頁面",
+	"wiki7-tagline-ns-project": "關於{{SITENAME}}的資訊",
+	"wiki7-tagline-ns-file": "{{SITENAME}}上的檔案",
+	"wiki7-tagline-ns-mediawiki": "MediaWiki介面頁面",
+	"wiki7-tagline-ns-template": "模板頁面",
+	"wiki7-tagline-ns-help": "幫助頁面",
+	"wiki7-tagline-ns-category": "分類頁面"
+}

@@ -4,11 +4,16 @@ declare( strict_types=1 );
 
 namespace MediaWiki\Skins\Wiki7\Components;
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Html\Html;
+use MediaWiki\Language\Language;
 use MediaWiki\Title\MalformedTitleException;
 use MediaWiki\Title\Title;
+use MediaWiki\User\TempUser\TempUserConfig;
 use MediaWiki\User\User;
+use MediaWiki\User\UserGroupManager;
 use MessageLocalizer;
+use Wikimedia\Parsoid\Utils\DOMCompat;
+use Wikimedia\Parsoid\Utils\DOMUtils;
 
 /**
  * Wiki7ComponentUserInfo component
@@ -16,13 +21,13 @@ use MessageLocalizer;
 class Wiki7ComponentUserInfo implements Wiki7Component {
 
 	public function __construct(
-		private bool $isRegistered,
-		private bool $isTemp,
-		private MediaWikiServices $services,
-		private MessageLocalizer $localizer,
-		private Title $title,
-		private User $user,
-		private array $userPageData,
+		private readonly UserGroupManager $userGroupManager,
+		private readonly Language $lang,
+		private readonly MessageLocalizer $localizer,
+		private readonly Title $title,
+		private readonly User $user,
+		private readonly TempUserConfig $tempUserConfig,
+		private readonly array $userPageData,
 	) {
 	}
 
@@ -30,19 +35,42 @@ class Wiki7ComponentUserInfo implements Wiki7Component {
 	 * Get the user edit count
 	 */
 	private function getUserEditCount(): ?array {
-		// Return user edits
-		$edits = $this->services->getUserEditTracker()->getUserEditCount( $this->user );
+		$edits = $this->user->getEditCount();
 
-		if ( !$edits ) {
+		if ( $edits === null ) {
 			return null;
 		}
 
-		$edits = number_format( $edits, 0 );
-		$label = $this->localizer->msg( 'wiki7-sitestats-edits-label' )->text();
+		return [
+			'value' => number_format( $edits, 0 ),
+			'label' => $this->localizer->msg( 'wiki7-user-info-edits-label' )->text()
+		];
+	}
+
+	/**
+	 * Get the user registration date
+	 */
+	private function getUserRegistration(): ?array {
+		$timestamp = $this->user->getRegistration();
+
+		if ( $timestamp === false || $timestamp === null ) {
+			return null;
+		}
+
+		// Since this is not accessible by anon, we can use user language
+		$date = $this->lang->userDate( $timestamp, $this->user );
+		$html = Html::element(
+			'time',
+			[
+				'class' => 'wiki7-user-regdate',
+				'datetime' => wfTimestamp( TS_ISO_8601, $timestamp )
+			],
+			$date
+		);
 
 		return [
-			'count' => $edits,
-			'label' => $label
+			'value' => $html,
+			'label' => $this->localizer->msg( 'wiki7-user-info-joined-label' )->text()
 		];
 	}
 
@@ -50,7 +78,7 @@ class Wiki7ComponentUserInfo implements Wiki7Component {
 	 * Build the template data for the user groups
 	 */
 	private function getUserGroups(): ?array {
-		$groups = $this->services->getUserGroupManager()->getUserGroups( $this->user );
+		$groups = $this->userGroupManager->getUserGroups( $this->user );
 
 		if ( !$groups ) {
 			return null;
@@ -61,9 +89,10 @@ class Wiki7ComponentUserInfo implements Wiki7Component {
 		foreach ( $groups as $group ) {
 			$id = sprintf( $msgKey, $group );
 			$text = $this->localizer->msg( $id )->text();
+			$title = null;
 			try {
 				$title = $this->title->newFromTextThrow( $text, NS_PROJECT );
-			} catch ( MalformedTitleException $e ) {
+			} catch ( MalformedTitleException ) {
 				// ignore
 			}
 
@@ -94,19 +123,10 @@ class Wiki7ComponentUserInfo implements Wiki7Component {
 		$userPageData = $this->userPageData;
 
 		$htmlItems = $userPageData['html-items'];
-		$realname = htmlspecialchars( $user->getRealName(), ENT_QUOTES );
+		$realname = $user->getRealName();
 		if ( $realname !== '' ) {
-			$username = htmlspecialchars( $user->getName(), ENT_QUOTES );
-			$innerHtml = <<<HTML
-				<span id="pt-userpage-realname">$realname</span>
-				<span id="pt-userpage-username">$username</span>
-			HTML;
-			// Dirty but it works
-			$htmlItems = str_replace(
-				">" . $username . "<",
-				">" . $innerHtml . "<",
-				$userPageData['html-items']
-			);
+			$username = $user->getName();
+			$htmlItems = $this->replaceUsernameWithRealName( $htmlItems, $username, $realname );
 		}
 
 		$menu = new Wiki7ComponentMenu( [
@@ -120,27 +140,68 @@ class Wiki7ComponentUserInfo implements Wiki7Component {
 	}
 
 	/**
-	 * @inheritDoc
+	 * Replace the username text inside anchor elements with a real name + username span structure.
+	 * Uses DOM manipulation to handle HTML entity encoding correctly.
 	 */
+	private function replaceUsernameWithRealName( string $html, string $username, string $realname ): string {
+		$doc = DOMUtils::parseHTML( $html );
+		$body = DOMCompat::getBody( $doc );
+
+		foreach ( DOMCompat::querySelectorAll( $body, 'a' ) as $anchor ) {
+			foreach ( $anchor->childNodes as $child ) {
+				if ( $child->nodeType === XML_TEXT_NODE && $child->textContent === $username ) {
+					$realnameSpan = $doc->createElement( 'span' );
+					$realnameSpan->setAttribute( 'id', 'pt-userpage-realname' );
+					$realnameSpan->appendChild( $doc->createTextNode( $realname ) );
+
+					$usernameSpan = $doc->createElement( 'span' );
+					$usernameSpan->setAttribute( 'id', 'pt-userpage-username' );
+					$usernameSpan->appendChild( $doc->createTextNode( $username ) );
+
+					$anchor->replaceChild( $usernameSpan, $child );
+					$anchor->insertBefore( $realnameSpan, $usernameSpan );
+					$anchor->insertBefore( $doc->createTextNode( ' ' ), $usernameSpan );
+					break 2;
+				}
+			}
+		}
+
+		return DOMCompat::getInnerHTML( $body );
+	}
+
 	public function getTemplateData(): array {
 		$localizer = $this->localizer;
+		$user = $this->user;
 		$data = [];
 
-		if ( $this->isRegistered ) {
+		if ( $user->isRegistered() ) {
 			$data = [
 				'data-user-page' => $this->getUserPage(),
-				'data-user-edit' => $this->getUserEditCount()
+				'data-user-stats' => [
+					'array-stats-items' => [
+						$this->getUserEditCount(),
+						$this->getUserRegistration()
+					]
+				]
 			];
 
-			if ( $this->isTemp ) {
+			if ( $user->isTemp() ) {
 				$data['text'] = $localizer->msg( 'wiki7-user-info-text-temp' );
 			} else {
 				$data['data-user-groups'] = $this->getUserGroups();
 			}
 		} else {
+			// When an edit auto-creates a temporary account, the visitor's IP
+			// is not publicly exposed, so the IP-visibility warning would be
+			// inaccurate. Key on the 'edit' action specifically (rather than
+			// isEnabled()) since the message is about editing — a wiki could
+			// enable temp accounts for other actions only.
+			$anonText = $this->tempUserConfig->isAutoCreateAction( 'edit' )
+				? 'wiki7-user-info-text-anon-temp'
+				: 'wiki7-user-info-text-anon';
 			$data = [
 				'title' => $localizer->msg( 'notloggedin' ),
-				'text' => $localizer->msg( 'wiki7-user-info-text-anon' )
+				'text' => $localizer->msg( $anonText )
 			];
 		}
 

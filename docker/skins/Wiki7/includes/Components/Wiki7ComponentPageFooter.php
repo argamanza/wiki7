@@ -8,26 +8,29 @@ use MessageLocalizer;
 
 /**
  * Wiki7ComponentPageFooter component
- * FIXME: Need unit test
+ *
+ * Consumes $parentData['data-portlets']['data-footer-info'] (polyfilled
+ * by SkinWiki7::polyfillFooterPortlets() for MW 1.43–1.46 compatibility).
  */
 class Wiki7ComponentPageFooter implements Wiki7Component {
 
 	public function __construct(
-		private MessageLocalizer $localizer,
-		private array $footerData
+		private readonly MessageLocalizer $localizer,
+		private readonly array $footerData
 	) {
 	}
 
-	/**
-	 * @inheritDoc
-	 */
 	public function getTemplateData(): array {
 		$footerData = $this->footerData;
 
-		// Add label to footer-info to use in PageFooter
+		if ( !isset( $footerData['array-items'] ) ) {
+			return $footerData;
+		}
+
 		foreach ( $footerData['array-items'] as &$item ) {
-			$msgKey = 'wiki7-page-info-' . $item['name'];
-			$item['label'] = $this->localizer->msg( $msgKey )->text();
+			$name = $item['name'] ?? '';
+			$msg = $this->localizer->msg( 'wiki7-page-info-' . $name );
+			$item['label'] = $msg->exists() ? $msg->text() : ( $item['label'] ?? '' );
 		}
 
 		return $footerData;

@@ -48,11 +48,12 @@ module.exports = exports = defineComponent( {
 
 <style lang="less">
 @import 'mediawiki.skin.variables.less';
+@import '../mixins.less';
 
 .wiki7-command-palette-empty-state {
 	display: flex;
 	flex-direction: column;
-	gap: var( --space-xs );
+	gap: var( --space-sm );
 	align-items: center;
 	justify-content: center;
 	padding: var( --space-xxl ) var( --wiki7-command-palette-side-padding );
@@ -74,12 +75,12 @@ module.exports = exports = defineComponent( {
 	}
 
 	&__title {
-		font-weight: var( --font-weight-semi-bold );
+		.mixin-wiki7-font-styles( 'heading-4' );
 		color: var( --color-emphasized );
 	}
 
 	&__description {
-		font-size: var( --font-size-small );
+		.mixin-wiki7-font-styles( 'body' );
 		color: var( --color-subtle );
 	}
 }

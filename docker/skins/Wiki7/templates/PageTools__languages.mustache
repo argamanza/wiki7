@@ -3,10 +3,13 @@
 	object data-page-variants
 	bool is-uls-ready
 }}
-<div class="wiki7-page-languages page-actions__item wiki7-dropdown">
+<div
+	id="wiki7-page-languages-dropdown"
+	class="wiki7-page-languages wiki7-page-actions__item wiki7-dropdown"
+>
 	<details class="wiki7-dropdown-details">
 		<summary
-			class="wiki7-dropdown-summary {{#is-uls-ready}}mw-interlanguage-selector{{/is-uls-ready}}"
+			class="wiki7-dropdown-summary wiki7-cdx-button--size-large cdx-button cdx-button--fake-button cdx-button--fake-button--enabled cdx-button--weight-quiet cdx-button--icon-only {{#is-uls-ready}}mw-interlanguage-selector{{/is-uls-ready}}"
 			title="{{msg-wiki7-languages-toggle}}"
 			aria-details="wiki7-languages__card"
 			data-counter-text="{{int-language-count}}">
@@ -15,7 +18,6 @@
 		</summary>
 	</details>
 	<aside id="wiki7-languages__card" class="wiki7-menu__card">
-		<div class="wiki7-menu__card-backdrop"></div>
 		<div class="wiki7-menu__card-content">
 			{{#data-portlets.data-languages}}{{>Menu}}{{/data-portlets.data-languages}}
 			{{#data-portlets.data-variants}}{{>Menu}}{{/data-portlets.data-variants}}

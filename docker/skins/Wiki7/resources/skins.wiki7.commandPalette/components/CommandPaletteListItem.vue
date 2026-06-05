@@ -13,7 +13,6 @@ Partially based on the MenuItem component from Codex.
 		:class="rootClasses"
 		:data-type="type"
 		@mousedown.prevent="onMouseDown"
-		@click.prevent="onClick"
 	>
 		<command-palette-list-item-content
 			:label="label"
@@ -26,6 +25,9 @@ Partially based on the MenuItem component from Codex.
 			:search-query="searchQuery"
 			:url="url"
 			:highlight-query="highlightQuery"
+			:compact="compact"
+			:previewable="previewable"
+			@click="onClick"
 		></command-palette-list-item-content>
 		<command-palette-list-item-actions
 			ref="actionsRef"
@@ -33,9 +35,6 @@ Partially based on the MenuItem component from Codex.
 			:actions="actions"
 			:highlighted="highlighted"
 			@action="onAction"
-			@navigate-list="$emit( 'navigate-list', $event )"
-			@focus-action="$emit( 'focus-action', $event )"
-			@blur-actions="$emit( 'blur-actions' )"
 		></command-palette-list-item-actions>
 	</li>
 </template>
@@ -45,6 +44,7 @@ const { defineComponent, computed, ref } = require( 'vue' );
 // Import the new sub-components
 const CommandPaletteListItemContent = require( './CommandPaletteListItemContent.vue' );
 const CommandPaletteListItemActions = require( './CommandPaletteListItemActions.vue' );
+const { CommandPaletteItem } = require( '../types.js' );
 
 // @vue/component
 module.exports = exports = defineComponent( {
@@ -111,17 +111,22 @@ module.exports = exports = defineComponent( {
 			type: Boolean,
 			default: false
 		},
+		compact: {
+			type: Boolean,
+			default: false
+		},
 		source: {
 			type: String,
 			default: undefined
+		},
+		previewable: {
+			type: Boolean,
+			default: false
 		}
 	},
 	emits: [
 		'select',
 		'action',
-		'navigate-list',
-		'focus-action',
-		'blur-actions',
 		'change'
 	],
 	setup( props, { emit, expose } ) {
@@ -130,25 +135,45 @@ module.exports = exports = defineComponent( {
 
 		// --- Item Interaction Logic ---
 		const onMouseDown = ( e ) => {
+			// Prevents focus shifting from the input field
+			// and triggering blur on the command palette.
+			// Also used to set the item to 'active' visually.
 			if ( e.button === 0 ) {
 				emit( 'change', 'active', true );
 			}
 		};
 
-		const onClick = () => {
-			emit( 'select', {
-				id: props.id,
-				label: props.label,
-				url: props.url,
-				type: props.type,
-				value: props.value,
-				thumbnail: props.thumbnail,
-				thumbnailIcon: props.thumbnailIcon,
-				description: props.description,
-				metadata: props.metadata,
-				actions: props.actions,
-				source: props.source
-			} );
+		const onClick = ( event ) => {
+			// Modifier or non-primary clicks (Ctrl, Cmd, Alt, Shift,
+			// middle-click) signal "I want a different action than the
+			// row's default" — open in new tab, navigate fully past a
+			// preview gadget, etc. App-level select handler reads this
+			// to skip preview-keep-open behavior in that case.
+			const modifierClick = !!( event && (
+				event.button > 0 ||
+				event.ctrlKey ||
+				event.metaKey ||
+				event.altKey ||
+				event.shiftKey
+			) );
+			emit( 'select',
+				/** @type {CommandPaletteItem} */ ( {
+					id: props.id,
+					label: props.label,
+					url: props.url,
+					type: props.type,
+					value: props.value,
+					thumbnail: props.thumbnail,
+					thumbnailIcon: props.thumbnailIcon,
+					description: props.description,
+					metadata: props.metadata,
+					actions: props.actions,
+					source: props.source,
+					previewable: props.previewable,
+					isMouseClick: true,
+					modifierClick
+				} )
+			);
 		};
 
 		// --- Action Handling ---
@@ -171,7 +196,8 @@ module.exports = exports = defineComponent( {
 		// --- Expose Methods ---
 		expose( {
 			focusFirstButton: () => actionsRef.value?.focusFirstButton(),
-			focusLastButton: () => actionsRef.value?.focusLastButton()
+			focusButtonAtIndex: ( index ) => actionsRef.value?.focusButtonAtIndex?.( index ),
+			clickButtonAtIndex: ( index ) => actionsRef.value?.clickButtonAtIndex?.( index )
 		} );
 
 		return {
@@ -193,7 +219,7 @@ module.exports = exports = defineComponent( {
 <style lang="less">
 .wiki7-command-palette-list-item {
 	position: relative;
-	outline: none;
+	outline: 0;
 	list-style: none;
 
 	&--highlighted {

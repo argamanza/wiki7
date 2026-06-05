@@ -6,22 +6,14 @@
 	--border-color-base: #aaa !important;
 	--border-width-base: 1pt;
 	--border-width-thick: 2pt;
-	--font-size-base: 12pt;
-
-	&.wiki7-feature-custom-font-size-clientpref-small {
-		--font-size-base: 11pt;
-	}
-
-	&.wiki7-feature-custom-font-size-clientpref-large {
-		--font-size-base: 13pt;
-	}
 }
 
 // Hide unnessecary elements for printing
 .noprint,
 .wiki7-header,
 .wiki7-sitenotice-container,
-.page-actions,
+.wiki7-page-actions,
+.wiki7-sticky-header-container,
 #wiki7-page-header-sticky-sentinel,
 #wiki7-page-header-sticky-placeholder,
 .wiki7-page-footer,
@@ -43,7 +35,7 @@ svg {
 	break-inside: avoid;
 }
 
-/* HACK: Move footer to the top */
+// HACK: Move footer to the top
 .wiki7-page-container {
 	display: flex;
 	flex-direction: column;

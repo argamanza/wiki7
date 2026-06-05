@@ -17,42 +17,20 @@ use MessageLocalizer;
  */
 class CitizenComponentPageTools implements CitizenComponent {
 
+	/** @var string */
+	public const TOOLBOX_ID = 'p-tb';
+
 	public function __construct(
-		private Config $config,
-		private MessageLocalizer $localizer,
-		private Title $title,
-		private User $user,
-		private PermissionManager $permissionManager,
-		private int $numLanguages,
-		private array $sidebarData,
-		private array $languagesData,
-		private array $variantsData
+		private readonly Config $config,
+		private readonly MessageLocalizer $localizer,
+		private readonly Title $title,
+		private readonly User $user,
+		private readonly PermissionManager $permissionManager,
+		private readonly int $numLanguages,
+		private readonly array $pageToolsMenu,
+		private readonly array $languagesData,
+		private readonly array $variantsData
 	) {
-	}
-
-	/**
-	 * Extract article tools from sidebar and return the data
-	 *
-	 * The reason we do this is because:
-	 * 1. We removed some site-wide tools from the toolbar in Drawer.php,
-	 * 	  now we just want the leftovers
-	 * 2. Toolbox is not currently avaliable as data-portlet, have to wait
-	 *    till Desktop Improvements
-	 */
-	private function getArticleToolsData(): array {
-		$data = [
-			'is-empty' => true,
-		];
-
-		foreach ( $this->sidebarData['array-portlets-rest'] as $portlet ) {
-			if ( $portlet['id'] === 'p-tb' ) {
-				$data = $portlet;
-				$data['is-empty'] = false;
-				break;
-			}
-		}
-
-		return $data;
 	}
 
 	/**
@@ -75,12 +53,12 @@ class CitizenComponentPageTools implements CitizenComponent {
 		}
 
 		// Permission-based condition, return true if condition is met
-		if ( is_string( $condition ) && strpos( $condition, 'permission' ) === 0 ) {
+		if ( is_string( $condition ) && str_starts_with( $condition, 'permission' ) ) {
 			$permission = substr( $condition, 11 );
 			try {
 				$condition = $this->permissionManager->userCan(
 					$permission, $user, $this->title );
-			} catch ( Exception $e ) {
+			} catch ( Exception ) {
 				$condition = false;
 			}
 		}
@@ -88,14 +66,11 @@ class CitizenComponentPageTools implements CitizenComponent {
 		return (bool)$condition;
 	}
 
-	/**
-	 * @inheritDoc
-	 */
 	public function getTemplateData(): array {
 		$hasLanguages =
 			( $this->languagesData && $this->languagesData[ 'is-empty' ] !== true ) ||
 			( $this->variantsData && $this->variantsData[ 'is-empty' ] !== true );
-		$articleTools = $this->getArticleToolsData();
+		$articleTools = $this->pageToolsMenu;
 
 		return [
 			'data-article-tools' => $articleTools,
@@ -109,7 +84,18 @@ class CitizenComponentPageTools implements CitizenComponent {
 			 */
 			'is-uls-ready' => false,
 			'int-language-count' => $this->numLanguages,
-			'is-sharable' => $this->title->exists() && $this->title->isContentPage(),
+			'is-sharable' => $this->config->get( 'CitizenEnableShare' )
+				&& $this->title->exists()
+				&& $this->title->isContentPage(),
+			// The panel scaffolding renders for any mode that might use it
+			// at click time. 'native' skips it entirely; 'auto' and 'panel'
+			// both potentially mount Vue inside the dialog, so the dialog
+			// markup must be in the initial HTML.
+			'has-share-panel-markup' => in_array(
+				$this->config->get( 'CitizenShareMode' ),
+				[ 'auto', 'panel' ],
+				true
+			),
 			'msg-citizen-share' => $this->localizer->msg( "citizen-share" )->text()
 		];
 	}

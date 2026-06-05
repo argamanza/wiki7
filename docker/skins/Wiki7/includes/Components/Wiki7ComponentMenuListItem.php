@@ -10,15 +10,12 @@ namespace MediaWiki\Skins\Wiki7\Components;
 class Wiki7ComponentMenuListItem implements Wiki7Component {
 
 	public function __construct(
-		private Wiki7ComponentLink $link,
-		private string $class = '',
-		private string $id = ''
+		private readonly Wiki7ComponentLink $link,
+		private readonly string $class = '',
+		private readonly string $id = ''
 	) {
 	}
 
-	/**
-	 * @inheritDoc
-	 */
 	public function getTemplateData(): array {
 		return [
 			'array-links' => $this->link->getTemplateData(),

@@ -1,0 +1,38 @@
+{
+	"@metadata": {
+		"authors": [
+			"Amankel'dy",
+			"Batyrbek.kz",
+			"U.ayaao.p"
+		]
+	},
+	"wiki7-skin-desc": "Кеңейтімдерді біріктірілген тәжірибенің бір бөлігіне айналдыратын әдемі, қолдануға болатын, адаптивты MediaWiki скин. Бастапқыда [https://starwiki7.tools/ Star Wiki7 Wiki] үшін әзірленген.",
+	"wiki7-prefs-talkpage": "[[mw:Skin_talk:Wiki7|Талқылау]]",
+	"wiki7.css": "/* Мұндағы барлық CSS Wiki7 мұқабасы бар қатысушыларға жүктеледі */",
+	"wiki7.js": "/* Мұндағы барлық JavaScript Wiki7 мұқабасы бар қатысушыларға жүктеледі */",
+	"wiki7-drawer-toggle": "Мәзірді ашу",
+	"wiki7-usermenu-toggle": "Жеке мәзірді ашу",
+	"wiki7-search-toggle": "Іздеу",
+	"wiki7-languages-toggle": "Басқа тілдер",
+	"wiki7-actions-more-toggle": "Басқа әрекеттер",
+	"wiki7-sitestats-articles-label": "мақала",
+	"wiki7-sitestats-images-label": "файл",
+	"wiki7-sitestats-users-label": "қатысушы",
+	"wiki7-sitestats-edits-label": "өңдеу",
+	"wiki7-page-info-copyright": "Авторлық құқықтары қорғалған",
+	"wiki7-page-info-credits": "Авторлары",
+	"wiki7-page-info-lastmod": "Соңғы өзгертілген кезі",
+	"wiki7-footer-desc": "Осы мәтінді [[MediaWiki:Wiki7-footer-desc]] деген бетте өңдеңіз",
+	"wiki7-footer-tagline": "Осы мәтінді [[MediaWiki:Wiki7-footer-tagline]] деген бетте өңдеңіз",
+	"wiki7-action-addsection": "Тақырып қосу",
+	"wiki7-jumptotop": "Жоғары қайту",
+	"wiki7-search-empty-desc": "Іздей бастау үшін теріңіз",
+	"wiki7-search-noresults-title": "Ойбай! \"$1\" дегенге еш нәтиже таппадық",
+	"wiki7-tagline-ns-talk": "{{SUBJECTPAGENAME}} дегеннің талқылау беті",
+	"wiki7-tagline-ns-project": "{{SITENAME}} туралы мәлімет",
+	"wiki7-tagline-ns-file": "{{SITENAME}} жобасындағы файл",
+	"wiki7-tagline-ns-mediawiki": "MediaWiki интерфейс беті",
+	"wiki7-tagline-ns-template": "Үлгі беті",
+	"wiki7-tagline-ns-help": "Анықтама беті",
+	"wiki7-tagline-ns-category": "Санат беті"
+}

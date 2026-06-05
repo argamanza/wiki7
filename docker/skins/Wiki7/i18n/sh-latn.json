@@ -1,0 +1,28 @@
+{
+	"@metadata": {
+		"authors": [
+			"Aca",
+			"BadDog",
+			"Winston Sung"
+		]
+	},
+	"wiki7-prefs-talkpage": "[[mw:Skin_talk:Wiki7|Razgovor]]",
+	"wiki7-languages-toggle": "Više jezika",
+	"wiki7-actions-more-toggle": "Više mogućnosti",
+	"wiki7-sitestats-articles-label": "članaka",
+	"wiki7-sitestats-images-label": "datoteka",
+	"wiki7-sitestats-users-label": "korisnika",
+	"wiki7-sitestats-edits-label": "izmjena",
+	"wiki7-page-info-copyright": "Autorska prava",
+	"wiki7-page-info-credits": "Zasluge",
+	"wiki7-page-info-lastmod": "Posljednja promjena",
+	"wiki7-action-addsection": "Započni temu",
+	"wiki7-jumptotop": "Nazad na vrh",
+	"wiki7-tagline-ns-talk": "Stranica za razgovor {{SUBJECTPAGENAME}}",
+	"wiki7-tagline-ns-project": "Informacije o {{SITENAME}}",
+	"wiki7-tagline-ns-file": "Datoteke na {{SITENAME}}",
+	"wiki7-tagline-ns-mediawiki": "Stranica interfejsa MediaWiki",
+	"wiki7-tagline-ns-template": "Stranica šablona",
+	"wiki7-tagline-ns-help": "Stranica za pomoć",
+	"wiki7-tagline-ns-category": "Stranica kategorije"
+}

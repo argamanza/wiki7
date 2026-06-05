@@ -1,0 +1,155 @@
+<template>
+	<div
+		class="wiki7-preferences-radio"
+		:style="{ '--pref-columns': columns }"
+	>
+		<cdx-radio
+			v-for="option in options"
+			:key="option.value"
+			:model-value="modelValue"
+			:input-value="option.value"
+			:name="featureName"
+			@update:model-value="$emit( 'update:modelValue', $event )"
+		>
+			<span class="wiki7-preferences-card">
+				<span
+					v-if="option.colorScheme"
+					class="wiki7-preferences-card__preview
+						wiki7-preferences-card__preview--theme"
+					:style="{ colorScheme: option.colorScheme }"
+				>
+					<cdx-icon :icon="cdxIconAlignRight"></cdx-icon>
+				</span>
+				<span class="wiki7-preferences-card__label">{{ option.label }}</span>
+			</span>
+		</cdx-radio>
+	</div>
+</template>
+
+<script>
+const { defineComponent } = require( 'vue' );
+const { CdxIcon, CdxRadio } = mw.loader.require( 'skins.wiki7.preferences.codex' );
+const { cdxIconAlignRight } = require( './icons.json' );
+
+// @vue/component
+module.exports = exports = defineComponent( {
+	name: 'RadioGroup',
+	components: { CdxIcon, CdxRadio },
+	props: {
+		modelValue: {
+			type: String,
+			required: true
+		},
+		options: {
+			type: Array,
+			required: true
+		},
+		featureName: {
+			type: String,
+			required: true
+		},
+		columns: {
+			type: Number,
+			default: 2
+		}
+	},
+	emits: [ 'update:modelValue' ],
+	setup() {
+		return { cdxIconAlignRight };
+	}
+} );
+</script>
+
+<style lang="less">
+@import 'mediawiki.skin.variables.less';
+
+.wiki7-preferences-radio {
+	display: grid;
+	grid-template-columns: repeat( var( --pref-columns, 2 ), 1fr );
+	gap: var( --space-xxs );
+
+	// Make radios fill their grid cells evenly (width + height)
+	.cdx-radio,
+	.cdx-radio__wrapper,
+	.cdx-label,
+	.cdx-label__label {
+		width: 100%;
+		min-width: 0;
+		height: 100%;
+	}
+
+	.cdx-radio {
+		margin-bottom: 0;
+	}
+
+	// Visually hide the radio dot; keep input accessible for keyboard/screen readers
+	.cdx-radio__icon {
+		display: none;
+	}
+
+	// Reset Codex wrapper and label spacing for card layout
+	.cdx-radio__wrapper {
+		gap: 0;
+	}
+
+	.cdx-label {
+		padding: 0;
+	}
+}
+
+.wiki7-preferences-card {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+	cursor: pointer;
+	border: var( --border-width-thick ) solid var( --border-color-base );
+	border-radius: var( --border-radius-medium );
+	transition-duration: var( --transition-duration-base );
+	transition-property: border-color, background-color;
+
+	.cdx-radio:has( .cdx-radio__input:checked ) & {
+		background-color: var( --background-color-progressive-subtle );
+		border-color: var( --color-progressive );
+	}
+
+	.cdx-radio:has( .cdx-radio__input:focus-visible ) & {
+		outline: 2px solid var( --color-progressive );
+		outline-offset: 1px;
+	}
+
+	&__label {
+		padding: var( --space-xxs ) var( --space-xs );
+		font-size: var( --font-size-small );
+		color: var( --color-subtle );
+		text-align: center;
+
+		.cdx-radio:has( .cdx-radio__input:checked ) & {
+			font-weight: var( --font-weight-semi-bold );
+			color: var( --color-progressive );
+		}
+	}
+
+	&__preview {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		aspect-ratio: 3 / 2;
+		padding: var( --space-xs );
+		// `color-scheme` is set inline per option on theme previews —
+		// the inherited light-dark() tokens below resolve to whichever
+		// side matches the option's scheme, so each preview shows its
+		// own theme colors without class-swapping.
+		color: var( --color-base );
+		background-color: var( --color-surface-0 );
+		border-bottom: var( --border-subtle );
+
+		.cdx-icon {
+			width: 2rem;
+			height: 2rem;
+			color: inherit;
+		}
+	}
+}
+</style>

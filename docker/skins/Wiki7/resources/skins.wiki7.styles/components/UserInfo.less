@@ -1,7 +1,8 @@
 .wiki7-userInfo {
 	padding: var( --space-sm ) var( --space-md ) var( --space-md );
 	margin-bottom: var( --space-xs );
-	border-bottom: var( --border-width-base ) solid var( --border-color-base );
+	border-bottom: var( --border-subtle );
+	.mixin-wiki7-font-styles( 'small' );
 
 	&-title {
 		font-weight: var( --font-weight-medium );
@@ -11,8 +12,9 @@
 	#pt-userpage-2 > a,
 	#pt-tmpuserpage-2 > span {
 		padding-block: var( --space-xxs );
-		font-size: var( --font-size-medium );
+		font-weight: var( --font-weight-semi-bold );
 		color: var( --color-emphasized );
+		.mixin-wiki7-font-styles( 'heading-4' );
 	}
 
 	#pt-userpage-2 {
@@ -34,18 +36,11 @@
 	}
 
 	#pt-userpage-username {
-		font-size: var( --font-size-small );
 		color: var( --color-subtle );
 	}
 
 	&-text {
-		font-size: var( --font-size-small );
-		line-height: var( --line-height-xx-small );
 		color: var( --color-subtle );
-
-		+ .wiki7-userInfo-edits {
-			margin-top: var( --space-sm );
-		}
 	}
 
 	&-usergroups {
@@ -60,17 +55,27 @@
 		}
 	}
 
-	&-edits {
-		&-count {
-			font-size: 1.75rem;
-			font-weight: var( --font-weight-medium );
-			color: var( --color-emphasized );
-		}
+	&-stats {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var( --space-xs ) var( --space-lg );
+		margin-top: var( --space-sm );
 
-		&-label {
-			font-size: var( --font-size-small );
-			font-weight: var( --font-weight-medium );
-			color: var( --color-subtle );
+		&-item {
+			display: flex;
+			flex-direction: column;
+
+			&-value {
+				font-weight: var( --font-weight-medium );
+				color: var( --color-emphasized );
+				white-space: nowrap;
+				.mixin-wiki7-font-styles( 'body' );
+			}
+
+			&-label {
+				color: var( --color-subtle );
+				.mixin-wiki7-font-styles( 'overline' );
+			}
 		}
 	}
 }

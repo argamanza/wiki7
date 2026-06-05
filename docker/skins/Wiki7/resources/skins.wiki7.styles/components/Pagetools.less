@@ -1,7 +1,8 @@
-.page-actions {
+.wiki7-page-actions {
 	display: flex;
 	gap: var( --space-xxs );
 	align-items: center;
+	margin-inline-start: auto;
 
 	// TODO: Merge this with header__item
 	&__item {
@@ -10,16 +11,16 @@
 
 	.wiki7-menu {
 		&__card {
-			position: absolute;
 			right: ~'calc( var( --space-xs ) * -1 )'; // counteract margin
 			display: grid;
 			gap: var( --space-xs );
 			max-height: 60vh;
-			transform-origin: var( --transform-origin-offset-end ) var( --transform-origin-offset-end );
+			// Mobile toolbar sits at the bottom; card expands upward.
+			.mixin-wiki7-card-expand( up );
 
 			@media ( min-width: @min-width-breakpoint-desktop ) {
 				top: 100%;
-				transform-origin: var( --transform-origin-offset-end ) var( --transform-origin-offset-start );
+				.mixin-wiki7-card-expand( down );
 			}
 
 			&-content {
@@ -32,14 +33,6 @@
 		@media ( min-width: @min-width-breakpoint-desktop ) {
 			// Only attach dropdown menu to the button on desktop mode
 			position: relative;
-		}
-
-		&-summary {
-			display: grid;
-			place-items: center;
-			width: 2.5rem; // Same width as other buttons
-			height: 2.25rem; // Same height as other buttons
-			border-radius: var( --border-radius-medium );
 		}
 	}
 
@@ -56,14 +49,6 @@
 			padding-left: var( --space-sm );
 			font-size: 0;
 			border-radius: var( --border-radius-medium );
-
-			&:hover {
-				background-color: var( --background-color-button-quiet--hover );
-			}
-
-			&:active {
-				background-color: var( --background-color-button-quiet--active );
-			}
 		}
 	}
 
@@ -96,23 +81,6 @@
 	}
 }
 
-// Edit button
-#ca-edit,
-#ca-ve-edit {
-	> a {
-		color: var( --color-inverted-primary );
-		background-color: var( --color-progressive );
-
-		&:hover {
-			background-color: var( --color-progressive--hover );
-		}
-
-		&:active {
-			background-color: var( --color-progressive--active );
-		}
-	}
-}
-
 // VE styles shouldn't be core but it is just a few lines :/
 #ca-ve-edit {
 	order: 98; // Before source edit
@@ -125,7 +93,7 @@
 // Merge two buttons together
 .client-js .wiki7-ve-edit-merged {
 	// Additional check to check if there are actually source edit button (#929)
-	&#ca-ve-edit:has( + #ca-edit ) {
+	&#ca-ve-edit:has( + #ca-edit:not( .selected ) ) {
 		> a {
 			border-top-right-radius: 0;
 			border-bottom-right-radius: 0;
@@ -134,11 +102,11 @@
 
 	&#ca-edit {
 		margin-left: ~'calc( var( --space-xxs ) * -1 )';
-		border-left: var( --border-width-base ) solid var( --color-progressive--hover );
 
 		> a {
 			gap: 0;
 			font-size: 0; // hide edit source text
+			border-left: var( --border-subtle );
 			border-top-left-radius: 0;
 			border-bottom-left-radius: 0;
 		}
@@ -155,16 +123,16 @@
 
 // To avoid more menu from overflow in narrow screen
 @media ( max-width: @max-width-breakpoint-tablet ) {
-	.page-actions {
+	.wiki7-page-actions {
 		position: fixed;
 		right: 0;
-		bottom: ~'calc( var( --header-size ) + max( env( safe-area-inset-bottom ), var( --space-xs ) ) )';
+		bottom: ~'calc( var( --header-size-block-end ) + max( env( safe-area-inset-bottom ), var( --space-xs ) ) )';
 		height: var( --toolbar-size );
 		margin: var( --space-xs );
 		background: var( --color-surface-1 );
 		border: 1px solid var( --border-color-base );
 		border-radius: var( --border-radius-medium );
-		box-shadow: var( --box-shadow-drop-xx-large );
+		box-shadow: var( --box-shadow-large );
 
 		:not( .wiki7-menu__card ) .mw-list-item {
 			--size-icon: 1rem;
@@ -180,39 +148,26 @@
 
 		.wiki7-menu__card {
 			bottom: 100%;
-			/* Fix card width issue when the page tool bar is narrow */
-			width: max-content;
+			width: max-content; // Fix card width issue when the page tool bar is narrow
 		}
 	}
 
 	.wiki7-page-languages .wiki7-dropdown-summary::after {
-		// Blend with background
-		background: var( --color-surface-1 );
+		background: var( --color-surface-1 ); // Blend with background
 	}
 }
 
 @media ( min-width: @min-width-breakpoint-desktop ) {
-	.page-actions {
+	.wiki7-page-actions {
 		> .mw-portlet {
 			li > a {
 				gap: var( --space-xs );
-				font-size: var( --font-size-small );
+				font-size: inherit;
 			}
 		}
 
 		.wiki7-menu__card {
-			// Expand the width on narrow screens might overflow the page
-			white-space: nowrap;
-		}
-	}
-}
-
-// RTL fix for page actions menu opening animation
-.rtl {
-	.page-actions {
-		.wiki7-menu__card {
-			--transform-origin-offset-start: 0%;             // left
-			--transform-origin-offset-end: 0%;               // also left for transform-origin
+			white-space: nowrap; // Expand the width on narrow screens might overflow the page
 		}
 	}
 }

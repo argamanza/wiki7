@@ -1,0 +1,17 @@
+{
+	"@metadata": {
+		"authors": [
+			"J budissin"
+		]
+	},
+	"wiki7-languages-toggle": "Dalše rěče",
+	"wiki7-actions-more-toggle": "Dalše akcije",
+	"wiki7-sitestats-articles-label": "zapiski",
+	"wiki7-sitestats-images-label": "dataje",
+	"wiki7-sitestats-users-label": "wužiwarjo",
+	"wiki7-sitestats-edits-label": "změny",
+	"wiki7-page-info-copyright": "Awtorske prawo",
+	"wiki7-action-addsection": "Temu dodać",
+	"wiki7-jumptotop": "Wróćo k spočatkej",
+	"wiki7-tagline-ns-project": "Informacije wo {{SITENAME}}"
+}

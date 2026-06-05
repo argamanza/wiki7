@@ -12,18 +12,17 @@
 	max-width: max-content; // Needed for the border
 	margin: var( --space-md ) 0;
 	overflow-x: auto;
-	font-size: var( --font-size-small );
 	border-collapse: collapse;
 	border-color: var( --border-color-base );
 	border-radius: var( --border-radius-medium );
 	box-shadow: var( --box-shadow-border );
+	.mixin-citizen-font-styles( 'small' );
 
 	caption {
 		padding: var( --space-xs ) var( --space-sm );
-		font-size: var( --font-size-medium );
-		font-weight: var( --font-weight-semi-bold );
 		color: var( --color-emphasized );
 		text-align: start;
+		.mixin-citizen-font-styles( 'heading-4' );
 	}
 
 	tbody tr {
@@ -73,13 +72,13 @@
 		}
 	}
 
-	/* Add border separator between caption, tr, thead, tbody, tfoot */
+	// Add border separator between caption, tr, thead, tbody, tfoot
 	> :where( caption, tr, thead, tbody, tfoot ):not( [ hidden ] ) ~ :where( caption, tr, thead, tbody, tfoot ):not( [ hidden ] ),
 	> :where( thead, tbody, tfoot ) > :where( tr, thead, tbody, tfoot ):not( [ hidden ] ) ~ :where( tr, thead, tbody, tfoot ):not( [ hidden ] ) {
 		border-top: var( --border-width-base ) solid var( --border-color-base );
 	}
 
-	/* Reset border radius between thead tbody, tbody tfoot, etc. */
+	// Reset border radius between thead tbody, tbody tfoot, etc.
 	> :where( thead, tbody, tfoot ):has( + :where( thead, tbody, tfoot ):not( :empty ) ) {
 		tr:last-of-type {
 			th,

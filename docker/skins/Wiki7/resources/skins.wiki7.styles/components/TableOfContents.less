@@ -1,81 +1,73 @@
 .wiki7-toc {
-	--wiki7-toc-toggle-size: ~'calc( var( --font-size-small ) * var( --line-height-xx-small ) + var( --space-xs ) * 2 )';
-	font-size: var( --font-size-small );
-	line-height: var( --line-height-xx-small );
+	.mixin-wiki7-font-styles( 'small' );
 
-	&-top {
-		.wiki7-ui-icon {
-			transform: rotate( 90deg );
-		}
-	}
-
-	&-contents,
-	&-list {
+	&-contents {
+		position: relative;
 		margin: 0 0 0 var( --space-xs );
-		list-style: none;
 		border-left: var( --border-width-thick ) solid var( --border-color-base );
 
-		.wiki7-toc-link {
-			border-top-left-radius: 0;
-			border-bottom-left-radius: 0;
+		// Reset padding on the direct child list since indentation is only for sublists
+		> .wiki7-toc-list {
+			padding-left: 0;
 		}
 	}
 
-	&-link {
+	&-list {
 		position: relative;
+		width: 100%;
+		padding-left: var( --space-xs );
+		margin: 0;
+		list-style: none;
+	}
+
+	// Use .wiki7-toc .wiki7-toc-link to beat Codex .cdx-button specificity
+	.wiki7-toc-link {
 		display: flex;
+		flex-grow: 1;
 		gap: var( --space-xs );
-		padding: var( --space-xs );
+		align-items: center;
+		justify-content: normal;
+		max-width: none;
+		font-size: inherit; // unset CdxButton font-size
 		font-weight: var( --font-weight-medium );
-		color: var( --color-base );
-		border-radius: var( --border-radius-base );
+		text-wrap: auto; // unset CdxButton text-wrap
+		border-top-left-radius: 0;
+		border-bottom-left-radius: 0;
 
-		.wiki7-toc &.wiki7-toc-top {
+		&.wiki7-toc-top {
 			height: 0;
-			padding-block: 0;
+			min-height: 0;
+			padding: 0;
+			overflow: hidden;
 			opacity: 0;
-			transition-property: opacity, height;
-		}
-
-		&:has( + .wiki7-toc-toggle ) {
-			/* Make space for toggle */
-			margin-right: var( --wiki7-toc-toggle-size );
-		}
-
-		&:hover {
-			background-color: var( --background-color-button-quiet--hover );
-		}
-
-		&:active {
-			background-color: var( --background-color-button-quiet--active );
-		}
-
-		&:hover,
-		&:focus {
-			text-decoration: none;
+			transition-timing-function: var( --transition-timing-function-ease-out );
+			transition-duration: var( --transition-duration-medium );
+			transition-property: opacity, height, padding;
 		}
 	}
 
-	&-toggle {
-		position: absolute;
-		top: 0;
-		right: 0;
+	// Use .wiki7-toc .wiki7-toc-toggle to beat Codex .cdx-button specificity
+	.wiki7-toc-toggle {
 		display: none;
-		width: var( --wiki7-toc-toggle-size );
-		height: var( --wiki7-toc-toggle-size );
 		padding: 0;
-		background: transparent;
 	}
 
 	&-indicator {
 		position: absolute;
 		top: 0;
-		bottom: 0;
 		left: 0;
-		flex-shrink: 0;
+		z-index: 1;
 		width: var( --border-width-thick );
-		margin-block: var( --space-xs );
+		height: var( --indicator-unit-height, 2rem );
 		margin-left: ~'calc( var( --border-width-thick ) * -1 )';
+		background-color: var( --color-progressive );
+		border-radius: var( --border-width-thick );
+		// Use transform for GPU-composited animation instead of top/height
+		transform: translateY( var( --indicator-top, 0 ) ) scaleY( var( --indicator-scale, 0 ) );
+		transform-origin: top center;
+		transition-timing-function: var( --transition-timing-function-ease-out );
+		transition-duration: var( --transition-duration-medium );
+		transition-property: transform;
 	}
 
 	&-text {
@@ -89,41 +81,35 @@
 	}
 
 	&-summary {
-		font-size: var( --font-size-x-small );
 		color: var( --color-subtle );
 	}
 
 	&-list-item {
 		position: relative;
+		display: flex;
+		flex-wrap: wrap;
+	}
 
-		&--active {
-			> .wiki7-toc-link {
-				color: var( --color-progressive );
-
-				.wiki7-toc-indicator {
-					background-color: var( --color-progressive );
-				}
-			}
-		}
+	// Scoped under .wiki7-toc for (0,3,0) specificity to beat Codex .cdx-button color
+	.wiki7-toc-list-item--active > .wiki7-toc-link {
+		color: var( --color-progressive );
 	}
 }
 
-// Collapse ToC sections by default, excluding no-js
-.client-js .wiki7-toc {
+// Collapse ToC sections when enabled via Wiki7TableOfContentsCollapseAtCount, excluding no-js
+.client-js .wiki7-toc--collapse-enabled {
 	.wiki7-toc-level-1 .wiki7-toc-list-item {
 		display: none;
 	}
 
 	.wiki7-toc-level-1.wiki7-toc-list-item--expanded .wiki7-toc-list-item {
-		display: block;
+		display: flex;
 	}
 
 	.wiki7-toc-toggle {
 		--size-icon: var( --font-size-x-small );
 		display: grid;
 		place-content: center;
-		cursor: pointer;
-		border-radius: var( --border-radius-base );
 
 		.wiki7-ui-icon {
 			&::before {
@@ -131,14 +117,6 @@
 				transition: var( --transition-hover );
 				transition-property: transform;
 			}
-		}
-
-		&:hover {
-			background-color: var( --background-color-button-quiet--hover );
-		}
-
-		&:active {
-			background-color: var( --background-color-button-quiet--active );
 		}
 	}
 
@@ -149,9 +127,10 @@
 
 // Sticky header styles
 .wiki7-sticky-header-visible {
-	.wiki7-toc-top.wiki7-toc-link {
+	.wiki7-toc .wiki7-toc-top.wiki7-toc-link {
 		height: 2rem; // 1rem text + 1rem padding
 		padding-block: var( --space-xs );
+		overflow: visible;
 		opacity: 1;
 	}
 }
@@ -159,13 +138,12 @@
 @media ( max-width: ( @max-width-breakpoint-tablet ) ) {
 	.wiki7-toc {
 		position: fixed;
-		bottom: ~'calc( var( --header-size ) + max( env( safe-area-inset-bottom ), var( --space-xs ) ) )';
+		bottom: ~'calc( var( --header-size-block-end ) + max( env( safe-area-inset-bottom ), var( --space-xs ) ) )';
 		left: 0;
 		z-index: @z-index-sticky; // Keep ToC above sticky header and page action, but below site header
 		pointer-events: none; // HACK: Make background clickable
 
 		&-card {
-			position: absolute;
 			// Get consistent margin
 			bottom: ~'calc( 100% - var( --space-xs ) )';
 			width: max-content;
@@ -173,7 +151,8 @@
 			// in extremely short height. but it should be good for now
 			max-height: ~'calc( var( --header-card-maxheight ) - 8rem )';
 			padding: var( --space-xs );
-			transform-origin: var( --transform-origin-offset-start ) var( --transform-origin-offset-end );
+			// Floating button at the bottom; card expands upward.
+			.mixin-wiki7-card-expand( up );
 		}
 
 		.wiki7-dropdown {
@@ -188,7 +167,7 @@
 				background-color: var( --color-surface-1 );
 				border: 1px solid var( --border-color-base );
 				border-radius: var( --border-radius-medium );
-				box-shadow: var( --box-shadow-drop-xx-large );
+				box-shadow: var( --box-shadow-large );
 
 				// The hover state colors are not great but it will do for now
 				&:hover {
@@ -217,27 +196,27 @@
 	.wiki7-toc {
 		position: -webkit-sticky;
 		position: sticky;
-		top: var( --height-sticky-header );
-		max-height: ~'calc( 100vh - var( --height-sticky-header ) )';
+		top: var( --header-offset-block-start );
+		max-height: ~'calc( 100vh - var( --header-offset-block-start ) )';
 		padding: var( --space-xs ) 0;
 		overflow-y: auto;
 		overscroll-behavior: contain;
 
 		.wiki7-menu__card {
+			position: relative;
 			min-width: auto;
 			margin: 0;
+			contain: none;
+			content-visibility: visible;
 			background: transparent;
 			border: 0;
 			border-radius: 0;
 			box-shadow: none;
+			clip-path: none;
 			transform: none;
-			content-visibility: visible;
-
-			.wiki7-menu__card-backdrop {
-				display: none;
-			}
 
 			.wiki7-menu__card-content {
+				overflow: visible;
 				opacity: 1;
 			}
 

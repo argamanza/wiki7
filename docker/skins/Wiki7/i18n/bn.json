@@ -1,0 +1,42 @@
+{
+	"@metadata": {
+		"authors": [
+			"Nokib Sarkar",
+			"R4356th",
+			"San1joy23",
+			"আফতাবুজ্জামান",
+			"খাত্তাব হাসান"
+		]
+	},
+	"skinname-wiki7": "সিটিজেন",
+	"wiki7-skin-desc": "একটি সুন্দর, ব্যবহারযোগ্য, প্রতিক্রিয়াশীল মিডিয়াউইকি স্কিন যা এক্সটেনশনগুলিকে সমন্বিত অভিজ্ঞতার অংশ করে তোলে। প্রাথমিকভাবে [https://starwiki7.tools/ Star Wiki7 Wiki] এর জন্য তৈরি করা হয়েছে।",
+	"wiki7-prefs-talkpage": "[[mw:Skin_talk:Wiki7|আলোচনা]]",
+	"wiki7.css": "/* এখানের সমস্ত সিএসএস সিটিজেন স্কিন ব্যবহারকারীদের জন্য লোড হবে */",
+	"wiki7.js": "/* এখানের সকল জাভাস্ক্রিপ্ট সিটিজেন আবরণের ব্যবহারকারীদের জন্য লোড হবে */",
+	"wiki7-drawer-toggle": "মেনু খুলুন",
+	"wiki7-usermenu-toggle": "ব্যক্তিগত মেনু খুলুন",
+	"wiki7-search-toggle": "অনুসন্ধান খুলুন",
+	"wiki7-languages-toggle": "আরও ভাষা",
+	"wiki7-actions-more-toggle": "আরও কার্য",
+	"wiki7-sitestats-articles-label": "টি নিবন্ধ",
+	"wiki7-sitestats-images-label": "টি ফাইল",
+	"wiki7-sitestats-users-label": "জন ব্যবহারকারী",
+	"wiki7-sitestats-edits-label": "টি সম্পাদনা",
+	"wiki7-page-info-copyright": "কপিরাইট",
+	"wiki7-page-info-credits": "কৃতিত্ব",
+	"wiki7-page-info-lastmod": "সর্বশেষ পরিবর্তন",
+	"wiki7-footer-desc": "[[MediaWiki:Wiki7-footer-desc]]-এ এই লেখা সম্পাদনা করুন",
+	"wiki7-footer-tagline": "[[MediaWiki:Wiki7-footer-tagline]]-এ এই লেখা সম্পাদনা করুন",
+	"wiki7-action-addsection": "আলোচনা যোগ করুন",
+	"wiki7-jumptotop": "উপরে চলুন",
+	"wiki7-search-empty-desc": "অনুসন্ধান শুরু করতে কিছু লিখুন",
+	"wiki7-search-noresults-title": "আহ! দুঃখিত, এই $1 এর জন্য কোনো ফলাফল নেই",
+	"wiki7-tagline-ns-talk": "{{SUBJECTPAGENAME}}-এর আলোচনা পৃষ্ঠা",
+	"wiki7-tagline-ns-project": "{{SITENAME}} সম্পর্কে তথ্য",
+	"wiki7-tagline-ns-file": "{{SITENAME}}-এ ফাইল",
+	"wiki7-tagline-ns-mediawiki": "মিডিয়াউইকি ইন্টারফেস পাতা",
+	"wiki7-tagline-ns-template": "টেমপ্লেট পাতা",
+	"wiki7-tagline-ns-help": "সাহায্য পাতা",
+	"wiki7-tagline-ns-category": "বিষয়শ্রেণীর পাতা",
+	"wiki7-tagline-user-regdate": "যোগদান করেছেন $1"
+}

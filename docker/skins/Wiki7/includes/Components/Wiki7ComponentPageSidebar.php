@@ -4,90 +4,61 @@ declare( strict_types=1 );
 
 namespace MediaWiki\Skins\Wiki7\Components;
 
-use MediaWiki\Language\Language;
-use MediaWiki\Output\OutputPage;
-use MediaWiki\StubObject\StubUserLang;
 use MediaWiki\Title\Title;
-use MediaWiki\User\UserIdentity;
 use MessageLocalizer;
 
 /**
  * Wiki7ComponentPageSidebar component
- * FIXME: Need unit test
  */
 class Wiki7ComponentPageSidebar implements Wiki7Component {
 
 	public function __construct(
-		private MessageLocalizer $localizer,
-		private OutputPage $out,
-		private Language|StubUserLang $pageLang,
-		private Title $title,
-		private UserIdentity $user
+		private readonly MessageLocalizer $localizer,
+		private readonly Title $title,
+		private readonly array $lastModifiedData
 	) {
 	}
 
-	/**
-	 * Get the last modified data
-	 * TODO: Use core instead when update to MW 1.43
-	 */
 	private function getLastModData(): array {
-		$timestamp = $this->out->getRevisionTimestamp();
+		$lastModifiedData = $this->lastModifiedData;
+		$timestamp = $this->lastModifiedData['timestamp'];
 
-		if ( !$timestamp ) {
+		if ( $timestamp === null ) {
 			return [];
 		}
 
-		$localizer = $this->localizer;
-		$pageLang = $this->pageLang;
-		$title = $this->title;
-		$user = $this->user;
-
-		$d = $pageLang->userDate( $timestamp, $user );
-		$t = $pageLang->userTime( $timestamp, $user );
-		$s = $localizer->msg( 'lastmodifiedat', $d, $t );
-
-		// FIXME: Use Wiki7ComponentMenuListItem
-		$items = [
-			'item-id' => 'lm-time',
-			'item-class' => 'mw-list-item',
-			'array-links' => [
-				'array-attributes' => [
-					[
-						'key' => 'id',
-						'value' => 'wiki7-lastmod-relative'
+		return [
+			'id' => 'wiki7-sidebar-lastmod',
+			'label' => $this->localizer->msg( 'wiki7-page-info-lastmod' ),
+			'array-list-items' => [
+				'item-id' => 'lm-time',
+				'item-class' => 'mw-list-item',
+				'array-links' => [
+					'array-attributes' => [
+						[
+							'key' => 'id',
+							'value' => 'wiki7-lastmod-relative'
+						],
+						[
+							'key' => 'href',
+							'value' => $this->title->getLocalURL( [ 'diff' => '' ] )
+						],
+						[
+							'key' => 'title',
+							'value' => trim( $lastModifiedData['text'] )
+						],
+						[
+							'key' => 'data-timestamp',
+							'value' => wfTimestamp( TS_UNIX, $lastModifiedData['timestamp'] )
+						]
 					],
-					[
-						'key' => 'href',
-						'value' => $title->getLocalURL( [ 'diff' => '' ] )
-					],
-					[
-						'key' => 'title',
-						'value' => $s
-					],
-					[
-						'key' => 'data-timestamp',
-						'value' => wfTimestamp( TS_UNIX, $timestamp )
-					]
-				],
-				'icon' => 'history',
-				'text' => $d
+					'icon' => 'history',
+					'text' => $lastModifiedData['date']
+				]
 			]
 		];
-
-		$menu = new Wiki7ComponentMenu(
-			[
-				'id' => 'wiki7-sidebar-lastmod',
-				'label' => $localizer->msg( 'wiki7-page-info-lastmod' ),
-				'array-list-items' => $items
-			]
-		);
-
-		return $menu->getTemplateData();
 	}
 
-	/**
-	 * @inheritDoc
-	 */
 	public function getTemplateData(): array {
 		return [
 			'data-page-sidebar-lastmod' => $this->getLastModData()

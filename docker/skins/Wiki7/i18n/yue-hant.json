@@ -1,0 +1,36 @@
+{
+	"@metadata": {
+		"authors": [
+			"JeffreyKim",
+			"Winston Sung"
+		]
+	},
+	"skinname-wiki7": "公民 （Wiki7）",
+	"wiki7-skin-desc": "為星際公民而開發嘅響應式外觀",
+	"wiki7-prefs-talkpage": "[[mw:Skin_talk:Wiki7|討論]]",
+	"wiki7.css": "/* 呢度放置嘅CSS會影響所有使用Wiki7外觀嘅用戶 */",
+	"wiki7.js": "/* 響每一次個頁面載入時，用 Wiki7 畫面嘅用戶都會載入呢度任何嘅JavaScript */",
+	"wiki7-drawer-toggle": "切換選單",
+	"wiki7-usermenu-toggle": "切換個人選單",
+	"wiki7-search-toggle": "切換搜尋",
+	"wiki7-languages-toggle": "多啲語言",
+	"wiki7-actions-more-toggle": "版嘅動作",
+	"wiki7-sitestats-articles-label": "篇文章",
+	"wiki7-sitestats-images-label": "份檔",
+	"wiki7-sitestats-users-label": "位用戶",
+	"wiki7-sitestats-edits-label": "次修改",
+	"wiki7-page-info-copyright": "版權",
+	"wiki7-page-info-lastmod": "上次修改",
+	"wiki7-footer-desc": "喺[[MediaWiki:Wiki7-footer-desc]]喥改",
+	"wiki7-footer-tagline": "喺[[MediaWiki:Wiki7-footer-tagline]]喥改",
+	"wiki7-action-addsection": "加主題",
+	"wiki7-jumptotop": "返到上面",
+	"wiki7-search-empty-desc": "打字開始搵",
+	"wiki7-tagline-ns-talk": "{{SUBJECTPAGENAME}}嘅討論頁",
+	"wiki7-tagline-ns-project": "關於{{SITENAME}}嘅資料",
+	"wiki7-tagline-ns-file": "喺{{SITENAME}}嘅檔案",
+	"wiki7-tagline-ns-mediawiki": "MediaWiki嘅介面頁",
+	"wiki7-tagline-ns-template": "模組頁",
+	"wiki7-tagline-ns-help": "幫手頁",
+	"wiki7-tagline-ns-category": "分類頁"
+}
