@@ -170,14 +170,19 @@ if ( getenv('WIKI_ENV') === 'production' ) {
     if (getenv('S3_BUCKET_NAME')) {
         # Load AWS extension
         wfLoadExtension( 'AWS' );
-        
-        # Configure AWS extension
-        $wgAWSCredentials = [
-            'key'    => getenv('AWS_ACCESS_KEY_ID'),
-            'secret' => getenv('AWS_SECRET_ACCESS_KEY'),
-            'token'  => false
-        ];
-        
+
+        # Credentials come from the EC2 instance role via IMDSv2 (no explicit $wgAWSCredentials).
+        # The AWS SDK PHP credential provider chain auto-discovers in this order:
+        #   ECS task role → EC2 instance metadata → env vars → ~/.aws/credentials
+        # Override only if explicit access keys are present in the environment (e.g. local dev).
+        if (getenv('AWS_ACCESS_KEY_ID') && getenv('AWS_SECRET_ACCESS_KEY')) {
+            $wgAWSCredentials = [
+                'key'    => getenv('AWS_ACCESS_KEY_ID'),
+                'secret' => getenv('AWS_SECRET_ACCESS_KEY'),
+                'token'  => false,
+            ];
+        }
+
         # S3 configuration
         $wgAWSRegion = 'il-central-1';
         $wgAWSBucketName = getenv('S3_BUCKET_NAME');
