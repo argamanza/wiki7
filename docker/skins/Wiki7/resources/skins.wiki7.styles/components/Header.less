@@ -20,40 +20,39 @@
 	border-inline-start-width: var( --header-border-inline-start-width );
 	border-inline-end-width: var( --header-border-inline-end-width );
 
-	// Search/drawer toggle buttons (inline SVG via currentColor)
-	> .wiki7-search > .wiki7-dropdown-details > .wiki7-dropdown-summary,
-	> .wiki7-drawer > .wiki7-dropdown-details > .wiki7-dropdown-summary {
-		// White by default for visibility on the red bar
+	// All rail dropdown toggles (search, drawer, Preferences, UserMenu,
+	// Notifications) share one treatment so the rail feels consistent:
+	//   - white icons by default for visibility on the red bar
+	//   - bright near-white hover/active button bg
+	//   - icon flips to brand red on hover and on details[open] so it
+	//     stays readable against the bright bg
+	// The Wiki7 logo is excluded — IconAnimation.less keeps it transparent
+	// so the home-icon overlay only shows on logo hover.
+	.wiki7-dropdown-summary {
 		color: white;
-		// Brighter, semi-opaque hover/active background that reads on red
 		--background-color-button-quiet--hover: ~'oklch( 92% 0.04 var( --color-progressive-oklch__h ) / 0.9 )';
 		--background-color-button-quiet--active: ~'oklch( 96% 0.02 var( --color-progressive-oklch__h ) / 0.95 )';
 
-		// Flip icon to brand red on hover so it stays visible against the
-		// near-white hover background.
+		.wiki7-ui-icon {
+			color: white;
+		}
+
 		&:hover {
 			color: var( --color-progressive );
+
+			.wiki7-ui-icon {
+				color: var( --color-progressive );
+			}
 		}
 	}
 
-	// Open (active) dropdown summaries: details[open] > summary — the close-X
-	// state. Flip icon to brand red on the bright hover bg.
-	> .wiki7-search > .wiki7-dropdown-details[ open ] > .wiki7-dropdown-summary,
-	> .wiki7-drawer > .wiki7-dropdown-details[ open ] > .wiki7-dropdown-summary {
+	.wiki7-dropdown-details[ open ] > .wiki7-dropdown-summary {
 		color: var( --color-progressive );
 		background-color: var( --background-color-button-quiet--active );
-	}
 
-	// Codex-button icons (Preferences, UserMenu, Notifications) in the rail —
-	// exclude the logo so IconAnimation's transparent-by-default home-icon
-	// overlay continues to work (otherwise the home icon shows behind the logo).
-	> :not( .wiki7-header__logo ) .cdx-button .wiki7-ui-icon {
-		color: white;
-	}
-
-	> :not( .wiki7-header__logo ) .cdx-button:hover .wiki7-ui-icon,
-	> :not( .wiki7-header__logo ) .wiki7-dropdown-details[ open ] .cdx-button .wiki7-ui-icon {
-		color: var( --color-progressive );
+		.wiki7-ui-icon {
+			color: var( --color-progressive );
+		}
 	}
 
 	&__item {
