@@ -130,17 +130,33 @@
 	}
 }
 
-// Brand-red hover on main drawer menu items
+// Drawer main-menu: subtle bg-and-text hover (mirrors the social-links
+// pattern in Drawer.less) on inactive rows, plus a brand-red "you are here"
+// state on the row matching the current page. Hover stays soft so the active
+// state reads as a deliberate "where am I" indicator rather than competing
+// with hover affordances.
 .wiki7-main-menu {
-	.mw-list-item a {
+	.mw-list-item:not( .mw-list-item-active ) > a {
+		transition-property: opacity, color, background-color;
+
+		&:hover {
+			color: var( --color-emphasized );
+		}
+	}
+
+	.mw-list-item-active > a {
+		color: white;
+		background-color: var( --color-progressive );
+
+		span,
+		kbd,
+		.wiki7-ui-icon {
+			color: white;
+		}
+
 		&:hover {
 			color: white;
-			background-color: var( --color-progressive );
-
-			span,
-			kbd {
-				color: white;
-			}
+			background-color: var( --color-progressive--hover );
 		}
 	}
 }

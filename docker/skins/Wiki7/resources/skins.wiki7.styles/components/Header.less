@@ -20,16 +20,6 @@
 	border-inline-start-width: var( --header-border-inline-start-width );
 	border-inline-end-width: var( --header-border-inline-end-width );
 
-	// Reset the bright-bg button overrides inside drawer/menu cards so menu
-	// items keep the normal (surface-tinted) hover instead of a near-white bg
-	// that would render white-on-white against white-set menu text/icons.
-	.wiki7-menu__card {
-		--background-color-button-quiet--hover: var( --color-surface-2--hover );
-		--background-color-button-quiet--active: var( --color-surface-2--active );
-		--background-color-button-quiet-menu--hover: var( --color-surface-2--hover );
-		--background-color-button-quiet-menu--active: var( --color-surface-2--active );
-	}
-
 	// Search/drawer toggle buttons (inline SVG via currentColor)
 	> .wiki7-search > .wiki7-dropdown-details > .wiki7-dropdown-summary,
 	> .wiki7-drawer > .wiki7-dropdown-details > .wiki7-dropdown-summary {

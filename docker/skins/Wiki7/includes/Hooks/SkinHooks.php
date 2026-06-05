@@ -138,6 +138,44 @@ class SkinHooks implements
 		if ( isset( $sidebar['TOOLBOX'] ) ) {
 			self::updateToolboxMenu( $sidebar );
 		}
+
+		self::markActiveSidebarItem( $skin, $sidebar );
+	}
+
+	/**
+	 * Adds a `mw-list-item-active` CSS class to the sidebar item whose link
+	 * points at the current page, so the Wiki7 skin can paint the
+	 * "you are here" state from CSS.
+	 *
+	 * @param Skin $skin
+	 * @param array &$sidebar
+	 */
+	private static function markActiveSidebarItem( Skin $skin, array &$sidebar ): void {
+		$title = $skin->getTitle();
+		if ( !$title ) {
+			return;
+		}
+		$currentUrl = $title->getLocalURL();
+		$isMainPage = $title->isMainPage();
+
+		foreach ( $sidebar as &$items ) {
+			if ( !is_array( $items ) ) {
+				continue;
+			}
+			foreach ( $items as &$item ) {
+				if ( !is_array( $item ) || !isset( $item['href'] ) ) {
+					continue;
+				}
+				$isActive = ( $isMainPage && ( $item['id'] ?? '' ) === 'n-mainpage' )
+					|| $item['href'] === $currentUrl;
+				if ( !$isActive ) {
+					continue;
+				}
+				$item['class'] = trim( ( $item['class'] ?? '' ) . ' mw-list-item-active' );
+			}
+			unset( $item );
+		}
+		unset( $items );
 	}
 
 	/**
