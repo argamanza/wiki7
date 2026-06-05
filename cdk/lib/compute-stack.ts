@@ -11,6 +11,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import { DockerImageAsset } from 'aws-cdk-lib/aws-ecr-assets';
 
@@ -74,6 +75,17 @@ export class ComputeStack extends Construct {
           expiredObjectDeleteMarker: true,
         },
       ],
+    });
+
+    // Sync the docker/assets/ directory (logos, future static brand assets) into the bucket
+    // on every deploy. Replaces the old hand-rolled `aws s3 sync` postdeploy script.
+    new s3deploy.BucketDeployment(this, 'DeployAssets', {
+      sources: [s3deploy.Source.asset(path.join(__dirname, '../../docker/assets'))],
+      destinationBucket: this.mediawikiStorageBucket,
+      destinationKeyPrefix: 'assets',
+      // Don't blow away uploads or other prefixes — only manage what we ship from docker/assets.
+      prune: false,
+      cacheControl: [s3deploy.CacheControl.fromString('public, max-age=86400')],
     });
 
     // Seed the bucket with `images/` and `assets/` prefixes the AWS S3 ext expects.
