@@ -2,7 +2,8 @@
 
 > **Purpose:** when (not if) we re-fork the Wiki7 skin from a newer Citizen release,
 > this is the inventory of what makes Wiki7 *Wiki7* on top of Citizen, the recipe for
-> applying those deltas cleanly, and the gotchas that ate hours in the 3.1.0 → 3.17.0
+> applying those deltas cleanly, and the gotchas (eight from the 3.1.0 → 3.17.0
+> re-fork + a 9th found in production after Phase 2 launch on 2026-06-06) that ate hours in the 3.1.0 → 3.17.0
 > re-fork on 2026-06-05.
 
 Wiki7 is a verbatim rename-fork of [Citizen](https://github.com/StarCitizenTools/mediawiki-skins-Citizen)
@@ -246,7 +247,47 @@ and silently matched zero elements.
 **Use:** explicit sibling rule with `[open]` in the desired position
 (`.wiki7-dropdown-details[open] > .wiki7-dropdown-summary`), not nested `&`.
 
-### 8. MW 1.45 is **not** the current LTS
+### 8a. Lazy-loaded Codex modules need the `.cdx-button` chain on idle-state rules too
+
+Discovered in production after Phase 2 launch (2026-06-06). The base/idle-state
+rule in `Header.less` —
+
+```less
+.wiki7-header .wiki7-dropdown-summary {  // specificity (0,2,0)
+    color: white;
+    ...
+}
+```
+
+— wins the cascade on first paint but is **overridden the moment a user hovers
+the search button**: `commandPalette.js` calls `bindIntentPrefetch` on the
+search summary, which on first `pointerenter`/`focus`/`touchstart` fires
+`mw.loader.load('skins.wiki7.commandPalette')`. That module's CSS, injected
+later as a runtime `<style>` block, contains Codex's
+`.cdx-button:enabled, .cdx-button.cdx-button--fake-button--enabled { color: ... }`
+at the same `(0,2,0)` specificity. Same specificity + later source = injected
+wins. Symptom: hovering search recolors **every** rail cdx-button (search *and*
+menu, because the injected rule isn't scoped) and the change persists for the
+session because the stylesheet stays loaded.
+
+This is gotcha #1's twin — same `.cdx-button` chain, just on the idle rule
+instead of `[open]`.
+
+**Fix:** chain `.cdx-button` to bump to `(0,3,0)`:
+
+```less
+.wiki7-header .wiki7-dropdown-summary.cdx-button {  // (0,3,0) — survives lazy load
+    color: white;
+    ...
+}
+```
+
+**General rule:** any rail rule whose color/background matters at the "base"
+state must use the `.cdx-button` chain, not just the `[open]` state, because
+intent-prefetch on the search/preferences/notifications/share summaries can
+inject Codex's CdxButton base styles at any point during the session.
+
+### 8b. MW 1.45 is **not** the current LTS
 
 We pinned MW 1.45.3 because the goal was "modernize first, do PHP 8.2+/Codex
 breaking changes once." But 1.45 security support ends **December 2026** —
