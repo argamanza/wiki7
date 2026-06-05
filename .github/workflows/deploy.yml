@@ -10,10 +10,24 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    name: CDK Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: cd cdk && npm ci
+      - name: Run CDK tests
+        run: cd cdk && npm test
+
   deploy:
     name: Deploy Infrastructure & Application
     runs-on: ubuntu-latest
     environment: production
+    needs: test
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,6 +42,15 @@ jobs:
         with:
           node-version: '20'
 
+      # Required for CDK DockerImageAsset to build the ARM64 MediaWiki image
+      # on an x86 GitHub runner. Sets up qemu user-mode emulation + buildx.
+      # On native ARM runners these are no-ops.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
       - name: Install CDK dependencies
         run: cd cdk && npm ci
 
@@ -38,15 +61,52 @@ jobs:
         id: cdk-deploy
         run: |
           cd cdk && npx cdk deploy --all --require-approval never --outputs-file cdk-outputs.json
-          BUCKET=$(jq -r '.Wiki7CdkStack.ApplicationMediaWikiStorageBucketName68575BE3' cdk-outputs.json)
-          echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
+          # Surface the live infra IDs to subsequent steps + the job summary.
+          DIST_ID=$(jq -r '.Wiki7CdkStack.CloudFrontDistributionIdBFB1951A // empty' cdk-outputs.json)
+          DIST_DOMAIN=$(jq -r '.Wiki7CdkStack.CloudFrontDistributionDomainNameFAAF3EEF // empty' cdk-outputs.json)
+          EIP=$(jq -r '.Wiki7CdkStack.ComputeElasticIp204F8FAB // empty' cdk-outputs.json)
+          INSTANCE=$(jq -r '.Wiki7CdkStack.ComputeInstanceId6C549C73 // empty' cdk-outputs.json)
+          {
+            echo "dist_id=$DIST_ID"
+            echo "dist_domain=$DIST_DOMAIN"
+            echo "eip=$EIP"
+            echo "instance=$INSTANCE"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Sync assets to S3
-        run: aws s3 sync docker/assets s3://${{ steps.cdk-deploy.outputs.bucket }}/assets/ --delete
+      # docker/assets/ is already shipped to the bucket via the CDK BucketDeployment
+      # construct in compute-stack.ts — no separate `aws s3 sync` needed here.
+
+      - name: Post-deploy health check
+        run: |
+          # The EC2 image hash is baked into UserData; when CDK replaces the instance,
+          # MediaWiki needs ~2-4 min before it answers. Poll the live HTTPS endpoint
+          # with a short retry loop so a slow first request doesn't fail the job.
+          set -e
+          for i in $(seq 1 12); do
+            code=$(curl -sk -o /dev/null -w '%{http_code}' \
+              "https://wiki7.co.il/api.php?action=query&meta=siteinfo&format=json" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "OK — wiki responds 200 on attempt $i"
+              exit 0
+            fi
+            echo "Attempt $i — got HTTP $code, retrying in 30s..."
+            sleep 30
+          done
+          echo "FAIL — wiki did not return 200 within 6 minutes"
+          exit 1
 
       - name: Deployment summary
+        if: always()
         run: |
-          echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Site**: https://wiki7.co.il" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Deployment ${{ job.status }}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Site | https://wiki7.co.il |"
+            echo "| Branch | \`${{ github.ref_name }}\` |"
+            echo "| Commit | \`${{ github.sha }}\` |"
+            echo "| Instance | \`${{ steps.cdk-deploy.outputs.instance }}\` |"
+            echo "| EIP | \`${{ steps.cdk-deploy.outputs.eip }}\` |"
+            echo "| CloudFront | \`${{ steps.cdk-deploy.outputs.dist_id }}\` (${{ steps.cdk-deploy.outputs.dist_domain }}) |"
+          } >> "$GITHUB_STEP_SUMMARY"

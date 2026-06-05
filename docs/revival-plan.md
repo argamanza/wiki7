@@ -30,7 +30,7 @@ Wiki7 is a Hebrew RTL MediaWiki fan wiki for **הפועל באר שבע** ("וי
 1. **Start fresh from a clean `master`.** Scrap the stale feature branches and open PRs; cherry-pick salvageable content from git history as each phase needs it. (Closing a PR loses nothing — commits remain on `origin`.)
 2. **Local-first.** The free local Docker env is the iteration + testing surface (including the data pipeline, per `data/BOT_SETUP.md`). Prod is for "online / share / test on devices."
 3. **Modernize first** *(decided 2026-06-04)*. Because this is a clean-slate rebuild, we upgrade **MediaWiki 1.43→1.45** and re-fork the skin from **Citizen 3.14** *before* relaunching and before the content push. The relaunched site is then the final platform from day one — no live migration later, and no content/templates/CSS authored on 1.43 needing post-upgrade rework (1.45 changes heading DOM, drops legacy media markup, moves to Codex).
-4. **Balanced cloud-native architecture** *(decided 2026-06-04; see §5)*. Right-size and fix the existing CDK Fargate/RDS/CloudFront stack rather than replacing it with a hand-managed box — modern, IaC-pure, stable, with managed-DB data protection, at ~half the old cost.
+4. **Right-sized cloud-native architecture** *(decided 2026-06-04, re-decided 2026-06-06; see §5)*. Modern, IaC-pure, stable, with managed-DB data protection. *Originally* planned as Fargate+ALB ("Option A", ~$63/mo); switched to single Graviton EC2 + managed RDS ("Option B", ~$47/mo) mid-Phase-2 after honest re-examination of the actual workload. Migration path back to Fargate preserved at the `archive/option-a-fargate-alb` git tag.
 5. **Backups are non-negotiable.** The data-loss event is the #1 lesson. The rebuilt stack must enable deletion protection, snapshot-on-delete, automated backups, and a **verified restore path** *before* it holds real content.
 
 ---
@@ -140,7 +140,7 @@ The old design was ECS Fargate + ALB + RDS + CloudFront + WAF ≈ **$65–95/mo*
 
 The detailed infra fixes live in [`PLAN.md`](../PLAN.md) Stage 1 (still a valid checklist).
 
-**Security / infra (Phase 2):** S3 `BlockPublicAccess` all disabled; RDS `DESTROY` + no deletion protection (caused the data loss); WAF bot-allow ordered after bot-block (Googlebot blocked); MariaDB 10.5 (EOL); ALB HTTP-only; no autoscaling; hardcoded S3 bucket name; stale CDK v1 deps; insecure `WG_SECRET_KEY`/`WG_UPGRADE_KEY` dev fallbacks.
+**Security / infra (Phase 2 — these were the pre-rebuild issues; all addressed by PR #24):** S3 `BlockPublicAccess` all disabled; RDS `DESTROY` + no deletion protection (caused the data loss); WAF bot-allow ordered after bot-block (Googlebot blocked); MariaDB 10.5 (EOL); ALB HTTP-only; no autoscaling; hardcoded S3 bucket name; stale CDK v1 deps; insecure `WG_SECRET_KEY`/`WG_UPGRADE_KEY` dev fallbacks. *(Phase 4 carry-overs: CloudFront→origin TLS, RDS-side SSL enforcement, automated OS patching, RDS+EC2 CloudWatch alarms, external uptime monitor — none are blocking.)*
 
 **MediaWiki / skin (Phase 1 + 3):** Wiki7 is a full copy of Citizen (no clean upstream-merge path); PageForms installed but unused; homepage TODO placeholders; Records/season pages query Cargo tables only the pipeline creates; `seasons` table declared but unqueried; missing Season / Fan-story infoboxes.
 
