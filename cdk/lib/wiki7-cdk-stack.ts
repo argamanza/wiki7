@@ -30,6 +30,7 @@ export class Wiki7CdkStack extends cdk.Stack {
 
     const database = new DatabaseStack(this, 'Database', {
       vpc: network.vpc,
+      databaseSecurityGroup: network.databaseSecurityGroup,
       mediawikiSecurityGroup: network.mediawikiSecurityGroup,
     });
 

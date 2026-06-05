@@ -66,17 +66,13 @@ export class ApplicationStack extends Construct {
 
     mediawikiSecret.grantRead(taskRole);
 
-    // Create S3 bucket for MediaWiki storage
+    // Create S3 bucket for MediaWiki storage.
+    // CloudFront reaches the bucket via OAC, so public access is unnecessary and is fully locked down.
     this.mediawikiStorageBucket = new s3.Bucket(this, 'Wiki7StorageBucket', {
       encryption: s3.BucketEncryption.S3_MANAGED,
-      // When using CloudFront with OAC, you should block all public access
-      blockPublicAccess: new s3.BlockPublicAccess({
-        blockPublicAcls: false,       // Allow public ACLs
-        blockPublicPolicy: false,      // Allow public policies 
-        ignorePublicAcls: false,       // Honor public ACLs
-        restrictPublicBuckets: false   // Do not restrict public buckets
-      }),
-      objectOwnership: s3.ObjectOwnership.OBJECT_WRITER, // Allow ACLs
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      // BUCKET_OWNER_ENFORCED disables ACLs entirely — the only access path is via bucket policy + IAM.
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
       versioned: true,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       cors: [
@@ -106,12 +102,12 @@ export class ApplicationStack extends Construct {
     // Grant ECS task role access to S3
     this.mediawikiStorageBucket.grantReadWrite(taskRole);
 
-    // IAM policy for ECS task role
+    // IAM policy for ECS task role.
+    // BUCKET_OWNER_ENFORCED disables ACLs entirely, so s3:PutObjectAcl is intentionally absent.
     taskRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
         's3:PutObject',
-        's3:PutObjectAcl', // Include this for MediaWiki AWS extension
         's3:GetObject',
         's3:DeleteObject',
         's3:ListBucket',
@@ -121,7 +117,7 @@ export class ApplicationStack extends Construct {
         this.mediawikiStorageBucket.bucketArn,
         `${this.mediawikiStorageBucket.bucketArn}/*`,
       ],
-    })); 
+    }));
     
     // Create a Lambda function to initialize S3 directories
     const s3DirectoriesLambdaRole = new iam.Role(this, 'S3DirectoriesLambdaRole', {
@@ -208,16 +204,20 @@ export class ApplicationStack extends Construct {
       retention: logs.RetentionDays.ONE_MONTH,
     });
 
-    // Task Definition
+    // Task Definition — Graviton/ARM64 for ~20% cost saving + better perf-per-dollar.
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'Wiki7TaskDef', {
       cpu: 512,
       memoryLimitMiB: 1024,
       taskRole,
+      runtimePlatform: {
+        cpuArchitecture: ecs.CpuArchitecture.ARM64,
+        operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
+      },
     });
 
     const container = taskDefinition.addContainer('MediaWikiContainer', {
       image: ecs.ContainerImage.fromAsset(path.join(__dirname, '../../docker'), {
-        platform: Platform.LINUX_AMD64,
+        platform: Platform.LINUX_ARM64,
       }),
       logging: ecs.LogDriver.awsLogs({
         logGroup,
@@ -242,7 +242,9 @@ export class ApplicationStack extends Construct {
       protocol: ecs.Protocol.TCP,
     });
 
-    // Create Fargate Service
+    // Create Fargate Service.
+    // circuitBreaker.rollback auto-reverts to the prior task definition on a failed deploy
+    // — the cheap form of auto-heal for a single-task service.
     const fargateService = new ecs.FargateService(this, 'Wiki7Service', {
       cluster,
       taskDefinition,
@@ -253,6 +255,15 @@ export class ApplicationStack extends Construct {
       healthCheckGracePeriod: cdk.Duration.seconds(300),
       minHealthyPercent: 100,
       maxHealthyPercent: 200,
+      circuitBreaker: { rollback: true },
+    });
+
+    // Target-tracking autoscaling: keeps cost ≈ 1 task at idle, expands to 3 under load.
+    const scaling = fargateService.autoScaleTaskCount({ minCapacity: 1, maxCapacity: 3 });
+    scaling.scaleOnCpuUtilization('CpuScaling', {
+      targetUtilizationPercent: 70,
+      scaleInCooldown: cdk.Duration.seconds(120),
+      scaleOutCooldown: cdk.Duration.seconds(60),
     });
 
     // ALB Security Group

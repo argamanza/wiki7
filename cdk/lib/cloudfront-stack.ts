@@ -23,7 +23,8 @@ export class CloudFrontConstruct extends Construct {
 
     const { alb, hostedZone, certificate, domainName, mediawikiStorageBucket, wafWebAclArn } = props;
 
-    // ALB Origin
+    // ALB Origin.
+    // TODO(phase4): switch to HTTPS_ONLY once the ALB has a regional ACM cert + 443 listener.
     const albOrigin = new origins.LoadBalancerV2Origin(alb, {
       protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
     });
@@ -81,7 +82,7 @@ export class CloudFrontConstruct extends Construct {
       },
     });
 
-    // Create cache policy for static content (images)
+    // Cache policy for S3-served static content (uploaded images via CloudFront → S3 OAC).
     const staticContentCachePolicy = new cloudfront.CachePolicy(this, 'StaticContentCachePolicy', {
       cachePolicyName: 'Wiki7StaticContent',
       comment: 'Cache policy for Wiki7 static content',
@@ -94,6 +95,30 @@ export class CloudFrontConstruct extends Construct {
       queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
       cookieBehavior: cloudfront.CacheCookieBehavior.none(),
     });
+
+    // Cache policy for MediaWiki ResourceLoader + static skin/extension assets served by the ALB.
+    // MediaWiki versions every load.php URL via query string, so forwarding all QS as the cache key is correct.
+    const mediawikiAssetsCachePolicy = new cloudfront.CachePolicy(this, 'MediawikiAssetsCachePolicy', {
+      cachePolicyName: 'Wiki7MediawikiAssets',
+      comment: 'Cache policy for /load.php, /skins/*, /extensions/* served from the ALB',
+      defaultTtl: cdk.Duration.days(1),
+      minTtl: cdk.Duration.hours(1),
+      maxTtl: cdk.Duration.days(30),
+      enableAcceptEncodingGzip: true,
+      enableAcceptEncodingBrotli: true,
+      headerBehavior: cloudfront.CacheHeaderBehavior.none(),
+      queryStringBehavior: cloudfront.CacheQueryStringBehavior.all(),
+      cookieBehavior: cloudfront.CacheCookieBehavior.none(),
+    });
+
+    const mediawikiAssetsBehavior: cloudfront.BehaviorOptions = {
+      origin: albOrigin,
+      viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+      cachePolicy: mediawikiAssetsCachePolicy,
+      responseHeadersPolicy: responseHeadersPolicy,
+      compress: true,
+    };
 
     // Create CloudFront distribution
     const distribution = new cloudfront.Distribution(this, 'Wiki7Distribution', {
@@ -128,20 +153,36 @@ export class CloudFrontConstruct extends Construct {
           responseHeadersPolicy: responseHeadersPolicy,
           compress: true,
         },
+        // MediaWiki ResourceLoader + skin/extension static files — biggest CDN win per request.
+        'load.php': mediawikiAssetsBehavior,
+        'skins/*': mediawikiAssetsBehavior,
+        'extensions/*': mediawikiAssetsBehavior,
       },
       domainNames: [domainName, `www.${domainName}`],
       certificate,
       webAclId: wafWebAclArn,
     });
 
-    // Create DNS records
+    // DNS records — IPv4 + IPv6 alias for both apex and www.
     new route53.ARecord(this, 'Wiki7ApexAlias', {
       zone: hostedZone,
       recordName: '',
       target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(distribution)),
     });
 
+    new route53.AaaaRecord(this, 'Wiki7ApexAliasV6', {
+      zone: hostedZone,
+      recordName: '',
+      target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(distribution)),
+    });
+
     new route53.ARecord(this, 'Wiki7WwwAlias', {
+      zone: hostedZone,
+      recordName: 'www',
+      target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(distribution)),
+    });
+
+    new route53.AaaaRecord(this, 'Wiki7WwwAliasV6', {
       zone: hostedZone,
       recordName: 'www',
       target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(distribution)),
