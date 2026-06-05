@@ -154,3 +154,10 @@
 		}
 	}
 }
+
+// Force the drawer card to open from the top of the rail in RTL layouts
+.rtl {
+	#wiki7-drawer__card {
+		transform-origin: ~'calc( 100% - var( --space-xs ) )' top !important;
+	}
+}
