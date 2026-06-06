@@ -133,7 +133,7 @@ wfLoadExtension( 'TabberNeue' );
 #
 # Per-page customisation example (used by Cargo templates once Phase 3 content lands):
 #   {{#seo:
-#     |title=שי אליאס – פרופיל שחקן
+#     |title=שי אליאס - פרופיל שחקן
 #     |title_mode=replace
 #     |description=שחקן הפועל באר שבע מאז 2018, רגל ימין דומיננטית, ...
 #     |image=ShayElias.jpg
@@ -150,66 +150,73 @@ $wgEnableMetaDescriptionFunctions = true; // expose {{#description2:}} for expli
 
 # Site-wide SEO defaults
 $wgEnableCanonicalServerLink = true;                      // <link rel="canonical"> everywhere
-# og:image needs a fully-qualified URL — the OG spec requires it and most social platforms
+# og:image needs a fully-qualified URL - the OG spec requires it and most social platforms
 # silently drop relative refs. We hardcode the prod URL because this config block runs
 # BEFORE the environment-specific block where $wgServer is set; the file is anyway production-
 # only meaningful (dev/localhost URLs aren't socially shared).
-$wgWikiSeoDefaultImage       = 'https://wiki7.co.il/assets/social-share.png'; // 1200x630 PNG, CDK→S3→CF
+$wgWikiSeoDefaultImage       = 'https://wiki7.co.il/assets/social-share.png'; // 1200x630 PNG, CDK->S3->CF
 $wgTwitterCardType           = 'summary_large_image';      // Use the large preview variant
-# WikiSEO's Schema.org generator reads $wgLogo (the deprecated singular config) for the
-# Organization.logo field — not $wgLogos (current). Setting $wgLogo only feeds Schema.org;
-# the skin's brand logo continues to come from $wgLogos defined below. We point at the
-# share PNG so both Article.image fallback and Organization.logo get a real value instead
-# of empty arrays.
-$wgLogo                      = 'https://wiki7.co.il/assets/social-share.png';
+# Organization.logo / Article.image fallback for Schema.org is fed by adding a PNG entry
+# to $wgLogos below (next to the SVG entries) - WikiSEO filters $wgLogos by extension and
+# rejects SVG. Setting $wgLogo (singular) wouldn't help here because getWikiLogo only
+# falls back to it when $wgLogos is unset.
 
 # Site-wide WikiSEO metadata defaults. The WikiSEOPreAddMetadata hook fires before
 # WikiSEO's OG/Twitter/Schema.org generators emit tags; we fill in missing keys so the
-# default behaviour is "<page name> - <site tagline>", og:type=article, og:locale=he_IL.
-# Per-page {{#seo:...}} calls still win — we only set keys that weren't already provided.
+# default behaviour is brand-forward, og:type is correct, and og:locale is he_IL.
+# Per-page {{#seo:...}} calls still win - we only set keys that weren't already provided.
 $wgWiki7Tagline = 'אנציקלופדיית הפועל באר שבע';
 $wgHooks['WikiSEOPreAddMetadata'][] = function ( array &$metadata ) {
-    global $wgWiki7Tagline;
+    global $wgWiki7Tagline, $wgSitename;
 
-    // og:title — when the page didn't specify its own title via {{#seo:title=...}}, we
-    // want "<page name> - <tagline>" to be the og:title (and HTML <title>) on every page.
+    // og:title - we want the brand name "ויקישבע" to appear on every share preview, on
+    // every page. Different patterns per page type:
+    //   - Main page: "ויקישבע - אנציקלופדיית הפועל באר שבע" (brand first, then descriptive
+    //     tagline; the bare page title "עמוד ראשי" alone is bland).
+    //   - Article pages: "<page name> - ויקישבע" (standard SEO pattern, page-specific
+    //     identifier first, site brand at the end).
     //
-    // WikiSEO's title_mode='append' looks like it should do this but it doesn't — it only
+    // WikiSEO's title_mode='append' looks like it should do this but it doesn't - it only
     // affects the HTML <title> element, NOT og:title. The OG generator's title-emission
     // path is:
     //   1) addTitleMeta() emits og:title using $out->getTitle()->getPrefixedText()
     //   2) the generator's foreach loop then EMITS og:title AGAIN from metadata['title']
     //      via addHeadItem with the same key, overwriting step 1
     // So step-2 wins, and og:title ends up equal to whatever metadata['title'] holds. To
-    // get "<page name> - <tagline>" out, we have to build the full string ourselves and
+    // produce the brand-inclusive titles above we build the full string ourselves and
     // hand it to WikiSEO via metadata['title'] with title_mode='replace'.
     if ( !isset( $metadata['title'] ) ) {
         $title         = \RequestContext::getMain()->getTitle();
         $pageTitleText = $title ? $title->getPrefixedText() : '';
-        $metadata['title'] = $pageTitleText !== ''
-            ? $pageTitleText . ' - ' . $wgWiki7Tagline
-            : $wgWiki7Tagline;
+
+        if ( $title && $title->isMainPage() ) {
+            $metadata['title'] = $wgSitename . ' - ' . $wgWiki7Tagline;
+        } elseif ( $pageTitleText !== '' ) {
+            $metadata['title'] = $pageTitleText . ' - ' . $wgSitename;
+        } else {
+            $metadata['title'] = $wgSitename;
+        }
         $metadata['title_mode'] = 'replace';
     }
 
-    // og:type — 'website' on the main page, 'article' everywhere else. RequestContext is
+    // og:type - 'website' on the main page, 'article' everywhere else. RequestContext is
     // the supported way to reach the current title from a hook that only receives metadata.
     if ( !isset( $metadata['type'] ) ) {
         $title = \RequestContext::getMain()->getTitle();
         $metadata['type'] = ( $title && $title->isMainPage() ) ? 'website' : 'article';
     }
 
-    // og:locale — Hebrew Israel; matches $wgLanguageCode='he' and the RTL skin direction.
+    // og:locale - Hebrew Israel; matches $wgLanguageCode='he' and the RTL skin direction.
     if ( !isset( $metadata['locale'] ) ) {
         $metadata['locale'] = 'he_IL';
     }
 };
 
 # Fallback description for pages where neither Description2 (no leading paragraph) nor
-# a {{#seo:description=...}} call produced one — most commonly the main page, whose
+# a {{#seo:description=...}} call produced one - most commonly the main page, whose
 # wikitext is template-only. The hook idempotently skips when something else already
 # emitted a description, so per-page descriptions always win when they exist.
-$wgWiki7FallbackDescription = 'אנציקלופדיית הפועל באר שבע — היסטוריה, שחקנים, גביעים ואוהדים';
+$wgWiki7FallbackDescription = 'אנציקלופדיית הפועל באר שבע - היסטוריה, שחקנים, גביעים ואוהדים';
 $wgHooks['BeforePageDisplay'][] = function ( OutputPage $out, Skin $skin ) {
     global $wgWiki7FallbackDescription;
     foreach ( $out->getHeadItemsArray() as $item ) {
@@ -231,6 +238,13 @@ $wgHooks['BeforePageDisplay'][] = function ( OutputPage $out, Skin $skin ) {
 $wgLogos = [
 	'1x' => "$wgResourceBasePath/assets/logo-white.svg",
 	'icon' => "$wgResourceBasePath/assets/logo-white.svg",
+	// WikiSEO's Schema.org generator reads $wgLogos for the Organization.logo and
+	// Article.image fallbacks (Generator/AbstractBaseGenerator::getWikiLogo). It
+	// filters by extension and ONLY accepts jpg/jpeg/png/gif/webp; SVG is rejected,
+	// so the SVG entries above were producing empty arrays in the JSON-LD output.
+	// The 'wikiseo' key isn't read by the skin (it pulls '1x' and 'icon' only); it
+	// exists so the Schema.org generator finds a real bitmap URL to emit.
+	'wikiseo' => 'https://wiki7.co.il/assets/social-share.png',
 ];
 
 ##
@@ -257,7 +271,7 @@ if ( getenv('WIKI_ENV') === 'production' ) {
     $wgCachePages = true; // Enable page caching
     $wgEnableParserCache = true; // Enable parsed output cache
     if ( getenv( 'REDIS_HOST' ) ) {
-        // Sidecar Redis container — shared across all PHP workers (unlike APCu,
+        // Sidecar Redis container - shared across all PHP workers (unlike APCu,
         // which is per-process). Big speedup on ParserOutput hits because every
         // worker reuses the same parsed page tree.
         $wgObjectCaches['redis'] = [
