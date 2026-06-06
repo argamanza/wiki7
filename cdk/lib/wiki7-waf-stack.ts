@@ -24,6 +24,12 @@ const ALLOWED_BOT_TERMS = [
   'embedly',
   'telegrambot',
   'whatsapp',
+  // Monitoring — UptimeRobot's UA is
+  //   "Mozilla/5.0+(compatible; UptimeRobot/2.0; http://www.uptimerobot.com/)"
+  // which contains "bot" and would otherwise trip the priority-8 bot-heuristic
+  // block. UA-spoofing is theoretically possible but bounded by the per-IP rate
+  // limit (priority 7) and the short, fixed request shape (GET /).
+  'uptimerobot',
 ];
 
 function botUserAgentMatch(term: string): wafv2.CfnWebACL.StatementProperty {
