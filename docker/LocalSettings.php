@@ -264,6 +264,8 @@ $wgLogos = [
 $wgFavicon = '/assets/favicon.ico';
 
 $wgHooks['BeforePageDisplay'][] = function ( OutputPage $out, Skin $skin ) {
+	global $wgSitename, $wgWiki7Tagline;
+
 	$out->addLink( [
 		'rel'  => 'icon',
 		'type' => 'image/svg+xml',
@@ -274,6 +276,32 @@ $wgHooks['BeforePageDisplay'][] = function ( OutputPage $out, Skin $skin ) {
 		'href'  => '/assets/apple-touch-icon.png',
 		'sizes' => '180x180',
 	] );
+
+	// Force-set the HTML <title> to match og:title. WikiSEO's modifyPageTitle runs BEFORE
+	// the WikiSEOPreAddMetadata hook fires, so the title we put into metadata['title']
+	// via that hook never reaches modifyPageTitle - it returns early on the missing key
+	// and the bare default <title> (just $wgSitename on the main page, or "<page> - <site>"
+	// elsewhere) leaks through. Setting the HTML title ourselves at BeforePageDisplay
+	// time fires AFTER WikiSEO's hook completes and BEFORE the skin reads getHTMLTitle
+	// to compose the <title> element, so the value sticks.
+	//
+	// Per-page {{#seo:title=...}} overrides still win: that parser-function call writes
+	// the 'title' value to the page_props table, modifyPageTitle reads it from there and
+	// calls setHTMLTitle BEFORE our hook runs, and we detect the page-prop and skip our
+	// force-set so we don't clobber the editor's choice.
+	$title = $out->getTitle();
+	if ( !$title ) {
+		return;
+	}
+	$pageProps = \MediaWiki\MediaWikiServices::getInstance()->getPageProps();
+	$customTitleProp = $pageProps->getProperties( $title, 'title' );
+	if ( !empty( $customTitleProp ) ) {
+		return;
+	}
+	$htmlTitle = $title->isMainPage()
+		? $wgSitename . ' - ' . $wgWiki7Tagline
+		: $title->getPrefixedText() . ' - ' . $wgSitename;
+	$out->setHTMLTitle( $htmlTitle );
 };
 
 ##
