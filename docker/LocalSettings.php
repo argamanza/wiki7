@@ -75,6 +75,16 @@ $wgMainCacheType = CACHE_ACCEL;
 $wgMemCachedServers = [];
 
 ##
+## Job queue — drained out-of-band, not inline on web requests
+##
+# Inline runs (the default $wgJobRunRate = 1) bolt one job onto every web hit,
+# adding latency to whichever unlucky user triggered the page; behind CloudFront
+# the origin sees few hits to begin with, so refreshLinks / Cargo population
+# drains slowly. We disable inline runs entirely and rely on a host-side cron
+# that calls runJobs.php every minute (UserData in compute-stack.ts).
+$wgJobRunRate = 0;
+
+##
 ## Rights and Permissions
 ##
 $wgGroupPermissions["*"]["edit"] = false; // Prevent anonymous edits
@@ -319,6 +329,46 @@ if ( getenv('WIKI_ENV') === 'production' ) {
     $wgServer = "https://wiki7.co.il";
     $wgCanonicalServer = "https://wiki7.co.il";
     $wgCookieSecure = true; // Only transmit cookies over HTTPS
+
+    // === CDN awareness =====================================================================
+    // $wgUseCdn = true makes MW emit s-maxage Cache-Control directives so CloudFront actually
+    // caches HTML pages at the edge (without it MW emits s-maxage=0 and every page miss
+    // becomes an origin hit).
+    $wgUseCdn = true;
+
+    // Real client IP recovery behind CloudFront. CloudFront's origin request policy
+    // (ALL_VIEWER_AND_CLOUDFRONT_2022, set in cloudfront-stack.ts) adds the
+    // 'CloudFront-Viewer-Address' header. CloudFront populates it from the actual TCP
+    // viewer connection and strips any client-supplied value, so it cannot be spoofed.
+    //
+    // We overwrite $_SERVER['REMOTE_ADDR'] BEFORE MW boots: MW core reads REMOTE_ADDR
+    // directly in WebRequest::getIP() and only consults X-Forwarded-For when REMOTE_ADDR
+    // is a trusted proxy (per $wgCdnServersNoPurge). Setting REMOTE_ADDR to the real viewer
+    // IP makes RecentChanges, IP blocks, and abuse throttling work correctly without
+    // having to track CloudFront's dynamic IP ranges in $wgCdnServersNoPurge.
+    //
+    // Format from CloudFront docs: "<ip>:<port>" for IPv4, "<ip>:<port>" with the IP in
+    // square brackets for IPv6 ("[2001:db8::1]:443"). We strip the port and the brackets.
+    if ( !empty( $_SERVER['HTTP_CLOUDFRONT_VIEWER_ADDRESS'] ) ) {
+        $cfViewer = $_SERVER['HTTP_CLOUDFRONT_VIEWER_ADDRESS'];
+        if ( $cfViewer[0] === '[' ) {
+            // IPv6: "[2001:db8::1]:443" -> "2001:db8::1"
+            $end = strpos( $cfViewer, ']' );
+            if ( $end !== false ) {
+                $_SERVER['REMOTE_ADDR'] = substr( $cfViewer, 1, $end - 1 );
+            }
+        } else {
+            // IPv4: "1.2.3.4:56789" -> "1.2.3.4"
+            $colon = strrpos( $cfViewer, ':' );
+            $_SERVER['REMOTE_ADDR'] = $colon !== false
+                ? substr( $cfViewer, 0, $colon )
+                : $cfViewer;
+        }
+    }
+    // Deliberately NOT setting $wgCdnServersNoPurge: CloudFront's edge IP ranges are
+    // dynamic (the AmazonIpSpaceChanged SNS topic publishes updates) and hard-coding a
+    // snapshot would silently rot. Since we override REMOTE_ADDR above, MW never needs
+    // to walk XFF, so the trusted-proxy list isn't load-bearing here.
     
     // Error handling
     $wgShowExceptionDetails = false; // Hide internal error details for security

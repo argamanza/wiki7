@@ -53,11 +53,20 @@ export class Wiki7CdkStack extends cdk.Stack {
       wafWebAclArn,
     });
 
+    // Subscriber address for the alarm SNS topic. Set via `-c alarmEmail=…` or the
+    // `alarmEmail` key in cdk.json; fail-fast if missing so we don't deploy alarms with no
+    // delivery path.
+    const alarmEmail = this.node.tryGetContext('alarmEmail');
+    if ( !alarmEmail || typeof alarmEmail !== 'string' ) {
+      throw new Error('Missing required context: alarmEmail (set in cdk.json or via -c alarmEmail=…)');
+    }
+
     new ObservabilityStack(this, 'Observability', {
       dbInstance: database.dbInstance,
       ec2InstanceId: compute.instance.instanceId,
       distribution: cloudfront.distribution,
       appLogGroup: compute.appLogGroup,
+      alarmEmail,
     });
 
     // GuardDuty — account-level threat detection. ~$3-5/mo at our scale.
