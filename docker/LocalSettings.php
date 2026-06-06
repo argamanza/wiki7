@@ -264,6 +264,8 @@ $wgLogos = [
 $wgFavicon = '/assets/favicon.ico';
 
 $wgHooks['BeforePageDisplay'][] = function ( OutputPage $out, Skin $skin ) {
+	global $wgSitename, $wgWiki7Tagline;
+
 	$out->addLink( [
 		'rel'  => 'icon',
 		'type' => 'image/svg+xml',
@@ -274,6 +276,20 @@ $wgHooks['BeforePageDisplay'][] = function ( OutputPage $out, Skin $skin ) {
 		'href'  => '/assets/apple-touch-icon.png',
 		'sizes' => '180x180',
 	] );
+
+	// Force-set the HTML <title> to match og:title. WikiSEO's modifyPageTitle runs BEFORE
+	// the WikiSEOPreAddMetadata hook fires, so the title we put into metadata['title']
+	// via that hook never reaches modifyPageTitle - it returns early on the missing key
+	// and the bare default <title> (just $wgSitename on the main page, or "<page> - <site>"
+	// elsewhere) leaks through. Setting the HTML title ourselves at BeforePageDisplay
+	// time guarantees the tab text matches the og:title and the social-share preview.
+	$title = $out->getTitle();
+	if ( $title ) {
+		$htmlTitle = $title->isMainPage()
+			? $wgSitename . ' - ' . $wgWiki7Tagline
+			: $title->getPrefixedText() . ' - ' . $wgSitename;
+		$out->setHTMLTitle( $htmlTitle );
+	}
 };
 
 ##
