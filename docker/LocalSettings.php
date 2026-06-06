@@ -150,8 +150,49 @@ $wgEnableMetaDescriptionFunctions = true; // expose {{#description2:}} for expli
 
 # Site-wide SEO defaults
 $wgEnableCanonicalServerLink = true;                      // <link rel="canonical"> everywhere
-$wgWikiSeoDefaultImage       = '/assets/social-share.png'; // 1200x630 PNG shipped to S3 via CDK
+# og:image needs a fully-qualified URL — the OG spec requires it and most social platforms
+# silently drop relative refs. We hardcode the prod URL because this config block runs
+# BEFORE the environment-specific block where $wgServer is set; the file is anyway production-
+# only meaningful (dev/localhost URLs aren't socially shared).
+$wgWikiSeoDefaultImage       = 'https://wiki7.co.il/assets/social-share.png'; // 1200x630 PNG, CDK→S3→CF
 $wgTwitterCardType           = 'summary_large_image';      // Use the large preview variant
+# WikiSEO's Schema.org generator reads $wgLogo (the deprecated singular config) for the
+# Organization.logo field — not $wgLogos (current). Setting $wgLogo only feeds Schema.org;
+# the skin's brand logo continues to come from $wgLogos defined below. We point at the
+# share PNG so both Article.image fallback and Organization.logo get a real value instead
+# of empty arrays.
+$wgLogo                      = 'https://wiki7.co.il/assets/social-share.png';
+
+# Site-wide WikiSEO metadata defaults. The WikiSEOPreAddMetadata hook fires before
+# WikiSEO's OG/Twitter/Schema.org generators emit tags; we fill in missing keys so the
+# default behaviour is "<page name> - <site tagline>", og:type=article, og:locale=he_IL.
+# Per-page {{#seo:...}} calls still win — we only set keys that weren't already provided.
+$wgWiki7Tagline = 'אנציקלופדיית הפועל באר שבע';
+$wgHooks['WikiSEOPreAddMetadata'][] = function ( array &$metadata ) {
+    global $wgWiki7Tagline;
+
+    // og:title — when the page didn't specify its own title via {{#seo:title=...}}, WikiSEO
+    // falls back to the bare page title (often <20 chars on a fan wiki). title_mode=append
+    // with our tagline gives "<page title> - אנציקלופדיית הפועל באר שבע" automatically,
+    // for every page, no per-page editing needed.
+    if ( !isset( $metadata['title'] ) ) {
+        $metadata['title']           = $wgWiki7Tagline;
+        $metadata['title_mode']      = 'append';
+        $metadata['title_separator'] = ' - ';
+    }
+
+    // og:type — 'website' on the main page, 'article' everywhere else. RequestContext is
+    // the supported way to reach the current title from a hook that only receives metadata.
+    if ( !isset( $metadata['type'] ) ) {
+        $title = \RequestContext::getMain()->getTitle();
+        $metadata['type'] = ( $title && $title->isMainPage() ) ? 'website' : 'article';
+    }
+
+    // og:locale — Hebrew Israel; matches $wgLanguageCode='he' and the RTL skin direction.
+    if ( !isset( $metadata['locale'] ) ) {
+        $metadata['locale'] = 'he_IL';
+    }
+};
 
 # Fallback description for pages where neither Description2 (no leading paragraph) nor
 # a {{#seo:description=...}} call produced one — most commonly the main page, whose
