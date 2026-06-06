@@ -378,7 +378,7 @@ aws backup list-recovery-points-by-backup-vault ... → AccessDeniedException
 | B12 | `$wgJobRunRate = 0` in prod | ✅ (behavioral) | Direct PHP probe blocked by MW bootstrap; proven by A15+B11 |
 | B13 | `$wgUseCdn = true` in prod | ✅ (behavioral) | `Cache-Control: s-maxage=18000` confirms (MW only emits non-zero s-maxage when $wgUseCdn=true) |
 | B14 | `s-maxage` in anon response | ✅ | `cache-control: s-maxage=18000, must-revalidate, max-age=0` |
-| B15 | Real client IP recorded by MW (via `recentchanges.rc_ip`) | ⏸️ User action needed | Special:RecentChanges UI doesn't show IPs for logged-in edits — the `rc_ip` column in the DB does. User makes a small edit; we then SQL-query `recentchanges.rc_ip` via SSM (path: `docker exec wiki7 php maintenance/run.php sql --query "SELECT rc_user_text,rc_timestamp,rc_ip FROM recentchanges ORDER BY rc_id DESC LIMIT 5;"`). Expected: IP = user's real public IP (e.g. `194.90.225.101`), NOT a CloudFront edge IP (`130.176.x.x` / `13.224.x.x` / `18.x.x.x` etc.). NOTE: Apache's access log shows the CloudFront edge IP and that's correct — Apache logs the TCP peer; the LocalSettings.php fix modifies `$_SERVER['REMOTE_ADDR']` at the PHP layer, after Apache has already written its log line. |
+| B15 | Real client IP recorded by MW (via `recentchanges.rc_ip`) | ✅ | Confirmed 2026-06-06 20:41Z. User edited `User:Admin`; `rc_id=2` shows `rc_ip=194.90.225.101` — user's real public IP (verified via `curl ifconfig.me` from same machine). MW 1.45 schema renamed `rc_user_text` to actor-table join, query corrected: `SELECT rc_id,rc_timestamp,rc_ip,rc_namespace,rc_title FROM recentchanges ORDER BY rc_id DESC LIMIT 5;`. Apache's access log shows a CloudFront edge IP (e.g. `130.176.183.172`) and that's correct — Apache logs the TCP peer; the LocalSettings.php fix modifies `$_SERVER['REMOTE_ADDR']` at the PHP layer, after Apache has already written its log line. End-to-end proof that PR #38's CloudFront-Viewer-Address → REMOTE_ADDR rewrite is working in production. |
 | B18 | Cargo bookkeeping tables present | ✅ | `cargo_backlinks`, `cargo_pages`, `cargo_tables` — correct pre-content state |
 | C1 | robots.txt accessible | ✅ | 200, sensible Disallow list, references sitemap |
 | C2 | Sitemap accessible | ✅ | 200, `text/xml`, valid sitemapindex |
@@ -485,7 +485,7 @@ aws backup list-recovery-points-by-backup-vault ... → AccessDeniedException
 2. ✅ **D3 test alarm → email arrives** — DONE 2026-06-06 (ALARM 19:38:37Z → OK 19:40:59Z, both notifications delivered).
 3. ✅ **PageSpeed Insights** desktop + mobile (K1/K2) — DONE 2026-06-06, captured in K6 above.
 4. ✅ **Google Rich Results Test** (C18) — DONE 2026-06-06. "No items detected" on homepage (expected; WebSite isn't a rich-result-eligible type). Re-run on an article page after Phase 3 lands content to stress-test Finding 3.
-5. ⏸️ **B15 test edit** — pending. Log in, make a small edit, tell me when done; I'll query `rc_ip` via SSM.
+5. ✅ **B15 test edit + rc_ip check** — DONE 2026-06-06 20:41Z. User edited `User:Admin`; SQL query of `recentchanges.rc_ip` returned `194.90.225.101` = user's real public IP. PR #38's IP recovery verified end-to-end in production.
 6. (Optional) **Local Lighthouse** in Chrome DevTools — SKIPPED. PageSpeed Insights API already runs Lighthouse 13.3.0 in lab mode with consistent throttling; running it again locally would add noise without adding signal.
 
 ### Recommended next steps
