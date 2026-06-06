@@ -110,8 +110,10 @@ All four open PRs get closed; salvage first. Nothing is destroyed (recoverable f
 - [x] **CloudFront `PriceClass_200` -> `PriceClass_100`** — done. PriceClass_100 covers NA + EU + Israel; the dropped 200-only POPs (Asia / India / extra ME) served traffic we don't have. Prod verified: distribution config shows `PriceClass_100`; Israeli viewers still hit the Tel Aviv POP (`TLV55-P2`) — exactly the same edge as before.
 - **Exit:** ✅ 5/5 deployed + end-to-end verified in prod. CDK `cdk diff` clean (modulo Finding 4 below). PR #41 (Round 1 verification) surfaced 5 new findings — 2 of them security-critical — captured in §Phase 2.5d below.
 
-### Phase 2.5d — Security patch  *(planned 2026-06; surfaced during Phase 2.5c Round 1)*
-*Goal:* close the two security findings + one ops nit that Round 1 verification surfaced before Phase 2.5b begins. None blocks the prod site running today, but Finding 1 in particular is exploitable for any session/CSRF activity, and 2.5b will only deepen prod's exposure to those code paths via edge caching. Address as a focused patch PR; smaller than Phase 2.5.
+### Phase 2.5d — Security patch  *(complete, 2026-06-06; PR [#44](https://github.com/argamanza/wiki7/pull/44))*
+*Goal:* close the two security findings + one ops nit that Round 1 verification surfaced before Phase 2.5b begins. None blocks the prod site running today, but Finding 1 in particular is exploitable for any session/CSRF activity, and 2.5b will only deepen prod's exposure to those code paths via edge caching. Addressed as a focused patch PR; smaller than Phase 2.5.
+
+**Status: ✅ DONE — merged via PR #44, deployed 2026-06-06 (12m40s deploy), 4-secret rotation choreography + post-rotation verification completed the same day.** Full closure evidence in [`docs/phase-2.5c-platform-verification.md`](phase-2.5c-platform-verification.md) §6.1.
 
 Full Findings detail (evidence + impact + recommended fix per item) lives at [`docs/phase-2.5c-platform-verification.md`](phase-2.5c-platform-verification.md) §6.1.
 
@@ -144,7 +146,14 @@ Full Findings detail (evidence + impact + recommended fix per item) lives at [`d
    - Grep `/var/log/cloud-init-output.log` and the mediawiki CloudWatch stream for any of the four rotated values — they should be **absent on the new instance** (env-file pattern keeps them off the command line; rotation makes the historical leaks worthless).
    - Probe `$wgSecretKey` via a small SSM-driven PHP eval — its value should not equal the dev placeholder string `dev-only-secret-key-replace-in-production`.
 
-**Exit:** 3 items implemented + deployed + secrets rotated + log-grep verifies no plaintext passwords + B15 re-runs green + `wiki7-aws-state` memory updated with the rotation date. Then Phase 2.5b can begin.
+**Exit:** ✅ 3 items implemented + deployed (PR #44, 2026-06-06, 12m40s) + all four retained Secrets rotated (`Wiki7SecretKeySecret`, `Wiki7UpgradeKeySecret`, `Wiki7MediaWikiSecret.adminPassword`, `Wiki7DatabaseSecret.password`) + RDS master password rotated (`available`, no pending) + live MW Admin user password reset via `changePassword` (entrypoint only sets it on initial install, so the env-var rotation alone wouldn't have taken effect — was rotated via SSM-exec'd `php maintenance/run.php changePassword --user=Admin --password=...`) + verification all green:
+
+- `/var/log/cloud-init-output.log` on new EC2 — 0 lines matching `MEDIAWIKI_DB_PASSWORD=` / `MEDIAWIKI_ADMIN_PASSWORD=` / `WG_SECRET_KEY=` / `WG_UPGRADE_KEY=`; `--env-file` present (proves new UserData ran).
+- CloudWatch mediawiki stream last 24h — 0 hits for the same patterns.
+- `$wgSecretKey` SSM-probed inside container — real 32-char value, not the dev placeholder string.
+- B15 re-run: a fresh authenticated edit by Admin (`rc_id=3` at 2026-06-06T21:50:25Z) recorded `rc_ip=194.90.225.101` in `recentchanges` — real client IP, not a CloudFront edge IP. Proves PR #38's CloudFront-Viewer-Address rewrite still works through the rotation.
+
+Then Phase 2.5b can begin.
 
 ---
 
