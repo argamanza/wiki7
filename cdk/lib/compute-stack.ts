@@ -420,6 +420,12 @@ export class ComputeStack extends Construct {
       name: 'Wiki7-GenerateSitemap',
       documentType: 'Command',
       documentFormat: 'YAML',
+      // Without this, CFN's default 'Replace' update method tries to delete + recreate
+      // the document on every content change. Since we use a custom Name, the recreate
+      // step collides with the existing document and CFN rolls the whole stack back.
+      // 'NewVersion' makes CFN bump the document to a new version in place - no rename
+      // dance, no rollback. Lesson learned from PR #33's failed deploy.
+      updateMethod: 'NewVersion',
       content: [
         'schemaVersion: "2.2"',
         'description: Generate the MediaWiki sitemap and upload to the S3 storage bucket',
