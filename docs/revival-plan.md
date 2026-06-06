@@ -97,6 +97,27 @@ All four open PRs get closed; salvage first. Nothing is destroyed (recoverable f
 - **Scope note (post-audit 2026-06):** the SEO/social-meta *polish* (favicons, brand-augmented titles, 1200×630 share image, Schema.org logo — PRs #30–#32) was pulled forward from Phase 3; only the *foundations* (WikiSEO/Description2 swap, robots.txt, sitemap pipeline — #29/#33/#34) were strictly Phase 2. Harmless and booked honestly (the Phase 3 favicon item is struck through as done) — recorded so the "polish belongs in Phase 3" guardrail's exception is on the record.
 - **Exit:** ✅ modern site reachable over HTTPS at https://wiki7.co.il; restore drill succeeded; observability + patching + threat detection + full SEO/social-meta surface wired; monthly cost ~$47-52/mo (above the original $30–45 band but within the rebalanced expectation; the +$3-5 is GuardDuty, see ADR 0001).
 
+### Phase 2.5 — Pre-Phase-3 hardening  *(planned 2026-06; from the post-Phase-2 infra review)*
+*Goal: close the genuine config/ops gaps the infra review surfaced — especially the two that affect Phase 3 content/Cargo work — before pouring in content. The **architecture itself is sound and unchanged** (single Graviton EC2 + managed RDS, see §5 / ADR-0001); these are config/ops fixes, not a re-architecture. Implementation is a dedicated, local-first session + its own PR, then a controlled prod deploy.*
+
+**In this pass (before Phase 3):**
+- [ ] **MediaWiki job runner** — `$wgJobRunRate = 0` + run `runJobs.php` on a ~1-min schedule (`docker exec wiki7 php maintenance/run.php runJobs --maxtime=55`). *Why now:* jobs run inline on web requests today; behind CloudFront the origin sees few hits, so Cargo population + `refreshLinks` drain slowly — and Phase 3 is when Cargo/template churn spikes. (Manual:Job_queue)
+- [ ] **CDN-aware MediaWiki** — `$wgUseCdn = true` + `$wgCdnServersNoPurge` (CloudFront ranges) so MW recovers the real client IP from `X-Forwarded-For` (today it logs CloudFront's edge IP — breaking RecentChanges / blocks / abuse throttling) and emits `s-maxage`. *Why now:* correct attribution before real editing. Research the current best CloudFront->MediaWiki client-IP approach (ranges are dynamic; mind XFF-spoofing). (Manual:CloudFront)
+- [ ] **SNS on the 6 alarms** — one topic + email subscription, wire all `ObservabilityStack` alarms. *Why now:* free; today they page no one — the one genuine under-provision.
+- [ ] **CloudWatch dashboard** — a single dashboard (free within the 3-dashboard tier) with an alarm-status widget + key RDS/EC2/CloudFront/MW-error metrics, for at-a-glance health + alarm history. *Only if it stays simple/cheap — one dashboard, no custom-metric plumbing.*
+- [ ] **CloudFront `PriceClass_200` -> `PriceClass_100`** — audience is in Israel (PriceClass 100); 200 pays for unused Asia/ME edges. Free.
+- **Exit:** the 5 items deployed + verified on prod; then Phase 3 starts.
+
+**Deferred -> Phase 4 (recorded with reasoning, per the review):**
+- **OPcache tuning + APCu local tier** — relies on the stock image OPcache defaults (128 MB / 10k files), no APCu. *Defer:* pure performance, invisible at ~1 user/day; tune when content/traffic grows.
+- **`$wgMainStash` -> Redis** (defaults to `CACHE_DB`). *Defer:* DB-backed stash is durable and fine here; only a minor RDS offload.
+- **Cache-fallback hardening** — the `CACHE_ACCEL` fallback if `REDIS_HOST` is ever unset is a foot-gun (per-process cache, DB sessions lost on redeploy). *Defer:* Redis is always injected in prod; make it fail-loud later. Low risk.
+- **GuardDuty (~$3-5/mo)** — weakest value-per-dollar at idle. *Keep for now:* some value on a public site, small cost; revisit if cost-trimming becomes a priority.
+- **WAF SQLi + PHP managed groups (~$2/mo)** — largely redundant with the Common rule set at this traffic. *Keep for now:* defense-in-depth, negligible cost.
+- **Zero-downtime deploys** — SSM `docker pull && docker run` swap instead of full-instance replacement (~5-min downtime/deploy; ADR-0001 pre-blesses it). *Defer:* downtime acceptable for a hobby wiki; nice future polish.
+- **RDS `force_ssl` / `$wgDBssl`**, **CloudFront->origin TLS**, **sitemap EventBridge automation** — already on the Phase 4 list; in-VPC DB traffic + TTL-based sitemap are fine until content is actively edited.
+- **Cosmetic:** remove stale "ALB/ECS" comments in `network-stack.ts`; drop the redundant `$wgUploadPath` S3 override in `LocalSettings.php`.
+
 ### Phase 3 — Content + data pipeline + finalize design  *(priority #3 — "what matters")*
 *Goal: real, correct content; the full pipeline run end-to-end at least once; the design "done."*
 - [ ] Stand up the bot account and **run the full data pipeline end-to-end** against local → prod for the first time (`data/BOT_SETUP.md`).
