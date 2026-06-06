@@ -116,25 +116,33 @@ All four open PRs get closed; salvage first. Nothing is destroyed (recoverable f
 Full Findings detail (evidence + impact + recommended fix per item) lives at [`docs/phase-2.5c-platform-verification.md`](phase-2.5c-platform-verification.md) §6.1.
 
 **Scope (3 items, ~2 hours of implementation + a deploy + a manual rotation):**
-- [ ] **Finding 1 — `$wgSecretKey` + `$wgUpgradeKey` real values.** The `Wiki7MediaWikiSecret` template only auto-generates `adminPassword` (via `generateStringKey`); the other two fields are template-default empty strings. `LocalSettings.php`'s `getenv('WG_SECRET_KEY') ?: 'dev-only-...'` falls through silently — prod has been running on the dev placeholder (visible in the public repo) since #24. **Fix:** extend CDK so all three fields get real values (preferred: two additional `secretsmanager.Secret` resources with their own `generateStringKey`; alternative: a single Lambda-backed custom resource that fills the empties on creation). Plus a defensive change in `LocalSettings.php` to fail loudly in prod if these env vars are ever empty again. **Manual step after deploy:** rotate the live secret value with `aws secretsmanager put-secret-value` since `removalPolicy: RETAIN` means CDK template changes don't update existing values.
-- [ ] **Finding 2 — passwords out of cloud-init logs.** UserData's `set -euxo pipefail` echoes every command, including the `docker run -e ...` line that carries the DB password and admin password in the clear. Lands on `/var/log/cloud-init-output.log` (on disk) AND in CloudWatch via the mediawiki awslogs stream. **Fix (preferred):** write secrets to `/tmp/wiki7.env` (chmod 0600) and use `docker run --env-file` so the inline `-e ...` pattern disappears entirely. **Alternative:** wrap the secret-bearing block in `set +x` / `set -x`. After the deploy, the previously-leaked DB password + admin password also get rotated.
-- [ ] **Finding 4 — `.DS_Store` out of the Docker build context.** macOS Finder mutates `.DS_Store` files in `docker/` on every browse → CDK's `DockerImageAsset` includes them in the source hash → every local `cdk diff` shows a phantom EC2 replacement. **Fix:** add `.DS_Store` and `**/.DS_Store` to `docker/.dockerignore`. 30 seconds.
+- [x] **Finding 1 — `$wgSecretKey` + `$wgUpgradeKey` real values.** The `Wiki7MediaWikiSecret` template only auto-generates `adminPassword` (via `generateStringKey`); the other two fields are template-default empty strings. `LocalSettings.php`'s `getenv('WG_SECRET_KEY') ?: 'dev-only-...'` falls through silently — prod has been running on the dev placeholder (visible in the public repo) since #24. **Fix (PR #44):** split the secret into three retained `secretsmanager.Secret` resources — `Wiki7MediaWikiSecret` keeps `adminPassword` (single-field JSON blob now), new `Wiki7SecretKeySecret` holds a raw 32-char `$wgSecretKey`, new `Wiki7UpgradeKeySecret` holds a raw 16-char `$wgUpgradeKey`. UserData fetches each, env-file loads them into the container. Plus a defensive change in `LocalSettings.php`: when `WIKI_ENV=production`, an empty `WG_SECRET_KEY` or `WG_UPGRADE_KEY` throws `RuntimeException` at MW boot so the container crash-loops loudly instead of silently running on the dev placeholder. **Manual step after deploy:** rotate all three live secret values with `aws secretsmanager put-secret-value` since `removalPolicy: RETAIN` means CDK only auto-generates on initial create — the values that ran in prod between #24 and #44 must be rotated even though the resource shape itself is new (the live `Wiki7MediaWikiSecret` resource ID is unchanged so its existing `adminPassword` value carries over).
+- [x] **Finding 2 — passwords out of cloud-init logs.** UserData's `set -euxo pipefail` echoes every command, including the `docker run -e ...` line that carries the DB password and admin password in the clear. Lands on `/var/log/cloud-init-output.log` (on disk) AND in CloudWatch via the mediawiki awslogs stream. **Fix (PR #44):** UserData now writes a chmod 0600 `/tmp/wiki7.env` under `set +x`, then `docker run --env-file "$ENVFILE"`. All env vars (secret + non-secret) come from the file, so the `docker run` command line in the log carries zero values; the file itself is `rm -f`'d after `docker run` returns. After the deploy, the previously-leaked DB password + admin password get rotated alongside the new keys (see choreography below).
+- [x] **Finding 4 — `.DS_Store` out of the Docker build context.** macOS Finder mutates `.DS_Store` files in `docker/` on every browse → CDK's `DockerImageAsset` includes them in the source hash → every local `cdk diff` shows a phantom EC2 replacement. **Fix (PR #44):** added `.DS_Store` and `**/.DS_Store` to `docker/.dockerignore`.
 
 **Deferred (recorded in 2.5c Round 1 doc):**
 - **Finding 3 — Schema.org `@type` lowercase `"website"` instead of canonical `"WebSite"`.** The `WikiSEOPreAddMetadata` hook conflates og:type (lowercase by OG spec) and Schema.org @type (CamelCase by Schema.org). Rolled into §Phase 2.5b because that work touches WikiSEO config anyway.
 - **Finding 5 — local `argamanza` IAM profile lacks `backup:ListRecoveryPointsByBackupVault`.** Read-only IAM gap; backups themselves work fine. Filed under Phase 4 deferrals below.
 
-**Rotation choreography (in order, in one operation post-deploy):**
+**Rotation choreography (in order, in one operation post-deploy).** The resource graph after PR #44 has four retained Secrets to rotate: `Wiki7MediaWikiSecret` (JSON `{adminPassword: ...}`), `Wiki7SecretKeySecret` (raw string), `Wiki7UpgradeKeySecret` (raw string), `Wiki7DatabaseSecret` (JSON `{username, password}`). Even though PR #44's deploy creates the two new MW secrets with fresh auto-generated values at CFN-create time, the `adminPassword` and `MEDIAWIKI_DB_PASSWORD` live in already-existing retained Secrets — they were not regenerated and still hold the values that ran in prod (and leaked through cloud-init logs) between #24 and #44. All four are rotated together.
+
 1. Generate fresh values for all four secrets:
-   - `secretKey` (32 chars, no punctuation)
-   - `upgradeKey` (16 chars)
-   - `MEDIAWIKI_DB_PASSWORD` (32 chars, no punctuation)
-   - `adminPassword` (32 chars, no punctuation)
-2. `aws secretsmanager put-secret-value` for the MW-secret (single JSON blob with `secretKey`/`upgradeKey`/`adminPassword`) AND for the RDS-credentials secret (DB password).
+   - `secretKey` (32 chars, no punctuation) — for `Wiki7SecretKeySecret`
+   - `upgradeKey` (16 chars) — for `Wiki7UpgradeKeySecret`
+   - `MEDIAWIKI_DB_PASSWORD` (32 chars, no punctuation) — for `Wiki7DatabaseSecret`'s `password` field
+   - `adminPassword` (32 chars, no punctuation) — for `Wiki7MediaWikiSecret`'s `adminPassword` field
+2. `aws secretsmanager put-secret-value` for each:
+   - `Wiki7MediaWikiSecret` ← `{"adminPassword": "<new>"}` (single-field JSON blob now)
+   - `Wiki7SecretKeySecret` ← `<new>` (raw string, no JSON)
+   - `Wiki7UpgradeKeySecret` ← `<new>` (raw string, no JSON)
+   - `Wiki7DatabaseSecret` ← `{"username": "wikiuser", "password": "<new>"}`
 3. Update the RDS master user password to match: `aws rds modify-db-instance --master-user-password ...`.
-4. Force an EC2 replacement so UserData picks up the rotated values (any UserData change in the 2.5d PR will already trigger this).
-5. The admin password rotation will **invalidate the current admin login** — re-fetch the new value from Secrets Manager and log in fresh.
-6. Verify: re-run B15 (`SELECT rc_ip FROM recentchanges ORDER BY rc_id DESC LIMIT 1;`) after a fresh edit — should still show real client IP. Grep `cloud-init-output.log` and the mediawiki CloudWatch stream for the rotated passwords — they should be absent.
+4. Force an EC2 replacement so UserData picks up the rotated values. PR #44's UserData change already triggers a replacement on first deploy; for subsequent rotation-only operations, push a no-op UserData edit (e.g. a comment tweak) to trigger the cycle.
+5. The admin password rotation will **invalidate the current admin login** — re-fetch the new value from `Wiki7MediaWikiSecret` and log in fresh.
+6. Verify:
+   - Re-run B15 (`SELECT rc_ip FROM recentchanges ORDER BY rc_id DESC LIMIT 1;`) after a fresh edit — should still show real client IP. Proves PR #38's CloudFront-Viewer-Address rewrite didn't regress through this PR.
+   - Grep `/var/log/cloud-init-output.log` and the mediawiki CloudWatch stream for any of the four rotated values — they should be **absent on the new instance** (env-file pattern keeps them off the command line; rotation makes the historical leaks worthless).
+   - Probe `$wgSecretKey` via a small SSM-driven PHP eval — its value should not equal the dev placeholder string `dev-only-secret-key-replace-in-production`.
 
 **Exit:** 3 items implemented + deployed + secrets rotated + log-grep verifies no plaintext passwords + B15 re-runs green + `wiki7-aws-state` memory updated with the rotation date. Then Phase 2.5b can begin.
 

@@ -252,13 +252,63 @@ describe('ComputeStack', () => {
     });
   });
 
-  test('MediaWiki app secret retained', () => {
+  test('MediaWiki admin-password secret retained', () => {
+    template.hasResource('AWS::SecretsManager::Secret', {
+      Properties: Match.objectLike({ Description: 'MediaWiki admin password' }),
+      DeletionPolicy: 'Retain',
+    });
+  });
+
+  test('MediaWiki $wgSecretKey secret retained (Phase 2.5d Finding 1)', () => {
+    // Regression guard: a previous design used a single Secret with a JSON template
+    // {adminPassword,secretKey,upgradeKey} + generateStringKey: 'adminPassword', which
+    // only auto-generates the keyed field — secretKey/upgradeKey stayed empty strings
+    // and LocalSettings.php silently ran on its dev placeholders in prod.
     template.hasResource('AWS::SecretsManager::Secret', {
       Properties: Match.objectLike({
-        Description: 'MediaWiki application secrets (admin password, secret key, upgrade key)',
+        Description: Match.stringLikeRegexp('.*\\$wgSecretKey.*'),
+        GenerateSecretString: Match.objectLike({ PasswordLength: 32, ExcludePunctuation: true }),
       }),
       DeletionPolicy: 'Retain',
     });
+  });
+
+  test('MediaWiki $wgUpgradeKey secret retained (Phase 2.5d Finding 1)', () => {
+    template.hasResource('AWS::SecretsManager::Secret', {
+      Properties: Match.objectLike({
+        Description: Match.stringLikeRegexp('.*\\$wgUpgradeKey.*'),
+        GenerateSecretString: Match.objectLike({ PasswordLength: 16, ExcludePunctuation: true }),
+      }),
+      DeletionPolicy: 'Retain',
+    });
+  });
+
+  test('UserData uses docker run --env-file (Phase 2.5d Finding 2)', () => {
+    // Inline -e SECRET="$VAR" leaks values to /var/log/cloud-init-output.log AND to the
+    // mediawiki CloudWatch stream because UserData runs under `set -x` and bash echoes
+    // post-expansion arguments. The env-file pattern keeps both values and command line
+    // out of the log. Regression guard for Phase 2.5c Round 1 Finding 2.
+    const instances = template.findResources('AWS::EC2::Instance');
+    const userDataB64 = JSON.stringify(Object.values(instances)[0]);
+    expect(userDataB64).toContain('--env-file');
+    // The env-file path is constructed in UserData; assert the staging file name appears.
+    expect(userDataB64).toContain('/tmp/wiki7.env');
+  });
+
+  test('UserData does NOT pass secrets via inline -e flags (Phase 2.5d Finding 2)', () => {
+    // Defensive regression check. The values themselves never appear at synth time (the
+    // variables expand at boot), but the literal `-e VAR=` shape would be a tell-tale of
+    // a regression to the old design.
+    const instances = template.findResources('AWS::EC2::Instance');
+    const userDataStr = JSON.stringify(Object.values(instances)[0]);
+    for (const env of [
+      '-e MEDIAWIKI_DB_PASSWORD',
+      '-e MEDIAWIKI_ADMIN_PASSWORD',
+      '-e WG_SECRET_KEY',
+      '-e WG_UPGRADE_KEY',
+    ]) {
+      expect(userDataStr).not.toContain(env);
+    }
   });
 
   test('CloudWatch log group for container logs', () => {

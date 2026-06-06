@@ -38,20 +38,44 @@ export class ComputeStack extends Construct {
     const { vpc, dbInstance, dbSecret, mediawikiSecurityGroup, domainName } = props;
     const region = cdk.Stack.of(this).region;
 
-    // === MediaWiki application secrets (admin pw, $wgSecretKey, $wgUpgradeKey) =================
-    // RETAIN so a stack replacement doesn't rotate keys out from under sessions.
+    // === MediaWiki application secrets ========================================================
+    // Three retained Secrets. Originally one Secret with a JSON template of three fields, but
+    // `generateStringKey` only auto-generates ONE field — so secretKey and upgradeKey stayed
+    // empty strings forever and LocalSettings.php's `getenv(...) ?: 'dev-only-...'` silently
+    // fell through to the dev placeholders visible in this public repo (Phase 2.5c Finding 1,
+    // exploitable for CSRF / session forgery). Splitting into three Secrets with one
+    // auto-generated value each gets all three filled by CFN at create time; the rotation
+    // choreography in revival-plan §Phase 2.5d puts a fresh value into all four secrets
+    // (these three + the RDS-credentials secret) so the dev-placeholder values that ran in
+    // prod between PR #24 and #44 are also rotated out.
+    //
+    // RETAIN on all three so a stack replacement doesn't rotate keys out from under sessions.
+    // Existing secret name kept verbatim so CFN doesn't try to replace the resource that
+    // already holds the live adminPassword.
     const mediawikiSecret = new secretsmanager.Secret(this, 'Wiki7MediaWikiSecret', {
       generateSecretString: {
-        secretStringTemplate: JSON.stringify({
-          adminPassword: '',
-          secretKey: '',
-          upgradeKey: '',
-        }),
+        secretStringTemplate: JSON.stringify({ adminPassword: '' }),
         generateStringKey: 'adminPassword',
         excludePunctuation: true,
         passwordLength: 32,
       },
-      description: 'MediaWiki application secrets (admin password, secret key, upgrade key)',
+      description: 'MediaWiki admin password',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    const secretKeySecret = new secretsmanager.Secret(this, 'Wiki7SecretKeySecret', {
+      generateSecretString: {
+        excludePunctuation: true,
+        passwordLength: 32,
+      },
+      description: 'MediaWiki $wgSecretKey (CSRF tokens, session IDs, password reset tokens)',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    const upgradeKeySecret = new secretsmanager.Secret(this, 'Wiki7UpgradeKeySecret', {
+      generateSecretString: {
+        excludePunctuation: true,
+        passwordLength: 16,
+      },
+      description: 'MediaWiki $wgUpgradeKey (gates the mw-config/ web installer)',
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
@@ -167,6 +191,8 @@ export class ComputeStack extends Construct {
     // Read secrets at boot.
     dbSecret.grantRead(instanceRole);
     mediawikiSecret.grantRead(instanceRole);
+    secretKeySecret.grantRead(instanceRole);
+    upgradeKeySecret.grantRead(instanceRole);
     // Pull the container image from CDK's ECR repo.
     image.repository.grantPull(instanceRole);
     // Write container logs to CloudWatch.
@@ -203,6 +229,8 @@ export class ComputeStack extends Construct {
     // === UserData — installs Docker, pulls the image, runs it ==================================
     const dbSecretArn = dbSecret.secretArn;
     const mwSecretArn = mediawikiSecret.secretArn;
+    const secretKeyArn = secretKeySecret.secretArn;
+    const upgradeKeyArn = upgradeKeySecret.secretArn;
     const imageUri = image.imageUri;
     const ecrRegistry = `${cdk.Stack.of(this).account}.dkr.ecr.${region}.amazonaws.com`;
     const bucketName = this.mediawikiStorageBucket.bucketName;
@@ -269,36 +297,57 @@ export class ComputeStack extends Construct {
       `  redis:7-alpine \\`,
       `  redis-server --save "" --maxmemory 256mb --maxmemory-policy allkeys-lru`,
       ``,
-      `# 4. Fetch secrets at boot — never written to disk, only into the container's env.`,
+      `# 4. Fetch secrets at boot and stage them in a chmod 0600 env-file.`,
+      `#    Why a file instead of inline 'docker run -e KEY=VALUE': UserData runs with`,
+      `#    'set -euxo pipefail', so xtrace echoes every command (including the docker`,
+      `#    run line and any 'export FOO=$(jq ...)' lines) AFTER variable expansion`,
+      `#    into /var/log/cloud-init-output.log AND the mediawiki CloudWatch stream`,
+      `#    (cloud-init output ships there via the awslogs driver). That leaked the`,
+      `#    DB password and admin password in the clear — Phase 2.5c Round 1 Finding 2.`,
+      `#    Wrapping the value-writing block in 'set +x' silences the echo; reading the`,
+      `#    values into a file the daemon picks up via --env-file means even a future`,
+      `#    regression (someone re-enables xtrace) can't put them back on the docker`,
+      `#    run command line. The file is chmod 0600 (root-only) and deleted after`,
+      `#    'docker run' returns; the values live only in the container's process env.`,
+      `ENVFILE=/tmp/wiki7.env`,
+      `install -m 0600 /dev/null "$ENVFILE"`,
+      `{ set +x; } 2>/dev/null`,
       `DB_JSON=$(aws secretsmanager get-secret-value --region ${region} --secret-id ${dbSecretArn} --query SecretString --output text)`,
       `MW_JSON=$(aws secretsmanager get-secret-value --region ${region} --secret-id ${mwSecretArn} --query SecretString --output text)`,
-      `export MEDIAWIKI_DB_PASSWORD=$(echo "$DB_JSON" | jq -r .password)`,
-      `export MEDIAWIKI_ADMIN_PASSWORD=$(echo "$MW_JSON" | jq -r .adminPassword)`,
-      `export WG_SECRET_KEY=$(echo "$MW_JSON" | jq -r .secretKey)`,
-      `export WG_UPGRADE_KEY=$(echo "$MW_JSON" | jq -r .upgradeKey)`,
+      `WG_SECRET_KEY_VAL=$(aws secretsmanager get-secret-value --region ${region} --secret-id ${secretKeyArn} --query SecretString --output text)`,
+      `WG_UPGRADE_KEY_VAL=$(aws secretsmanager get-secret-value --region ${region} --secret-id ${upgradeKeyArn} --query SecretString --output text)`,
+      `{`,
+      `  printf 'MEDIAWIKI_DB_HOST=%s\\n' '${dbInstance.dbInstanceEndpointAddress}'`,
+      `  printf 'MEDIAWIKI_DB_NAME=wikidb\\n'`,
+      `  printf 'MEDIAWIKI_DB_USER=wikiuser\\n'`,
+      `  printf 'MEDIAWIKI_DB_PASSWORD=%s\\n' "$(echo "$DB_JSON" | jq -r .password)"`,
+      `  printf 'MEDIAWIKI_ADMIN_PASSWORD=%s\\n' "$(echo "$MW_JSON" | jq -r .adminPassword)"`,
+      `  printf 'WG_SECRET_KEY=%s\\n' "$WG_SECRET_KEY_VAL"`,
+      `  printf 'WG_UPGRADE_KEY=%s\\n' "$WG_UPGRADE_KEY_VAL"`,
+      `  printf 'WIKI_ENV=production\\n'`,
+      `  printf 'S3_BUCKET_NAME=%s\\n' '${bucketName}'`,
+      `  printf 'REDIS_HOST=redis\\n'`,
+      `} >> "$ENVFILE"`,
+      `set -x`,
       ``,
       `# 5. Run the MW container on the same network so it can reach 'redis:6379'.`,
+      `#    All env vars (secret + non-secret) come from --env-file so the docker run`,
+      `#    line in cloud-init's log carries no values.`,
       `docker rm -f wiki7 2>/dev/null || true`,
       `docker run -d \\`,
       `  --name wiki7 \\`,
       `  --network wiki7-net \\`,
       `  --restart=always \\`,
       `  -p 80:80 \\`,
-      `  -e MEDIAWIKI_DB_HOST=${dbInstance.dbInstanceEndpointAddress} \\`,
-      `  -e MEDIAWIKI_DB_NAME=wikidb \\`,
-      `  -e MEDIAWIKI_DB_USER=wikiuser \\`,
-      `  -e MEDIAWIKI_DB_PASSWORD="$MEDIAWIKI_DB_PASSWORD" \\`,
-      `  -e MEDIAWIKI_ADMIN_PASSWORD="$MEDIAWIKI_ADMIN_PASSWORD" \\`,
-      `  -e WG_SECRET_KEY="$WG_SECRET_KEY" \\`,
-      `  -e WG_UPGRADE_KEY="$WG_UPGRADE_KEY" \\`,
-      `  -e WIKI_ENV=production \\`,
-      `  -e S3_BUCKET_NAME=${bucketName} \\`,
-      `  -e REDIS_HOST=redis \\`,
+      `  --env-file "$ENVFILE" \\`,
       `  --log-driver=awslogs \\`,
       `  --log-opt awslogs-region=${region} \\`,
       `  --log-opt awslogs-group=${logGroupName} \\`,
       `  --log-opt awslogs-stream=mediawiki \\`,
       `  ${imageUri}`,
+      `# Values are now in the container's process namespace; the on-host file is no`,
+      `# longer needed and is removed so a later disk-image read can't recover it.`,
+      `rm -f "$ENVFILE"`,
       ``,
       `# 6. MediaWiki job-queue runner — drains the queue every minute via host cron.`,
       `#    LocalSettings.php sets $wgJobRunRate = 0 so jobs are NOT executed inline on`,
