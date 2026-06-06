@@ -126,7 +126,18 @@ All four open PRs get closed; salvage first. Nothing is destroyed (recoverable f
     - Anon edge cache hits visibly (Age header), no stale-logged-in-UI regression, edit-to-fresh time matches design choice (immediate via invalidation OR bounded by chosen `$wgCdnMaxAge`).
     - `$wgRateLimits` sized for Phase 3 pipeline workload — recorded in the LocalSettings comment whether we kept defaults or raised any group.
     - **Search Console: request re-crawl** of the apex URL. The Phase 2 SEO sweep claimed full surface but Google's perf signals (LCP / CrUX) were measured against an un-cached origin; after 2.5b lands, anon LCP should drop materially and we want CrUX to refresh sooner than its natural cadence. 30-second action in Search Console once the cache shape settles.
-    - Then Phase 3 starts.
+    - Then Phase 2.5c runs, then Phase 3 starts.
+
+### Phase 2.5c — Pre-Phase-3 platform verification  *(planned, after 2.5b validates, before Phase 3)*
+*Goal:* deliberate, scheduled, end-to-end verification pass to confirm that every piece we built across Phase 2 + 2.5 + 2.5b is actually delivering the value we expected — not just "the change looks correct in code review". Phase 3 lands content + the data pipeline; before that traffic pattern starts we want a clean platform state recorded against a runbook, not a vibes-based "I think it works".
+
+Full matrix lives at [`docs/phase-2.5c-platform-verification.md`](phase-2.5c-platform-verification.md) — ~100 items across 11 categories (infra baseline, MW health, SEO + social meta, observability + alerting, security posture, backup + recoverability, CDN behavior, cost reality, CI/CD, content baseline, optional perf baseline). Each item has the exact command/URL to run, the expected outcome, and a column to record the actual outcome inline. Severity legend: 🔴 blocks Phase 3, 🟡 fix-before-content-lands, 🟢 nice-to-confirm.
+
+- **Why a separate phase, not folded into 2.5b:** different mindset (verifier vs implementer), different output shape (runbook artifact vs code change), and 2.5b's PR review stays focused. If verification surfaces issues, the fixes get their own focused work (a "Phase 2.5d patch" PR or early-Phase-3 task) rather than ballooning 2.5b's scope.
+- **Pre-2.5b baseline capture:** items K1–K5 (PageSpeed / Lighthouse / cold + warm TTFB) get a baseline run BEFORE 2.5b ships, so 2.5b's edge-caching win has a real before/after number. Re-run after 2.5b. The other matrix items run once, end-state, after 2.5b.
+- **Restore drill policy:** reuse the 2026-06-06 drill if < 30 days old at execution time (saves 30 min); re-run otherwise.
+- **#38 deploy-validation items reused:** A15, A16, B11–B15, D2, G3, G4, G6, G7 will already have been executed at PR #38 deploy time (Phase 2.5 deploy validation, not 2.5c) — re-confirmed quickly rather than re-investigated.
+- **Exit:** all 🔴 pass; all 🟡 either pass or have a tracked follow-up; all 🟢 either pass or are explicitly accepted; verification doc committed with outcomes; Phase 3 starts.
 
 **Deferred -> Phase 4 (recorded with reasoning, per the review):**
 - **OPcache tuning + APCu local tier** — relies on the stock image OPcache defaults (128 MB / 10k files), no APCu. *Defer:* pure performance, invisible at ~1 user/day; tune when content/traffic grows.
