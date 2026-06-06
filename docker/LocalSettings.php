@@ -171,14 +171,25 @@ $wgWiki7Tagline = 'אנציקלופדיית הפועל באר שבע';
 $wgHooks['WikiSEOPreAddMetadata'][] = function ( array &$metadata ) {
     global $wgWiki7Tagline;
 
-    // og:title — when the page didn't specify its own title via {{#seo:title=...}}, WikiSEO
-    // falls back to the bare page title (often <20 chars on a fan wiki). title_mode=append
-    // with our tagline gives "<page title> - אנציקלופדיית הפועל באר שבע" automatically,
-    // for every page, no per-page editing needed.
+    // og:title — when the page didn't specify its own title via {{#seo:title=...}}, we
+    // want "<page name> - <tagline>" to be the og:title (and HTML <title>) on every page.
+    //
+    // WikiSEO's title_mode='append' looks like it should do this but it doesn't — it only
+    // affects the HTML <title> element, NOT og:title. The OG generator's title-emission
+    // path is:
+    //   1) addTitleMeta() emits og:title using $out->getTitle()->getPrefixedText()
+    //   2) the generator's foreach loop then EMITS og:title AGAIN from metadata['title']
+    //      via addHeadItem with the same key, overwriting step 1
+    // So step-2 wins, and og:title ends up equal to whatever metadata['title'] holds. To
+    // get "<page name> - <tagline>" out, we have to build the full string ourselves and
+    // hand it to WikiSEO via metadata['title'] with title_mode='replace'.
     if ( !isset( $metadata['title'] ) ) {
-        $metadata['title']           = $wgWiki7Tagline;
-        $metadata['title_mode']      = 'append';
-        $metadata['title_separator'] = ' - ';
+        $title         = \RequestContext::getMain()->getTitle();
+        $pageTitleText = $title ? $title->getPrefixedText() : '';
+        $metadata['title'] = $pageTitleText !== ''
+            ? $pageTitleText . ' - ' . $wgWiki7Tagline
+            : $wgWiki7Tagline;
+        $metadata['title_mode'] = 'replace';
     }
 
     // og:type — 'website' on the main page, 'article' everywhere else. RequestContext is
