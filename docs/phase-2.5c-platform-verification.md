@@ -258,7 +258,7 @@ Subset of the matrix run after the PR #38 deploy completed (13m34s) and the EC2 
 
 #### 🚨 Finding 1 — `$wgSecretKey` + `$wgUpgradeKey` empty in container env → prod runs on dev fallback values
 
-> **Status:** Patched in PR #44 (Phase 2.5d). Pending deploy + the 4-secret rotation choreography in [`docs/revival-plan.md`](revival-plan.md#phase-25d) before the live values stop being the dev placeholder. Mark RESOLVED with the date once post-rotation verification passes.
+> **Status: ✅ RESOLVED 2026-06-06 via PR #44 (Phase 2.5d) + post-deploy rotation.** Two dedicated retained Secrets now hold real auto-generated values (`Wiki7SecretKeySecret` 32-char, `Wiki7UpgradeKeySecret` 16-char); `LocalSettings.php` throws `RuntimeException` at MW boot if either is empty under `WIKI_ENV=production`. All four retained Secrets (`Wiki7SecretKeySecret`, `Wiki7UpgradeKeySecret`, `Wiki7MediaWikiSecret.adminPassword`, `Wiki7DatabaseSecret.password`) + RDS master password rotated 2026-06-06; `$wgSecretKey` SSM-probed as a real 32-char value, not the dev placeholder string.
 
 
 **Evidence:** the cloud-init log (`/var/log/cloud-init-output.log`) shows the Secrets Manager value returns `{"secretKey":"","upgradeKey":"","adminPassword":"<real-32-char>"}` and the bash export resolves both keys to empty strings:
@@ -290,7 +290,7 @@ Option 1 is the cleanest IaC story. Recommend option 1 — bake correctness into
 
 #### 🚨 Finding 2 — DB password + admin password leaked in cloud-init log (disk + CloudWatch)
 
-> **Status:** Patched in PR #44 (Phase 2.5d). UserData now writes a chmod-0600 `/tmp/wiki7.env` under `set +x` and runs `docker run --env-file`, so neither the values nor the `-e KEY=VALUE` shape end up in the cloud-init log or the mediawiki CloudWatch stream. Rotation closes the historical leak — see [`docs/revival-plan.md`](revival-plan.md#phase-25d). Mark RESOLVED with the date once post-rotation verification passes.
+> **Status: ✅ RESOLVED 2026-06-06 via PR #44 (Phase 2.5d) + post-deploy rotation.** UserData now writes a chmod-0600 `/tmp/wiki7.env` under `set +x` and runs `docker run --env-file`, so neither the values nor the `-e KEY=VALUE` shape end up in the cloud-init log or the mediawiki CloudWatch stream. New EC2's `/var/log/cloud-init-output.log` SSM-grepped for `MEDIAWIKI_DB_PASSWORD=` / `MEDIAWIKI_ADMIN_PASSWORD=` / `WG_SECRET_KEY=` / `WG_UPGRADE_KEY=`: 0 hits. CloudWatch mediawiki stream last-24h: 0 hits. The pre-#44 historical leak was closed by rotating the DB password + admin password to fresh values (RDS `available`, no pending modify).
 
 
 **Evidence:** cloud-init log lines from the `set -euxo pipefail` UserData echo every command (including secret-bearing exports + the `docker run -e ...` line). They land in `/var/log/cloud-init-output.log` on the EC2 AND in CloudWatch via the awslogs driver on the mediawiki stream. Anyone with `logs:GetLogEvents` on the wiki7 log group OR SSM access to the instance can read them.
@@ -327,7 +327,7 @@ Schema.org canonical types use CamelCase: `WebSite`, `Article`, `Person`, etc.
 
 #### ⚠️ Finding 4 — `cdk diff` from a developer machine always shows EC2 instance replacement
 
-> **Status:** RESOLVED in PR #44 (Phase 2.5d) via `docker/.dockerignore` excluding `.DS_Store` and `**/.DS_Store`. Verified locally: a `cdk diff` from a macOS dev machine now shows only the genuine UserData/secret changes, not a phantom image-asset hash drift.
+> **Status: ✅ RESOLVED 2026-06-06 via PR #44 (Phase 2.5d)** — `docker/.dockerignore` excludes `.DS_Store` and `**/.DS_Store`. Verified locally: a `cdk diff` from a macOS dev machine now shows only the genuine UserData/secret changes, not a phantom image-asset hash drift.
 
 
 **Evidence:** post-deploy `cdk diff Wiki7CdkStack` shows
@@ -494,7 +494,7 @@ aws backup list-recovery-points-by-backup-vault ... → AccessDeniedException
 2. ✅ **D3 test alarm → email arrives** — DONE 2026-06-06 (ALARM 19:38:37Z → OK 19:40:59Z, both notifications delivered).
 3. ✅ **PageSpeed Insights** desktop + mobile (K1/K2) — DONE 2026-06-06, captured in K6 above.
 4. ✅ **Google Rich Results Test** (C18) — DONE 2026-06-06. "No items detected" on homepage (expected; WebSite isn't a rich-result-eligible type). Re-run on an article page after Phase 3 lands content to stress-test Finding 3.
-5. ⏸️ **B15 test edit** — pending. Log in, make a small edit, tell me when done; I'll query `rc_ip` via SSM.
+5. ✅ **B15 test edit** — DONE 2026-06-06 (post-rotation). Admin made a small edit; `SELECT rc.rc_id, a.actor_name, rc.rc_timestamp, rc.rc_ip ... ORDER BY rc.rc_id DESC LIMIT 5` returned `rc_id=3, actor_name=Admin, rc_timestamp=20260606215025, rc_ip=194.90.225.101` — real client IP, not a CloudFront edge IP. PR #38's `CloudFront-Viewer-Address → REMOTE_ADDR` rewrite is intact through the Phase 2.5d rotation. (MW 1.45 moved the user identity off `rc_user_text` into an `actor` join — the query in the matrix was written against the old schema; if re-run, use the JOIN form here.)
 6. (Optional) **Local Lighthouse** in Chrome DevTools — SKIPPED. PageSpeed Insights API already runs Lighthouse 13.3.0 in lab mode with consistent throttling; running it again locally would add noise without adding signal.
 
 ### Recommended next steps
@@ -507,3 +507,10 @@ Address Findings 1–4 as a "**Phase 2.5d patch**" PR before 2.5b begins:
 Finding 5 (IAM) can stay deferred.
 
 After the patch PR lands + secrets rotated, **2.5b starts on a clean platform state**. After 2.5b lands, the **full 2.5c sitting** runs the remaining ~85 matrix items end-to-end.
+
+### Status as of 2026-06-06 21:50 UTC
+
+- **Phase 2.5d DONE** via PR #44: Findings 1, 2, 4 all marked ✅ RESOLVED above. Four-secret rotation + RDS master password rotation + Admin user password reset + post-rotation B15 verification all completed in this sitting.
+- **Finding 3 (Schema.org `@type` casing)** — still deferred to Phase 2.5b's WikiSEO config work, per the original plan.
+- **Finding 5 (local IAM `backup:ListRecoveryPointsByBackupVault`)** — still on Phase 4 deferral.
+- **Next: Phase 2.5b** (CloudFront edge caching of MW HTML + Finding 3 roll-in), then Phase 2.5c Round 2 (~85 remaining matrix items), then Phase 3 (content + data pipeline).
