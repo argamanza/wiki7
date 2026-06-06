@@ -123,12 +123,55 @@ wfLoadExtension( 'Cargo' );
 wfLoadExtension( 'PageForms' );
 wfLoadExtension( 'TabberNeue' );
 
-# SEO — OpenGraph/Twitter Card meta + per-page meta description from article intro.
-# Description2 must load before OpenGraphMeta so the description is available when the OG
-# tags are emitted.
+# === SEO ============================================================================
+# Two extensions cooperate:
+#   - Description2 extracts a per-page <meta name="description"> from the article's
+#     leading paragraph. WikiSEO reads its output when present.
+#   - WikiSEO emits the full OG + Twitter Card + Schema.org JSON-LD + canonical-link
+#     surface. Per-page customisation is via the {{#seo:...}} parser function in
+#     wikitext. The site-wide defaults below cover everything not page-specific.
+#
+# Per-page customisation example (used by Cargo templates once Phase 3 content lands):
+#   {{#seo:
+#     |title=שי אליאס – פרופיל שחקן
+#     |title_mode=replace
+#     |description=שחקן הפועל באר שבע מאז 2018, רגל ימין דומיננטית, ...
+#     |image=ShayElias.jpg
+#     |image_alt=שי אליאס בעונת 2024/25
+#     |type=Person
+#     |published_time=2018-08-15
+#   }}
+# WikiSEO emits the matching og:*, twitter:*, and Schema.org JSON-LD blocks. For
+# SportsTeam / SportsEvent / Person, set |type= and WikiSEO maps to the correct
+# Schema.org type.
 wfLoadExtension( 'Description2' );
-wfLoadExtension( 'OpenGraphMeta' );
+wfLoadExtension( 'WikiSEO' );
 $wgEnableMetaDescriptionFunctions = true; // expose {{#description2:}} for explicit overrides
+
+# Site-wide SEO defaults
+$wgEnableCanonicalServerLink = true;                      // <link rel="canonical"> everywhere
+$wgWikiSeoDefaultImage       = '/assets/social-share.png'; // 1200x630 PNG shipped to S3 via CDK
+$wgTwitterCardType           = 'summary_large_image';      // Use the large preview variant
+
+# Fallback description for pages where neither Description2 (no leading paragraph) nor
+# a {{#seo:description=...}} call produced one — most commonly the main page, whose
+# wikitext is template-only. The hook idempotently skips when something else already
+# emitted a description, so per-page descriptions always win when they exist.
+$wgWiki7FallbackDescription = 'אנציקלופדיית הפועל באר שבע — היסטוריה, שחקנים, גביעים ואוהדים';
+$wgHooks['BeforePageDisplay'][] = function ( OutputPage $out, Skin $skin ) {
+    global $wgWiki7FallbackDescription;
+    foreach ( $out->getHeadItemsArray() as $item ) {
+        // Skip the fallback if WikiSEO / Description2 / a manual <meta> already set one.
+        if ( preg_match( '/(name|property)="(description|og:description)"/i', $item ) ) {
+            return;
+        }
+    }
+    $esc = htmlspecialchars( $wgWiki7FallbackDescription, ENT_QUOTES, 'UTF-8' );
+    $out->addHeadItem( 'wiki7-fallback-description',
+          "\t<meta name=\"description\" content=\"{$esc}\">\n"
+        . "\t<meta property=\"og:description\" content=\"{$esc}\">\n"
+        . "\t<meta name=\"twitter:description\" content=\"{$esc}\">\n" );
+};
 
 ##
 ## Logo

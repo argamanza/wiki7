@@ -47,15 +47,21 @@ COPY LocalSettings.php /var/www/html/LocalSettings.php
 ARG TABBERNEUE_TAG=v3.4.1
 RUN git clone --depth 1 --branch "$TABBERNEUE_TAG" https://github.com/StarCitizenTools/mediawiki-extensions-TabberNeue.git extensions/TabberNeue
 
-# SEO extensions — emit OpenGraph + Twitter Card meta and a per-page <meta name="description">
-# extracted from the article intro. Critical for social-sharing previews and search engine
-# snippet quality. Neither has a stable release tag; pinning to MW's REL branch for the
-# matching MW major version (REL1_45 for MediaWiki 1.45). The previous REL1_43 pin called
-# wfExpandUrl(), which is a fatal-on-call in MW 1.45 — every homepage render 500'd.
-ARG OPENGRAPHMETA_BRANCH=REL1_45
-RUN git clone --depth 1 --branch "$OPENGRAPHMETA_BRANCH" https://github.com/wikimedia/mediawiki-extensions-OpenGraphMeta.git extensions/OpenGraphMeta
+# SEO extensions:
+#  - Description2 extracts a per-page meta `description` page property from the article's
+#    leading paragraph; WikiSEO reads its output when present.
+#  - WikiSEO emits the full OG + Twitter Card + Schema.org JSON-LD + canonical-link
+#    surface from page metadata and the per-page {{#seo:title=|description=|image=|type=}}
+#    parser function. Supersedes the previous OpenGraphMeta+custom-hook approach: gives
+#    us Twitter Cards, structured data, and a single config-driven story instead of
+#    glue PHP in LocalSettings.php.
+# Both pinned to REL branches matching the MediaWiki major version (REL1_45 for MW 1.45).
+# Earlier REL1_43 pin on OpenGraphMeta called wfExpandUrl(), which is fatal-on-call in
+# MW 1.45 — every homepage render 500'd. Lesson: match the REL branch.
 ARG DESCRIPTION2_BRANCH=REL1_45
 RUN git clone --depth 1 --branch "$DESCRIPTION2_BRANCH" https://github.com/wikimedia/mediawiki-extensions-Description2.git extensions/Description2
+ARG WIKISEO_BRANCH=REL1_45
+RUN git clone --depth 1 --branch "$WIKISEO_BRANCH" https://github.com/wikimedia/mediawiki-extensions-WikiSEO.git extensions/WikiSEO
 
 # Copy extensions
 COPY extensions/Cargo/ /var/www/html/extensions/Cargo/
