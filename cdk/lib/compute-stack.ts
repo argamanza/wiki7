@@ -397,9 +397,22 @@ export class ComputeStack extends Construct {
     // === Sitemap-generation SSM Document ======================================================
     // Trigger via `aws ssm send-command --document-name Wiki7-GenerateSitemap --targets ...`.
     // Generates the sitemap inside the MW container, copies it out to the host, and uploads to
-    // the S3 storage bucket. Reachable at:
+    // S3 under `assets/sitemap/`. Reachable at:
     //   https://wiki7.co.il/assets/sitemap/sitemap-index-wikidb.xml
-    // (the existing CloudFront /assets/* behavior serves S3 via OAC).
+    // (the existing CloudFront `/assets/*` behavior serves S3 via OAC).
+    //
+    // Two bugs in the earlier revision worth flagging in case future-self touches this:
+    //   1. --urlpath must be a PATH ('/assets/sitemap/'), not a full URL. generateSitemap
+    //      prepends --server to it, so passing 'https://wiki7.co.il/...' produced doubled
+    //      URLs ('https://wiki7.co.il/https://wiki7.co.il/...') in the sitemap index.
+    //   2. The S3 destination must be 'assets/sitemap/' (under the assets/ prefix that
+    //      the BucketDeployment + CloudFront /assets/* behavior share); plain 'sitemap/'
+    //      uploaded to the bucket root, which CloudFront's /assets/* route can't reach.
+    //
+    // Also removed --content-type application/xml from the sync. It was set uniformly for
+    // both the .xml index and the .xml.gz sub-sitemaps, mislabeling the gzipped file
+    // (which should be application/x-gzip + Content-Encoding: gzip). Letting awscli
+    // auto-detect from extension gets both right.
     //
     // Manual until content is curated and we know what's worth indexing. Phase 4 wires a
     // weekly EventBridge schedule.
@@ -418,9 +431,9 @@ export class ComputeStack extends Construct {
         '      runCommand:',
         '        - set -eux',
         '        - rm -rf /tmp/wiki7-sitemap && mkdir -p /tmp/wiki7-sitemap',
-        '        - docker exec wiki7 bash -c "mkdir -p /tmp/sitemap && rm -f /tmp/sitemap/* && php maintenance/run.php generateSitemap --fspath=/tmp/sitemap/ --urlpath=https://wiki7.co.il/assets/sitemap/ --server=https://wiki7.co.il --identifier=wikidb"',
+        '        - docker exec wiki7 bash -c "mkdir -p /tmp/sitemap && rm -f /tmp/sitemap/* && php maintenance/run.php generateSitemap --fspath=/tmp/sitemap/ --urlpath=/assets/sitemap/ --server=https://wiki7.co.il --identifier=wikidb"',
         '        - docker cp wiki7:/tmp/sitemap/. /tmp/wiki7-sitemap/',
-        `        - aws s3 sync /tmp/wiki7-sitemap/ s3://${this.mediawikiStorageBucket.bucketName}/sitemap/ --region ${region} --delete --content-type application/xml`,
+        `        - aws s3 sync /tmp/wiki7-sitemap/ s3://${this.mediawikiStorageBucket.bucketName}/assets/sitemap/ --region ${region} --delete`,
         '        - ls -la /tmp/wiki7-sitemap',
       ].join('\n'),
     });
