@@ -123,6 +123,13 @@ wfLoadExtension( 'Cargo' );
 wfLoadExtension( 'PageForms' );
 wfLoadExtension( 'TabberNeue' );
 
+# SEO — OpenGraph/Twitter Card meta + per-page meta description from article intro.
+# Description2 must load before OpenGraphMeta so the description is available when the OG
+# tags are emitted.
+wfLoadExtension( 'Description2' );
+wfLoadExtension( 'OpenGraphMeta' );
+$wgEnableMetaDescriptionFunctions = true; // expose {{#description2:}} for explicit overrides
+
 ##
 ## Logo
 ##
@@ -154,8 +161,24 @@ if ( getenv('WIKI_ENV') === 'production' ) {
     // Caching settings
     $wgCachePages = true; // Enable page caching
     $wgEnableParserCache = true; // Enable parsed output cache
-    $wgMainCacheType = CACHE_ACCEL; // Use object cache
-    $wgParserCacheType = CACHE_ACCEL;
+    if ( getenv( 'REDIS_HOST' ) ) {
+        // Sidecar Redis container — shared across all PHP workers (unlike APCu,
+        // which is per-process). Big speedup on ParserOutput hits because every
+        // worker reuses the same parsed page tree.
+        $wgObjectCaches['redis'] = [
+            'class'      => 'RedisBagOStuff',
+            'servers'    => [ getenv( 'REDIS_HOST' ) . ':6379' ],
+            'persistent' => true,
+        ];
+        $wgMainCacheType    = 'redis';
+        $wgParserCacheType  = 'redis';
+        $wgMessageCacheType = 'redis';
+        $wgSessionCacheType = 'redis';
+    } else {
+        // Fallback for environments without Redis available.
+        $wgMainCacheType   = CACHE_ACCEL;
+        $wgParserCacheType = CACHE_ACCEL;
+    }
     $wgCacheDirectory = "/tmp"; // Use local tmp dir for cache if needed
     
     // Resource paths
@@ -170,14 +193,19 @@ if ( getenv('WIKI_ENV') === 'production' ) {
     if (getenv('S3_BUCKET_NAME')) {
         # Load AWS extension
         wfLoadExtension( 'AWS' );
-        
-        # Configure AWS extension
-        $wgAWSCredentials = [
-            'key'    => getenv('AWS_ACCESS_KEY_ID'),
-            'secret' => getenv('AWS_SECRET_ACCESS_KEY'),
-            'token'  => false
-        ];
-        
+
+        # Credentials come from the EC2 instance role via IMDSv2 (no explicit $wgAWSCredentials).
+        # The AWS SDK PHP credential provider chain auto-discovers in this order:
+        #   ECS task role → EC2 instance metadata → env vars → ~/.aws/credentials
+        # Override only if explicit access keys are present in the environment (e.g. local dev).
+        if (getenv('AWS_ACCESS_KEY_ID') && getenv('AWS_SECRET_ACCESS_KEY')) {
+            $wgAWSCredentials = [
+                'key'    => getenv('AWS_ACCESS_KEY_ID'),
+                'secret' => getenv('AWS_SECRET_ACCESS_KEY'),
+                'token'  => false,
+            ];
+        }
+
         # S3 configuration
         $wgAWSRegion = 'il-central-1';
         $wgAWSBucketName = getenv('S3_BUCKET_NAME');

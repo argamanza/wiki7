@@ -5,6 +5,16 @@ RUN apt-get update && apt-get install -y \
     git unzip wget imagemagick mariadb-client \
     && rm -rf /var/lib/apt/lists/*
 
+# Install the PECL redis PHP extension so MediaWiki's RedisBagOStuff can connect
+# to a sidecar Redis container ($wgMainCacheType / $wgParserCacheType in
+# LocalSettings.php). $PHPIZE_DEPS is set by the docker-php base image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends $PHPIZE_DEPS \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
+    && apt-get purge -y --auto-remove $PHPIZE_DEPS \
+    && rm -rf /var/lib/apt/lists/*
+
 # Download Composer
 RUN wget -cO - https://getcomposer.org/composer-2.phar > composer.phar \
     && mv composer.phar /usr/local/bin/composer \
@@ -25,12 +35,26 @@ WORKDIR /var/www/html
 # Copy .htaccess
 COPY .htaccess /var/www/html/.htaccess
 
+# Static robots.txt — without this, the .htaccess rewrite would route /robots.txt
+# through index.php and MW would treat it as a page title. The .htaccess rule
+# skips real files, so an actual robots.txt at the docroot is served as-is.
+COPY robots.txt /var/www/html/robots.txt
+
 # Copy LocalSettings.php
 COPY LocalSettings.php /var/www/html/LocalSettings.php
 
 # Install TabberNeue extension (tabbed content for stats, lyrics, galleries; pinned)
 ARG TABBERNEUE_TAG=v3.4.1
 RUN git clone --depth 1 --branch "$TABBERNEUE_TAG" https://github.com/StarCitizenTools/mediawiki-extensions-TabberNeue.git extensions/TabberNeue
+
+# SEO extensions — emit OpenGraph + Twitter Card meta and a per-page <meta name="description">
+# extracted from the article intro. Critical for social-sharing previews and search engine
+# snippet quality. Neither has a stable release tag; pinning to MW's REL branch for the closest
+# version match. Bump these when MediaWiki itself moves.
+ARG OPENGRAPHMETA_BRANCH=REL1_43
+RUN git clone --depth 1 --branch "$OPENGRAPHMETA_BRANCH" https://github.com/wikimedia/mediawiki-extensions-OpenGraphMeta.git extensions/OpenGraphMeta
+ARG DESCRIPTION2_BRANCH=REL1_43
+RUN git clone --depth 1 --branch "$DESCRIPTION2_BRANCH" https://github.com/wikimedia/mediawiki-extensions-Description2.git extensions/Description2
 
 # Copy extensions
 COPY extensions/Cargo/ /var/www/html/extensions/Cargo/

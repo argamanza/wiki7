@@ -38,24 +38,17 @@ export class GitHubOidcStack extends cdk.Stack {
       )
     );
 
+    // The CDK bootstrap roles are the only permissions GH Actions needs.
+    // `cdk deploy` itself assumes deploy/cfn-exec/file-publishing/image-publishing/lookup
+    // roles, which carry the actual resource permissions. We don't need a separate
+    // S3-sync policy because docker/assets/ ships via the CDK BucketDeployment construct
+    // (compute-stack.ts) — there's no longer a workflow step that writes to S3 directly.
     role.addToPolicy(
       new iam.PolicyStatement({
         sid: 'AssumeBootstrapRoles',
         effect: iam.Effect.ALLOW,
         actions: ['sts:AssumeRole'],
         resources: cdkBootstrapRoleArns,
-      })
-    );
-
-    role.addToPolicy(
-      new iam.PolicyStatement({
-        sid: 'S3AssetSync',
-        effect: iam.Effect.ALLOW,
-        actions: ['s3:PutObject', 's3:DeleteObject', 's3:GetObject', 's3:ListBucket'],
-        resources: [
-          `arn:aws:s3:::wiki7cdkstack-applicationwiki7storagebucket*`,
-          `arn:aws:s3:::wiki7cdkstack-applicationwiki7storagebucket*/*`,
-        ],
       })
     );
 

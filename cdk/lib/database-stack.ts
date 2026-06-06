@@ -6,6 +6,9 @@ import * as cdk from 'aws-cdk-lib';
 
 interface DatabaseStackProps {
   vpc: ec2.Vpc;
+  // SG attached to the DB instance (separate from the MW SG; ingress is granted from the MW SG)
+  databaseSecurityGroup: ec2.SecurityGroup;
+  // SG attached to the MediaWiki EC2 instance — used as the ingress source for port 3306
   mediawikiSecurityGroup: ec2.SecurityGroup;
 }
 
@@ -16,9 +19,8 @@ export class DatabaseStack extends Construct {
   constructor(scope: Construct, id: string, props: DatabaseStackProps) {
     super(scope, id);
 
-    const { vpc, mediawikiSecurityGroup } = props;
+    const { vpc, databaseSecurityGroup, mediawikiSecurityGroup } = props;
 
-    // Create secret for DB credentials
     this.dbSecret = new secretsmanager.Secret(this, 'Wiki7DatabaseSecret', {
       generateSecretString: {
         secretStringTemplate: JSON.stringify({ username: 'wikiuser' }),
@@ -27,28 +29,38 @@ export class DatabaseStack extends Construct {
         includeSpace: false,
       },
       description: 'Database credentials for Wiki7 MediaWiki database',
+      // Retain the secret if the stack is replaced — avoids rotating creds out from under a live DB.
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // Create RDS instance
     this.dbInstance = new rds.DatabaseInstance(this, 'Wiki7Database', {
-      engine: rds.DatabaseInstanceEngine.mariaDb({ version: rds.MariaDbEngineVersion.VER_10_5 }),
+      engine: rds.DatabaseInstanceEngine.mariaDb({ version: rds.MariaDbEngineVersion.VER_11_4_9 }),
       vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
-      securityGroups: [mediawikiSecurityGroup],
+      securityGroups: [databaseSecurityGroup],
       credentials: rds.Credentials.fromSecret(this.dbSecret),
       multiAz: false,
       allocatedStorage: 20,
       maxAllocatedStorage: 100,
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO),
+      // Graviton t4g.micro — cheapest Graviton class supported for MariaDB.
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE4_GRAVITON, ec2.InstanceSize.MICRO),
       publiclyAccessible: false,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      deletionProtection: false,
+      // The hard lesson from the prior teardown: keep the data protected against accidental destroy.
+      removalPolicy: cdk.RemovalPolicy.SNAPSHOT,
+      deletionProtection: true,
       backupRetention: cdk.Duration.days(7),
       databaseName: 'wikidb',
       storageEncrypted: true,
+      // Friday 23:00–23:30 UTC = Saturday 02:00–02:30 IDT — Israeli weekend, off-peak.
+      // AWS default lands on Sunday morning IDT which is a regular workday.
+      preferredMaintenanceWindow: 'fri:23:00-fri:23:30',
+      preferredBackupWindow: 'fri:22:00-fri:22:30',
     });
-    
-    // Allow MediaWiki ECS service to connect to RDS
-    this.dbInstance.connections.allowFrom(mediawikiSecurityGroup, ec2.Port.tcp(3306), 'Allow MediaWiki to connect to RDS');
+
+    this.dbInstance.connections.allowFrom(
+      mediawikiSecurityGroup,
+      ec2.Port.tcp(3306),
+      'Allow MediaWiki EC2 instance to connect to RDS',
+    );
   }
 }

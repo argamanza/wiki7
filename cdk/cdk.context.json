@@ -7,5 +7,11 @@
   "hosted-zone:account=368127906643:domainName=wiki7.co.il:region=us-east-1": {
     "Id": "/hostedzone/Z05358991AQ467TZUH2N6",
     "Name": "wiki7.co.il."
-  }
+  },
+  "cc-api-provider:account=368127906643:expectedMatchCount=exactly-one:propertiesToReturn.0=PrefixListId:propertyMatch.PrefixListName=com.amazonaws.global.cloudfront.origin-facing:region=il-central-1:typeName=AWS$:$:EC2$:$:PrefixList": [
+    {
+      "PrefixListId": "pl-0dd89524416301988",
+      "Identifier": "pl-0dd89524416301988"
+    }
+  ]
 }

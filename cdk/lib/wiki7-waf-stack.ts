@@ -8,6 +8,41 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 interface Wiki7WafStackProps extends cdk.StackProps {
 }
 
+// Common substrings in legitimate crawler User-Agents. Lowercase + CONTAINS, so e.g.
+// "googlebot" matches "Googlebot/2.1 (+http://www.google.com/bot.html)".
+const ALLOWED_BOT_TERMS = [
+  'googlebot',
+  'bingbot',
+  'applebot',
+  'duckduckbot',
+  'slackbot',
+  'discordbot',
+  'twitterbot',
+  'facebookexternalhit',
+  'linkedinbot',
+  'pinterestbot',
+  'embedly',
+  'telegrambot',
+  'whatsapp',
+  // Monitoring — UptimeRobot's UA is
+  //   "Mozilla/5.0+(compatible; UptimeRobot/2.0; http://www.uptimerobot.com/)"
+  // which contains "bot" and would otherwise trip the priority-8 bot-heuristic
+  // block. UA-spoofing is theoretically possible but bounded by the per-IP rate
+  // limit (priority 7) and the short, fixed request shape (GET /).
+  'uptimerobot',
+];
+
+function botUserAgentMatch(term: string): wafv2.CfnWebACL.StatementProperty {
+  return {
+    byteMatchStatement: {
+      searchString: term,
+      fieldToMatch: { singleHeader: { name: 'User-Agent' } },
+      textTransformations: [{ priority: 0, type: 'LOWERCASE' }],
+      positionalConstraint: 'CONTAINS',
+    },
+  };
+}
+
 export class Wiki7WafStack extends cdk.Stack {
   readonly webAcl: wafv2.CfnWebACL;
 
@@ -20,7 +55,6 @@ export class Wiki7WafStack extends cdk.Stack {
       },
     });
 
-    // Create WAF Web ACL
     this.webAcl = new wafv2.CfnWebACL(this, 'Wiki7WebAcl', {
       defaultAction: { allow: {} },
       scope: 'CLOUDFRONT',
@@ -31,31 +65,16 @@ export class Wiki7WafStack extends cdk.Stack {
       },
       description: 'WAF for Wiki7 MediaWiki site',
       rules: [
-        // Block requests from certain countries
+        // 1. Geo-block first — cheapest filter.
         {
           name: 'BlockCertainCountries',
           priority: 1,
           statement: {
             geoMatchStatement: {
               countryCodes: [
-                'AF', // Afghanistan
-                'DZ', // Algeria
-                'BD', // Bangladesh
-                'BY', // Belarus
-                'CN', // China
-                'CU', // Cuba
-                'IR', // Iran
-                'IQ', // Iraq
-                'KP', // North Korea
-                'LB', // Lebanon
-                'LY', // Libya
-                'PK', // Pakistan
-                'RU', // Russia
-                'SY', // Syria
-                'YE', // Yemen
-                'VE', // Venezuela
-                'VN', // Vietnam
-              ]
+                'AF', 'DZ', 'BD', 'BY', 'CN', 'CU', 'IR', 'IQ', 'KP',
+                'LB', 'LY', 'PK', 'RU', 'SY', 'YE', 'VE', 'VN',
+              ],
             },
           },
           action: { block: {} },
@@ -65,7 +84,7 @@ export class Wiki7WafStack extends cdk.Stack {
             sampledRequestsEnabled: true,
           },
         },
-        // AWS Managed Rules - Core rule set
+        // 2. AWS managed: Core rule set.
         {
           name: 'AWS-AWSManagedRulesCommonRuleSet',
           priority: 2,
@@ -75,9 +94,9 @@ export class Wiki7WafStack extends cdk.Stack {
               vendorName: 'AWS',
               name: 'AWSManagedRulesCommonRuleSet',
               excludedRules: [
-                { name: 'SizeRestrictions_BODY' }, // MediaWiki can have large POST bodies
-                { name: 'SizeRestrictions_QUERYSTRING' }, // Long query strings for searches
-                { name: 'CrossSiteScripting_BODY' }, // XSS rule for body (blocked image uploads)
+                { name: 'SizeRestrictions_BODY' },        // MW POST bodies (uploads, large edits)
+                { name: 'SizeRestrictions_QUERYSTRING' }, // long search queries
+                { name: 'CrossSiteScripting_BODY' },     // false-positive on image uploads
               ],
             },
           },
@@ -87,7 +106,7 @@ export class Wiki7WafStack extends cdk.Stack {
             metricName: 'AWS-AWSManagedRulesCommonRuleSet',
           },
         },
-        // AWS Managed Rules - Known bad inputs
+        // 3. AWS managed: Known bad inputs.
         {
           name: 'AWS-AWSManagedRulesKnownBadInputsRuleSet',
           priority: 3,
@@ -104,9 +123,58 @@ export class Wiki7WafStack extends cdk.Stack {
             metricName: 'AWS-AWSManagedRulesKnownBadInputsRuleSet',
           },
         },
-        // Removed SQLi, Linux, PHP rule sets to save ~$3/mo
-        // MediaWiki + Fargate handle these protections at the app layer
-        // Rate limiting - 2000 requests per 5 minutes per IP
+        // 4. AWS managed: SQL injection (MediaWiki is a MySQL/MariaDB app).
+        {
+          name: 'AWS-AWSManagedRulesSQLiRuleSet',
+          priority: 4,
+          overrideAction: { none: {} },
+          statement: {
+            managedRuleGroupStatement: {
+              vendorName: 'AWS',
+              name: 'AWSManagedRulesSQLiRuleSet',
+            },
+          },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: 'AWS-AWSManagedRulesSQLiRuleSet',
+          },
+        },
+        // 5. AWS managed: PHP-specific attacks (MediaWiki is PHP).
+        {
+          name: 'AWS-AWSManagedRulesPHPRuleSet',
+          priority: 5,
+          overrideAction: { none: {} },
+          statement: {
+            managedRuleGroupStatement: {
+              vendorName: 'AWS',
+              name: 'AWSManagedRulesPHPRuleSet',
+            },
+          },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: 'AWS-AWSManagedRulesPHPRuleSet',
+          },
+        },
+        // 6. Allow legitimate crawlers BEFORE the bot-heuristic block at priority 8.
+        //    Allow is terminating — matching requests skip the remaining custom rules.
+        {
+          name: 'AllowLegitimateBot',
+          priority: 6,
+          action: { allow: {} },
+          statement: {
+            orStatement: {
+              statements: ALLOWED_BOT_TERMS.map(botUserAgentMatch),
+            },
+          },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: 'AllowLegitimateBot',
+          },
+        },
+        // 7. Rate limit — 2000 requests / 5 min per IP.
         {
           name: 'RateLimitPerIP',
           priority: 7,
@@ -123,7 +191,8 @@ export class Wiki7WafStack extends cdk.Stack {
             metricName: 'RateLimitPerIP',
           },
         },
-        // Custom rule - Block suspicious MediaWiki patterns
+        // 8. Heuristic block: anything with /../ in the path, or generic bot-like UA.
+        //    Legitimate crawlers were already allowed at priority 6.
         {
           name: 'BlockSuspiciousMediaWikiPatterns',
           priority: 8,
@@ -131,7 +200,6 @@ export class Wiki7WafStack extends cdk.Stack {
           statement: {
             orStatement: {
               statements: [
-                // Block requests with multiple dots in URI (potential directory traversal)
                 {
                   byteMatchStatement: {
                     searchString: '..',
@@ -140,7 +208,6 @@ export class Wiki7WafStack extends cdk.Stack {
                     positionalConstraint: 'CONTAINS',
                   },
                 },
-                // Block automated spam patterns in User-Agent
                 {
                   regexMatchStatement: {
                     regexString: '.*(bot|crawl|spider|scan).*',
@@ -157,50 +224,15 @@ export class Wiki7WafStack extends cdk.Stack {
             metricName: 'BlockSuspiciousMediaWikiPatterns',
           },
         },
-        // Allow legitimate bots (Google, Bing, etc.) - higher priority than block rule
-        {
-          name: 'AllowLegitimateBot',
-          priority: 9,
-          action: { allow: {} },
-          statement: {
-            orStatement: {
-              statements: [
-                {
-                  byteMatchStatement: {
-                    searchString: 'googlebot',
-                    fieldToMatch: { singleHeader: { name: 'User-Agent' } },
-                    textTransformations: [{ priority: 0, type: 'LOWERCASE' }],
-                    positionalConstraint: 'CONTAINS',
-                  },
-                },
-                {
-                  byteMatchStatement: {
-                    searchString: 'bingbot',
-                    fieldToMatch: { singleHeader: { name: 'User-Agent' } },
-                    textTransformations: [{ priority: 0, type: 'LOWERCASE' }],
-                    positionalConstraint: 'CONTAINS',
-                  },
-                },
-              ],
-            },
-          },
-          visibilityConfig: {
-            sampledRequestsEnabled: true,
-            cloudWatchMetricsEnabled: true,
-            metricName: 'AllowLegitimateBot',
-          },
-        },
       ],
     });
 
-    // Create the log group
     const wafLogGroup = new logs.LogGroup(this, 'WafLogGroup', {
       logGroupName: 'aws-waf-logs-wiki7',
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-// Define the logging configuration
     new wafv2.CfnLoggingConfiguration(this, 'Wiki7WafLogging', {
       resourceArn: this.webAcl.attrArn,
       logDestinationConfigs: [
@@ -213,7 +245,6 @@ export class Wiki7WafStack extends cdk.Stack {
           arnFormat: cdk.ArnFormat.COLON_RESOURCE_NAME,
         }),
       ],
-      // Directly specify the loggingFilter property with correct casing
       loggingFilter: {
         DefaultBehavior: 'DROP',
         Filters: [
@@ -232,7 +263,7 @@ export class Wiki7WafStack extends cdk.Stack {
       },
     });
 
-    new ssm.StringParameter(this, 'Wiki7CertificateArnParameter', {
+    new ssm.StringParameter(this, 'Wiki7WafWebAclArnParameter', {
       parameterName: '/wiki7/waf-webacl/arn',
       stringValue: this.webAcl.attrArn,
     });
@@ -242,6 +273,5 @@ export class Wiki7WafStack extends cdk.Stack {
       sourceRegion: 'us-east-1',
       targetRegion: 'il-central-1',
     });
-
   }
 }

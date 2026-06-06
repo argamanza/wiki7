@@ -28,7 +28,16 @@
 	//     stays readable against the bright bg
 	// The Wiki7 logo is excluded — IconAnimation.less keeps it transparent
 	// so the home-icon overlay only shows on logo hover.
-	.wiki7-dropdown-summary {
+	//
+	// The .cdx-button chain bumps specificity to (0,3,0). The first time the
+	// search button is hovered/focused, intentPrefetch in commandPalette.js
+	// fires mw.loader.load('skins.wiki7.commandPalette'), which injects a
+	// runtime stylesheet for Codex's CdxButton — including a base rule with
+	// the same (0,2,0) specificity as the unchained selector, but loaded
+	// LATER in the cascade. Without the bump, that injected rule wins and
+	// recolors every rail cdx-button (search and menu both) and the change
+	// persists for the rest of the session because the stylesheet stays.
+	.wiki7-dropdown-summary.cdx-button {
 		color: white;
 		--background-color-button-quiet--hover: ~'oklch( 92% 0.04 var( --color-progressive-oklch__h ) / 0.9 )';
 		--background-color-button-quiet--active: ~'oklch( 96% 0.02 var( --color-progressive-oklch__h ) / 0.95 )';
