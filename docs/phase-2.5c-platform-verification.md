@@ -378,7 +378,7 @@ aws backup list-recovery-points-by-backup-vault ... → AccessDeniedException
 | B12 | `$wgJobRunRate = 0` in prod | ✅ (behavioral) | Direct PHP probe blocked by MW bootstrap; proven by A15+B11 |
 | B13 | `$wgUseCdn = true` in prod | ✅ (behavioral) | `Cache-Control: s-maxage=18000` confirms (MW only emits non-zero s-maxage when $wgUseCdn=true) |
 | B14 | `s-maxage` in anon response | ✅ | `cache-control: s-maxage=18000, must-revalidate, max-age=0` |
-| B15 | Real client IP in RecentChanges | ⏸️ User action needed | Make a small edit while logged in, then check Special:RecentChanges |
+| B15 | Real client IP recorded by MW (via `recentchanges.rc_ip`) | ⏸️ User action needed | Special:RecentChanges UI doesn't show IPs for logged-in edits — the `rc_ip` column in the DB does. User makes a small edit; we then SQL-query `recentchanges.rc_ip` via SSM (path: `docker exec wiki7 php maintenance/run.php sql --query "SELECT rc_user_text,rc_timestamp,rc_ip FROM recentchanges ORDER BY rc_id DESC LIMIT 5;"`). Expected: IP = user's real public IP (e.g. `194.90.225.101`), NOT a CloudFront edge IP (`130.176.x.x` / `13.224.x.x` / `18.x.x.x` etc.). NOTE: Apache's access log shows the CloudFront edge IP and that's correct — Apache logs the TCP peer; the LocalSettings.php fix modifies `$_SERVER['REMOTE_ADDR']` at the PHP layer, after Apache has already written its log line. |
 | B18 | Cargo bookkeeping tables present | ✅ | `cargo_backlinks`, `cargo_pages`, `cargo_tables` — correct pre-content state |
 | C1 | robots.txt accessible | ✅ | 200, sensible Disallow list, references sitemap |
 | C2 | Sitemap accessible | ✅ | 200, `text/xml`, valid sitemapindex |
@@ -393,10 +393,10 @@ aws backup list-recovery-points-by-backup-vault ... → AccessDeniedException
 | C15 | Canonical link | ✅ | `<link rel="canonical" href="https://wiki7.co.il/">` |
 | C16 | HTML `<title>` brand-augmented | ✅ | Matches og:title |
 | C17 | favicons all 200 | ✅ | All variants reachable |
-| C18 | Google Rich Results Test | ⏸️ User action needed | https://search.google.com/test/rich-results?url=https://wiki7.co.il/ — note any @type casing warning |
+| C18 | Google Rich Results Test (homepage) | ⚠️ See note | "No items detected" on homepage — **expected**: `WebSite` isn't a rich-result-eligible type. To stress-test Finding 3 (lowercase `"article"` casing), C18 should be re-run on an article page once Phase 3 lands content. |
 | D1 | 6 alarms exist + actions wired | ✅ | All 6 in OK state, each with 1 SNS AlarmAction. `wiki7-cloudfront-5xx-high` shows OK only because `treatMissingData: NOT_BREACHING` masks the cross-region issue (already documented as Phase 4 deferral) |
-| D2 | SNS subscription confirmed | ⏸️ **User action needed** | State = `PendingConfirmation` for `argamanza@gmail.com`. Click the confirm link in the AWS Notification email |
-| D3 | Test alarm → email | ⏸️ After D2 | Run once D2 is confirmed |
+| D2 | SNS subscription confirmed | ✅ | Resolved 2026-06-06 19:30Z — first email landed in Gmail spam; user added "Never to Spam" filter for `no-reply@sns.amazonaws.com`; subscription now Confirmed (real ARN) |
+| D3 | Test alarm → email | ✅ | Forced `wiki7-rds-cpu-high` to ALARM at 19:38:37Z, reverted to OK at 19:40:59Z. Both notifications delivered. Alarm re-evaluated organically (real RDS CPU ~2.6%, well below 85% threshold). |
 | D4 | Dashboard renders | ⏸️ User check | CloudWatch console → Dashboards → `wiki7` |
 | E14 | WAF blocks malicious UA | ✅ | `sqlmap/1.0` → 403 |
 | E15 | WAF allows Googlebot | ✅ | `Googlebot/2.1` → 200 |
@@ -414,7 +414,7 @@ aws backup list-recovery-points-by-backup-vault ... → AccessDeniedException
 ```json
 {
   "captured_at": "2026-06-06T18:30Z",
-  "captured_from": "user local machine (curl)",
+  "captured_from": "user local machine (curl) + PageSpeed Insights (lab)",
   "cold_html_ttfb_ms": {
     "samples": [424, 156, 259],
     "note": "Special:Random with cache-buster; first sample includes TCP+TLS connect cost"
@@ -425,19 +425,68 @@ aws backup list-recovery-points-by-backup-vault ... → AccessDeniedException
   },
   "pop_observed": ["TLV55-P2", "MRS52-P3"],
   "http_version": "h2 default, h3 advertised via alt-svc",
-  "pagespeed_desktop": "TODO - user to run https://pagespeed.web.dev/analysis?url=https://wiki7.co.il/&form_factor=desktop",
-  "pagespeed_mobile": "TODO - same, mobile",
-  "lighthouse_local": "TODO - user to run Chrome DevTools → Lighthouse on https://wiki7.co.il/"
+  "pagespeed_desktop": {
+    "captured_at": "2026-06-06T19:47Z",
+    "lighthouse_version": "13.3.0",
+    "performance": 99,
+    "accessibility": 96,
+    "best_practices": 100,
+    "seo": 100,
+    "metrics": {
+      "fcp_s": 0.3,
+      "lcp_s": 0.3,
+      "tbt_ms": 0,
+      "cls": 0.003,
+      "speed_index_s": 1.3
+    },
+    "diagnostics_flagged": [
+      "Render-blocking requests — est savings 70 ms",
+      "Use efficient cache lifetimes — est savings 43 KiB (EXACTLY what 2.5b addresses)",
+      "Reduce unused CSS — est savings 12 KiB",
+      "Reduce unused JavaScript — est savings 63 KiB"
+    ],
+    "a11y_flagged": ["Touch targets do not have sufficient size or spacing (Phase 3 design polish)"]
+  },
+  "pagespeed_mobile": {
+    "captured_at": "2026-06-06T19:47Z",
+    "lighthouse_version": "13.3.0",
+    "performance": 92,
+    "accessibility": 96,
+    "best_practices": 100,
+    "seo": 100,
+    "metrics": {
+      "fcp_s": 2.0,
+      "lcp_s": 2.3,
+      "tbt_ms": 0,
+      "cls": 0,
+      "speed_index_s": 5.7
+    },
+    "diagnostics_flagged": [
+      "Render-blocking requests — est savings 900 ms (mobile; skin/asset critical path)",
+      "Use efficient cache lifetimes — est savings 43 KiB",
+      "Reduce unused JavaScript — est savings 61 KiB",
+      "Reduce unused CSS — est savings 12 KiB"
+    ]
+  },
+  "lighthouse_local": "Skipped — PageSpeed Insights API already runs Lighthouse 13.3.0 in lab mode with consistent throttling; running it again locally adds noise without adding signal."
 }
 ```
 
+#### What the PageSpeed numbers tell us
+- **Desktop perf 99 / mobile 92** is already strong, before any 2.5b work. The bulk of the score comes from CloudFront serving static assets (cached) + Israeli viewers hitting TLV POP at ~10-30ms RTT.
+- **PageSpeed's #2 desktop diagnostic — "Use efficient cache lifetimes (est. savings 43 KiB)" — is exactly 2.5b's territory.** Google's own diagnostic is flagging the very gap we're about to close: HTML pages currently miss the edge cache because of `CachePolicy.CACHING_DISABLED` on the default behavior. Post-2.5b, this should disappear from the diagnostics list and the lab perf score may nudge up further.
+- **Render-blocking 900 ms on mobile** is a CSS/JS critical-path issue (skin styles loaded synchronously in `<head>`). That's Phase 3 design polish, not 2.5b.
+- **Real user data ("Discover what your real users are experiencing — No Data"):** CrUX has no field data yet because the site has near-zero real traffic. The lab numbers are all we have; field data will accumulate once Phase 3 brings content + readers.
+- **A11y touch-target issue + Reduce unused CSS/JS** — known Phase 3 design polish.
+
 ### What needs the user
 
-1. **Click the SNS confirm email** sent to `argamanza@gmail.com` during the deploy (D2). Until then, alarms won't email.
-2. **PageSpeed Insights** for desktop + mobile (K1/K2) via https://pagespeed.web.dev — record LCP, CLS, Speed Index, Performance / SEO / Best Practices / Accessibility scores. ~2 min total.
-3. **Google Rich Results Test** (C18) at https://search.google.com/test/rich-results?url=https://wiki7.co.il/ — confirm no errors; note any warnings around `@type` casing (informs Finding 3 priority).
-4. **(Optional) Local Lighthouse** in Chrome DevTools (K3) — fuller perf snapshot.
-5. **Test edit + RecentChanges check** (B15) — make a small edit to any page while logged in, then check Special:RecentChanges to confirm the IP shown is your real public IP, not a CloudFront edge range.
+1. ✅ **Click the SNS confirm email** (D2). DONE 2026-06-06 — subscription now Confirmed.
+2. ✅ **D3 test alarm → email arrives** — DONE 2026-06-06 (ALARM 19:38:37Z → OK 19:40:59Z, both notifications delivered).
+3. ✅ **PageSpeed Insights** desktop + mobile (K1/K2) — DONE 2026-06-06, captured in K6 above.
+4. ✅ **Google Rich Results Test** (C18) — DONE 2026-06-06. "No items detected" on homepage (expected; WebSite isn't a rich-result-eligible type). Re-run on an article page after Phase 3 lands content to stress-test Finding 3.
+5. ⏸️ **B15 test edit** — pending. Log in, make a small edit, tell me when done; I'll query `rc_ip` via SSM.
+6. (Optional) **Local Lighthouse** in Chrome DevTools — SKIPPED. PageSpeed Insights API already runs Lighthouse 13.3.0 in lab mode with consistent throttling; running it again locally would add noise without adding signal.
 
 ### Recommended next steps
 
