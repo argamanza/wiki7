@@ -172,10 +172,10 @@ export class CloudFrontConstruct extends Construct {
 
     // === The distribution =====================================================================
     const distribution = new cloudfront.Distribution(this, 'Wiki7Distribution', {
-      // PriceClass_200 covers US + EU + Asia + Middle East (where IL users hit) but skips
-      // the more expensive edge locations in South America, Africa, Australia. Trivial cost
-      // savings; no latency impact for the actual audience.
-      priceClass: cloudfront.PriceClass.PRICE_CLASS_200,
+      // PriceClass_100 covers North America + Europe + Israel. The previous PriceClass_200
+      // added Asia / ME / India edges, but our audience is in Israel (served from the EU/IL
+      // edges that PriceClass_100 includes) so the extra POPs paid for traffic we never serve.
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
       defaultBehavior: {
         origin: ec2Origin,
@@ -183,7 +183,13 @@ export class CloudFrontConstruct extends Construct {
         allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
         // Dynamic pages — uncached. MW emits its own cache headers for browser caching.
         cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-        originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
+        // ALL_VIEWER_AND_CLOUDFRONT_2022 forwards every viewer header plus the unspoofable
+        // CloudFront-* headers (CloudFront-Viewer-Address, -Country, -Forwarded-Proto, …).
+        // LocalSettings.php uses CloudFront-Viewer-Address to set REMOTE_ADDR so MW sees
+        // the real client IP in RecentChanges, blocks, abuse throttling, etc. CloudFront
+        // strips any client-supplied value of these CF-* headers and replaces them with
+        // its own (derived from the actual TCP viewer connection), so this can't be spoofed.
+        originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_AND_CLOUDFRONT_2022,
         responseHeadersPolicy: responseHeadersPolicy,
         functionAssociations: [
           { function: redirectFunction, eventType: cloudfront.FunctionEventType.VIEWER_REQUEST },

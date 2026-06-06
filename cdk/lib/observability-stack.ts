@@ -1,15 +1,21 @@
 import { Construct } from 'constructs';
 import * as cdk from 'aws-cdk-lib';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
 
 interface ObservabilityStackProps {
   dbInstance: rds.DatabaseInstance;
   ec2InstanceId: string;
   distribution: cloudfront.Distribution;
   appLogGroup: logs.LogGroup;
+  // Email address that gets notified when any alarm trips. Subscribed via
+  // SNS email (one-click confirmation flow on first deploy).
+  alarmEmail: string;
 }
 
 /**
@@ -31,12 +37,26 @@ export class ObservabilityStack extends Construct {
   constructor(scope: Construct, id: string, props: ObservabilityStackProps) {
     super(scope, id);
 
-    const { dbInstance, ec2InstanceId, distribution, appLogGroup } = props;
+    const { dbInstance, ec2InstanceId, distribution, appLogGroup, alarmEmail } = props;
+
+    // === SNS topic for alarm notifications ===================================================
+    // One topic, all alarms. Email subscription requires a one-click confirmation on first
+    // deploy (the email lands within ~1 min of `cdk deploy`). Until then, alarms still
+    // transition state in the console — the topic is just the messenger.
+    //
+    // Cost is effectively zero at our alarm cadence; the first 1k email notifications/mo
+    // are free, and we don't expect to come close.
+    const alarmTopic = new sns.Topic(this, 'AlarmTopic', {
+      topicName: 'wiki7-alarms',
+      displayName: 'wiki7 alarms',
+    });
+    alarmTopic.addSubscription(new subs.EmailSubscription(alarmEmail));
+    const snsAction = new cwActions.SnsAction(alarmTopic);
 
     // === RDS — free storage running out ======================================================
     // 5 GB threshold gives us a multi-week runway at our growth rate to bump
     // allocatedStorage before writes start failing.
-    new cloudwatch.Alarm(this, 'RdsFreeStorageLow', {
+    const rdsFreeStorageLow = new cloudwatch.Alarm(this, 'RdsFreeStorageLow', {
       alarmName: 'wiki7-rds-free-storage-low',
       alarmDescription: 'RDS free storage < 5 GB — bump allocatedStorage before writes fail',
       metric: dbInstance.metricFreeStorageSpace({ period: cdk.Duration.minutes(5) }),
@@ -45,9 +65,10 @@ export class ObservabilityStack extends Construct {
       evaluationPeriods: 3,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
+    rdsFreeStorageLow.addAlarmAction(snsAction);
 
     // === RDS — CPU pegged ====================================================================
-    new cloudwatch.Alarm(this, 'RdsCpuHigh', {
+    const rdsCpuHigh = new cloudwatch.Alarm(this, 'RdsCpuHigh', {
       alarmName: 'wiki7-rds-cpu-high',
       alarmDescription: 'RDS CPU > 85% sustained — runaway query or insufficient instance class',
       metric: dbInstance.metricCPUUtilization({ period: cdk.Duration.minutes(5) }),
@@ -56,9 +77,10 @@ export class ObservabilityStack extends Construct {
       evaluationPeriods: 3,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
+    rdsCpuHigh.addAlarmAction(snsAction);
 
     // === EC2 — CPU pegged ====================================================================
-    new cloudwatch.Alarm(this, 'Ec2CpuHigh', {
+    const ec2CpuHigh = new cloudwatch.Alarm(this, 'Ec2CpuHigh', {
       alarmName: 'wiki7-ec2-cpu-high',
       alarmDescription: 'EC2 CPU > 85% sustained — likely traffic spike or runaway PHP worker',
       metric: new cloudwatch.Metric({
@@ -73,12 +95,30 @@ export class ObservabilityStack extends Construct {
       evaluationPeriods: 3,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
+    ec2CpuHigh.addAlarmAction(snsAction);
 
     // === CloudFront — 5xx error rate =========================================================
     // 5% threshold is generous; real-world the rate should be < 0.1%.
-    new cloudwatch.Alarm(this, 'CloudFront5xxHigh', {
+    //
+    // KNOWN LIMITATION: CloudFront publishes ALL distribution metrics to us-east-1 only
+    // (AWS docs: "View CloudFront and edge function metrics" → 'Default CloudFront
+    // distribution metrics'). This stack lives in il-central-1, and CDK explicitly refuses
+    // to create a CloudWatch Alarm whose metric is in a different region — so this alarm,
+    // declared without `region: 'us-east-1'`, evaluates against an il-central-1 metric that
+    // doesn't exist and sits in INSUFFICIENT_DATA forever. Adding `region: 'us-east-1'`
+    // makes `cdk synth` fail outright (cross-region alarms aren't a CloudFormation primitive).
+    //
+    // Real fix is to move just this alarm + a small SNS topic into a sibling us-east-1
+    // stack (we already have one for the cert + WAF). Recorded as a Phase 4 deferral
+    // in docs/revival-plan.md. Until then, UptimeRobot covers user-facing edge errors and
+    // the AppErrorRateHigh alarm covers origin-side 5xx via the MW log filter.
+    //
+    // The dashboard widget below still uses `region: 'us-east-1'` because Dashboards CAN
+    // render cross-region metrics (only Alarm can't); we'd lose visibility for free if we
+    // dropped it there too.
+    const cloudFront5xxHigh = new cloudwatch.Alarm(this, 'CloudFront5xxHigh', {
       alarmName: 'wiki7-cloudfront-5xx-high',
-      alarmDescription: 'CloudFront 5xx rate > 5% over 5 min — origin sick or distribution misconfig',
+      alarmDescription: 'CloudFront 5xx rate > 5% over 5 min — origin sick or distribution misconfig (KNOWN: cross-region, see code)',
       metric: new cloudwatch.Metric({
         namespace: 'AWS/CloudFront',
         metricName: '5xxErrorRate',
@@ -91,6 +131,7 @@ export class ObservabilityStack extends Construct {
       evaluationPeriods: 2,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
+    cloudFront5xxHigh.addAlarmAction(snsAction);
 
     // === Application errors — log-derived metric =============================================
     // Match the patterns that genuinely indicate the wiki is misbehaving: PHP fatal errors,
@@ -114,7 +155,7 @@ export class ObservabilityStack extends Construct {
       defaultValue: 0,
     });
 
-    new cloudwatch.Alarm(this, 'AppErrorRateHigh', {
+    const appErrorRateHigh = new cloudwatch.Alarm(this, 'AppErrorRateHigh', {
       alarmName: 'wiki7-app-errors-high',
       alarmDescription: 'MW container emitted > 5 fatal/connection errors in 5 min',
       metric: errorFilter.metric({
@@ -126,6 +167,7 @@ export class ObservabilityStack extends Construct {
       evaluationPeriods: 1,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
+    appErrorRateHigh.addAlarmAction(snsAction);
 
     // === Redis sidecar down — tighter, faster signal ==========================================
     // If the Redis container dies, MW falls back to the DB (slow but functional) and every
@@ -148,7 +190,7 @@ export class ObservabilityStack extends Construct {
       metricValue: '1',
       defaultValue: 0,
     });
-    new cloudwatch.Alarm(this, 'RedisSidecarDown', {
+    const redisSidecarDown = new cloudwatch.Alarm(this, 'RedisSidecarDown', {
       alarmName: 'wiki7-redis-sidecar-down',
       alarmDescription: 'MW logged RedisException > 3 times in 5 min — Redis sidecar likely down',
       metric: redisExceptionFilter.metric({
@@ -159,6 +201,79 @@ export class ObservabilityStack extends Construct {
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
       evaluationPeriods: 1,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    redisSidecarDown.addAlarmAction(snsAction);
+
+    // === Dashboard — single-pane health view =================================================
+    // Three widgets, in one row, free within the 3-dashboard tier:
+    //   1. Alarm status — all 6 wiki7 alarms with current state + history.
+    //   2. Origin health — RDS CPU + EC2 CPU + RDS free storage on one graph.
+    //   3. Edge health — CloudFront 5xx rate + app error count + Redis exception count.
+    //
+    // Pure existing-metric plumbing — no custom metrics, no Lambda, no extra cost. If we
+    // ever need richer views (per-request latency, p99, etc.) we'd be off the free tier and
+    // into custom-metric territory; that's a Phase 4 call, not Phase 2.5.
+    new cloudwatch.Dashboard(this, 'Wiki7Dashboard', {
+      dashboardName: 'wiki7',
+      defaultInterval: cdk.Duration.hours(6),
+      widgets: [
+        [
+          new cloudwatch.AlarmStatusWidget({
+            title: 'Alarms',
+            width: 12,
+            height: 6,
+            alarms: [
+              rdsFreeStorageLow,
+              rdsCpuHigh,
+              ec2CpuHigh,
+              cloudFront5xxHigh,
+              appErrorRateHigh,
+              redisSidecarDown,
+            ],
+          }),
+          new cloudwatch.GraphWidget({
+            title: 'Origin — CPU + storage',
+            width: 12,
+            height: 6,
+            left: [
+              dbInstance.metricCPUUtilization({ label: 'RDS CPU %', period: cdk.Duration.minutes(5) }),
+              new cloudwatch.Metric({
+                namespace: 'AWS/EC2',
+                metricName: 'CPUUtilization',
+                dimensionsMap: { InstanceId: ec2InstanceId },
+                period: cdk.Duration.minutes(5),
+                statistic: 'Average',
+                label: 'EC2 CPU %',
+              }),
+            ],
+            right: [
+              dbInstance.metricFreeStorageSpace({ label: 'RDS free storage', period: cdk.Duration.minutes(5) }),
+            ],
+          }),
+        ],
+        [
+          new cloudwatch.GraphWidget({
+            title: 'Edge + app errors',
+            width: 24,
+            height: 6,
+            left: [
+              new cloudwatch.Metric({
+                namespace: 'AWS/CloudFront',
+                metricName: '5xxErrorRate',
+                dimensionsMap: { DistributionId: distribution.distributionId, Region: 'Global' },
+                region: 'us-east-1', // CloudFront metrics live in us-east-1 — same caveat as the alarm above.
+                period: cdk.Duration.minutes(5),
+                statistic: 'Average',
+                label: 'CloudFront 5xx %',
+              }),
+            ],
+            right: [
+              errorFilter.metric({ period: cdk.Duration.minutes(5), statistic: 'Sum', label: 'MW errors / 5min' }),
+              redisExceptionFilter.metric({ period: cdk.Duration.minutes(5), statistic: 'Sum', label: 'Redis exceptions / 5min' }),
+            ],
+          }),
+        ],
+      ],
     });
   }
 }

@@ -86,6 +86,7 @@
     "@aws-cdk/aws-lambda:createNewPoliciesWithAddToRolePolicy": true,
     "@aws-cdk/aws-s3:setUniqueReplicationRoleName": true,
     "@aws-cdk/aws-events:requireEventBusPolicySid": true,
-    "googleSiteVerification": "google-site-verification=yhlEnlTFpaEYo68oJOcHkyfyGN7i2QU-M4foSvnglEY"
+    "googleSiteVerification": "google-site-verification=yhlEnlTFpaEYo68oJOcHkyfyGN7i2QU-M4foSvnglEY",
+    "alarmEmail": "argamanza@gmail.com"
   }
 }

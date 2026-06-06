@@ -319,6 +319,71 @@ if ( getenv('WIKI_ENV') === 'production' ) {
     $wgServer = "https://wiki7.co.il";
     $wgCanonicalServer = "https://wiki7.co.il";
     $wgCookieSecure = true; // Only transmit cookies over HTTPS
+
+    // === Job queue — drained out-of-band, not inline on web requests =======================
+    // Inline runs (the default $wgJobRunRate = 1) bolt one job onto every web hit, adding
+    // latency to whichever unlucky user triggered the page; behind CloudFront the origin
+    // sees few hits to begin with, so refreshLinks / Cargo population would drain slowly.
+    // The EC2 UserData (compute-stack.ts) installs a host-side cron that calls runJobs.php
+    // every minute. Production-only because the host cron only exists on the EC2; local
+    // docker-compose dev keeps MW's default ($wgJobRunRate = 1) so jobs drain inline on
+    // request without ceremony.
+    $wgJobRunRate = 0;
+
+    // === CDN awareness =====================================================================
+    // $wgUseCdn = true tells MW it's behind a shared cache: it emits Vary: Cookie correctly,
+    // skips internal cache-key choices that assume direct-to-origin, and is the right
+    // baseline before the CloudFront default behavior is ever relaxed off CACHING_DISABLED.
+    //
+    // It also makes MW emit Cache-Control: s-maxage=... on anonymous responses — but with
+    // CloudFront's default behavior currently set to CachePolicy.CACHING_DISABLED (MinTTL =
+    // MaxTTL = DefaultTTL = 0), the edge ignores origin TTL and HTML responses never cache
+    // at the edge today. Genuine edge caching of MW HTML needs a cookie-aware cache policy
+    // (so an anon response can't be served to a logged-in editor) + an invalidation story
+    // for edits, which is a Phase 2.5b follow-up after this PR validates — see
+    // docs/revival-plan.md §Phase 2.5.
+    $wgUseCdn = true;
+
+    // Real client IP recovery behind CloudFront. CloudFront's origin request policy
+    // (ALL_VIEWER_AND_CLOUDFRONT_2022, set in cloudfront-stack.ts) adds the
+    // 'CloudFront-Viewer-Address' header. CloudFront populates it from the actual TCP
+    // viewer connection and strips any client-supplied value, so it cannot be spoofed.
+    //
+    // We overwrite $_SERVER['REMOTE_ADDR'] BEFORE MW boots: MW core reads REMOTE_ADDR
+    // directly in WebRequest::getIP() and only consults X-Forwarded-For when REMOTE_ADDR
+    // is a trusted proxy (per $wgCdnServersNoPurge). Setting REMOTE_ADDR to the real viewer
+    // IP makes RecentChanges, IP blocks, and abuse throttling work correctly without
+    // having to track CloudFront's dynamic IP ranges in $wgCdnServersNoPurge.
+    //
+    // Format from CloudFront docs: "<ip>:<port>" for IPv4, "<ip>:<port>" with the IP in
+    // square brackets for IPv6 ("[2001:db8::1]:443"). We strip the port and the brackets,
+    // then validate the result with FILTER_VALIDATE_IP before assignment — CloudFront
+    // should never emit a malformed value, but a pathological one (e.g. "[]:80") would
+    // produce an empty string we don't want to write into REMOTE_ADDR.
+    if ( !empty( $_SERVER['HTTP_CLOUDFRONT_VIEWER_ADDRESS'] ) ) {
+        $cfViewer  = $_SERVER['HTTP_CLOUDFRONT_VIEWER_ADDRESS'];
+        $candidate = null;
+        if ( $cfViewer[0] === '[' ) {
+            // IPv6: "[2001:db8::1]:443" -> "2001:db8::1"
+            $end = strpos( $cfViewer, ']' );
+            if ( $end !== false ) {
+                $candidate = substr( $cfViewer, 1, $end - 1 );
+            }
+        } else {
+            // IPv4: "1.2.3.4:56789" -> "1.2.3.4"
+            $colon = strrpos( $cfViewer, ':' );
+            $candidate = $colon !== false
+                ? substr( $cfViewer, 0, $colon )
+                : $cfViewer;
+        }
+        if ( $candidate !== null && filter_var( $candidate, FILTER_VALIDATE_IP ) !== false ) {
+            $_SERVER['REMOTE_ADDR'] = $candidate;
+        }
+    }
+    // Deliberately NOT setting $wgCdnServersNoPurge: CloudFront's edge IP ranges are
+    // dynamic (the AmazonIpSpaceChanged SNS topic publishes updates) and hard-coding a
+    // snapshot would silently rot. Since we override REMOTE_ADDR above, MW never needs
+    // to walk XFF, so the trusted-proxy list isn't load-bearing here.
     
     // Error handling
     $wgShowExceptionDetails = false; // Hide internal error details for security
