@@ -51,10 +51,13 @@ export class DatabaseStack extends Construct {
       backupRetention: cdk.Duration.days(7),
       databaseName: 'wikidb',
       storageEncrypted: true,
-      // Friday 23:00–23:30 UTC = Saturday 02:00–02:30 IDT — Israeli weekend, off-peak.
-      // AWS default lands on Sunday morning IDT which is a regular workday.
+      // Maintenance window: Friday 23:00–23:30 UTC = Saturday 02:00–02:30 IDT — Israeli weekend,
+      // off-peak. AWS default lands on Sunday morning IDT which is a regular workday.
       preferredMaintenanceWindow: 'fri:23:00-fri:23:30',
-      preferredBackupWindow: 'fri:22:00-fri:22:30',
+      // Backup window: 22:00–22:30 UTC = 01:00–01:30 IDT — daily, off-peak. RDS requires the
+      // 24h `hh:mm-hh:mm` form here (NO day-of-week prefix); the day-prefixed form used by the
+      // maintenance window is rejected with InvalidRequest and rolls the whole stack back.
+      preferredBackupWindow: '22:00-22:30',
     });
 
     this.dbInstance.connections.allowFrom(
