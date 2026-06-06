@@ -150,7 +150,11 @@ $wgEnableMetaDescriptionFunctions = true; // expose {{#description2:}} for expli
 
 # Site-wide SEO defaults
 $wgEnableCanonicalServerLink = true;                      // <link rel="canonical"> everywhere
-$wgWikiSeoDefaultImage       = '/assets/social-share.png'; // 1200x630 PNG shipped to S3 via CDK
+# og:image needs a fully-qualified URL — the OG spec requires it and most social platforms
+# silently drop relative refs. We hardcode the prod URL because this config block runs
+# BEFORE the environment-specific block where $wgServer is set; the file is anyway production-
+# only meaningful (dev/localhost URLs aren't socially shared).
+$wgWikiSeoDefaultImage       = 'https://wiki7.co.il/assets/social-share.png'; // 1200x630 PNG, CDK→S3→CF
 $wgTwitterCardType           = 'summary_large_image';      // Use the large preview variant
 
 # Fallback description for pages where neither Description2 (no leading paragraph) nor
