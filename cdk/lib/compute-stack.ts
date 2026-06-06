@@ -326,8 +326,12 @@ export class ComputeStack extends Construct {
         },
       ],
     });
-    // Termination protection — can only be disabled via API/console, not a stray `cdk destroy`.
-    (instance.node.defaultChild as ec2.CfnInstance).disableApiTermination = true;
+    // No `disableApiTermination` here on purpose. The EC2 is stateless — the EBS root is
+    // restored from the AMI on every deploy and there's no irreplaceable data on it. Termination
+    // protection was originally added as a guard against `cdk destroy`, but in practice it
+    // actively breaks every UserData-driven deploy (CFN's replacement-delete trips the flag and
+    // the whole stack rolls back). The actual "do not destroy" data lives in RDS, which keeps
+    // `deletionProtection: true`.
     // Allow the instance role to associate the EIP to itself in UserData.
     instanceRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,

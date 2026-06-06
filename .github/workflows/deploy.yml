@@ -91,20 +91,27 @@ jobs:
         id: healthcheck
         run: |
           # The EC2 image hash is baked into UserData; when CDK replaces the instance,
-          # MediaWiki needs ~2-4 min before it answers. Poll the live HTTPS endpoint
-          # with a short retry loop so a slow first request doesn't fail the job.
+          # MediaWiki needs ~2-4 min before it answers. Poll BOTH endpoints because they
+          # exercise different code paths:
+          #   • /api.php — verifies MW itself + DB + opcache are alive
+          #   • /         — verifies article rendering, which is where extension hooks
+          #                 fire (OutputPageParserOutput, ParserOutput, etc.)
+          # The 2026-06-06 incident slipped through because an extension was 500'ing
+          # the homepage while /api.php kept returning 200; both checks must pass to
+          # declare the deploy healthy.
           set -e
           for i in $(seq 1 12); do
-            code=$(curl -sk -o /dev/null -w '%{http_code}' \
+            api=$(curl -sk -o /dev/null -w '%{http_code}' \
               "https://wiki7.co.il/api.php?action=query&meta=siteinfo&format=json" || echo 000)
-            if [ "$code" = "200" ]; then
-              echo "OK — wiki responds 200 on attempt $i"
+            home=$(curl -sk -o /dev/null -w '%{http_code}' "https://wiki7.co.il/" || echo 000)
+            if [ "$api" = "200" ] && [ "$home" = "200" ]; then
+              echo "OK — wiki healthy on attempt $i (api=$api home=$home)"
               exit 0
             fi
-            echo "Attempt $i — got HTTP $code, retrying in 30s..."
+            echo "Attempt $i — api=$api home=$home, retrying in 30s..."
             sleep 30
           done
-          echo "FAIL — wiki did not return 200 within 6 minutes"
+          echo "FAIL — wiki did not return 200 on both endpoints within 6 minutes (last: api=$api home=$home)"
           exit 1
 
       - name: Dump recent EC2 console output on health-check failure
