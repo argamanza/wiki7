@@ -103,6 +103,23 @@ describe('DatabaseStack', () => {
       DeletionPolicy: 'Retain',
     });
   });
+  test('maintenance window is ddd:hh:mm-ddd:hh:mm (day-prefixed)', () => {
+    // RDS rejects this format silently at synth time but with a 400 at deploy time;
+    // assert the shape so a regression is caught by CI, not by a rolled-back stack.
+    template.hasResourceProperties('AWS::RDS::DBInstance', {
+      PreferredMaintenanceWindow: Match.stringLikeRegexp(
+        '^(mon|tue|wed|thu|fri|sat|sun):[0-2][0-9]:[0-5][0-9]-(mon|tue|wed|thu|fri|sat|sun):[0-2][0-9]:[0-5][0-9]$',
+      ),
+    });
+  });
+  test('backup window is hh:mm-hh:mm (NO day prefix)', () => {
+    // The day-prefixed form is valid for maintenance windows but invalid for backup windows;
+    // RDS returns 'Invalid backup window time' and rolls the stack back. This test exists
+    // because that exact failure broke the first post-merge deploy of PR #24.
+    template.hasResourceProperties('AWS::RDS::DBInstance', {
+      PreferredBackupWindow: Match.stringLikeRegexp('^[0-2][0-9]:[0-5][0-9]-[0-2][0-9]:[0-5][0-9]$'),
+    });
+  });
 });
 
 // =========================================================================================
