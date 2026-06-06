@@ -99,9 +99,26 @@ export class ObservabilityStack extends Construct {
 
     // === CloudFront — 5xx error rate =========================================================
     // 5% threshold is generous; real-world the rate should be < 0.1%.
+    //
+    // KNOWN LIMITATION: CloudFront publishes ALL distribution metrics to us-east-1 only
+    // (AWS docs: "View CloudFront and edge function metrics" → 'Default CloudFront
+    // distribution metrics'). This stack lives in il-central-1, and CDK explicitly refuses
+    // to create a CloudWatch Alarm whose metric is in a different region — so this alarm,
+    // declared without `region: 'us-east-1'`, evaluates against an il-central-1 metric that
+    // doesn't exist and sits in INSUFFICIENT_DATA forever. Adding `region: 'us-east-1'`
+    // makes `cdk synth` fail outright (cross-region alarms aren't a CloudFormation primitive).
+    //
+    // Real fix is to move just this alarm + a small SNS topic into a sibling us-east-1
+    // stack (we already have one for the cert + WAF). Recorded as a Phase 4 deferral
+    // in docs/revival-plan.md. Until then, UptimeRobot covers user-facing edge errors and
+    // the AppErrorRateHigh alarm covers origin-side 5xx via the MW log filter.
+    //
+    // The dashboard widget below still uses `region: 'us-east-1'` because Dashboards CAN
+    // render cross-region metrics (only Alarm can't); we'd lose visibility for free if we
+    // dropped it there too.
     const cloudFront5xxHigh = new cloudwatch.Alarm(this, 'CloudFront5xxHigh', {
       alarmName: 'wiki7-cloudfront-5xx-high',
-      alarmDescription: 'CloudFront 5xx rate > 5% over 5 min — origin sick or distribution misconfig',
+      alarmDescription: 'CloudFront 5xx rate > 5% over 5 min — origin sick or distribution misconfig (KNOWN: cross-region, see code)',
       metric: new cloudwatch.Metric({
         namespace: 'AWS/CloudFront',
         metricName: '5xxErrorRate',
@@ -244,6 +261,7 @@ export class ObservabilityStack extends Construct {
                 namespace: 'AWS/CloudFront',
                 metricName: '5xxErrorRate',
                 dimensionsMap: { DistributionId: distribution.distributionId, Region: 'Global' },
+                region: 'us-east-1', // CloudFront metrics live in us-east-1 — same caveat as the alarm above.
                 period: cdk.Duration.minutes(5),
                 statistic: 'Average',
                 label: 'CloudFront 5xx %',
