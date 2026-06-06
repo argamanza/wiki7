@@ -47,13 +47,12 @@ COPY LocalSettings.php /var/www/html/LocalSettings.php
 ARG TABBERNEUE_TAG=v3.4.1
 RUN git clone --depth 1 --branch "$TABBERNEUE_TAG" https://github.com/StarCitizenTools/mediawiki-extensions-TabberNeue.git extensions/TabberNeue
 
-# SEO extensions — emit OpenGraph + Twitter Card meta and a per-page <meta name="description">
-# extracted from the article intro. Critical for social-sharing previews and search engine
-# snippet quality. Neither has a stable release tag; pinning to MW's REL branch for the
-# matching MW major version (REL1_45 for MediaWiki 1.45). The previous REL1_43 pin called
-# wfExpandUrl(), which is a fatal-on-call in MW 1.45 — every homepage render 500'd.
-ARG OPENGRAPHMETA_BRANCH=REL1_45
-RUN git clone --depth 1 --branch "$OPENGRAPHMETA_BRANCH" https://github.com/wikimedia/mediawiki-extensions-OpenGraphMeta.git extensions/OpenGraphMeta
+# Description2 extracts a meta `description` page property from each article's leading
+# paragraph. LocalSettings.php's BeforePageDisplay hook reads that property and emits the
+# full OG/Twitter Card/canonical surface — we don't load OpenGraphMeta because we need
+# control over the og:title tagline, Twitter Card emission, image, and fallback
+# description, all of which OpenGraphMeta either ignores or hardcodes. Pinned to the
+# matching-MW-major REL branch (REL1_45 for MediaWiki 1.45).
 ARG DESCRIPTION2_BRANCH=REL1_45
 RUN git clone --depth 1 --branch "$DESCRIPTION2_BRANCH" https://github.com/wikimedia/mediawiki-extensions-Description2.git extensions/Description2
 

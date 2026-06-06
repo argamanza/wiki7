@@ -123,12 +123,81 @@ wfLoadExtension( 'Cargo' );
 wfLoadExtension( 'PageForms' );
 wfLoadExtension( 'TabberNeue' );
 
-# SEO — OpenGraph/Twitter Card meta + per-page meta description from article intro.
-# Description2 must load before OpenGraphMeta so the description is available when the OG
-# tags are emitted.
+# SEO — Description2 extracts a meta `description` page property from each article's
+# leading paragraph; the BeforePageDisplay hook further down reads that property and
+# emits the full OG/Twitter Card/canonical-link surface. We do the emission ourselves
+# (rather than via OpenGraphMeta) because:
+#   - OpenGraphMeta emits og:title = the bare page title (often <20 chars on a fan
+#     wiki); OG previews want 50-60 chars. We append a tagline.
+#   - OpenGraphMeta does not emit Twitter Card tags at all.
+#   - The main page is template-only, so Description2 finds no leading paragraph to
+#     extract from. We need a site-wide fallback description.
+#   - OpenGraphMeta defaults og:image to the SVG logo, which most platforms reject.
+#     We point at a proper 1200×630 PNG.
 wfLoadExtension( 'Description2' );
-wfLoadExtension( 'OpenGraphMeta' );
 $wgEnableMetaDescriptionFunctions = true; // expose {{#description2:}} for explicit overrides
+$wgEnableCanonicalServerLink = true;       // <link rel="canonical"> on every page
+
+$wgWiki7Tagline             = 'אנציקלופדיית הפועל באר שבע';
+$wgWiki7FallbackDescription = 'אנציקלופדיית הפועל באר שבע — היסטוריה, שחקנים, גביעים, אגדות ואוהדים.';
+$wgWiki7ShareImage          = 'https://wiki7.co.il/assets/social-share.png';
+
+$wgHooks['BeforePageDisplay'][] = function ( OutputPage $out, Skin $skin ) {
+    global $wgWiki7Tagline, $wgWiki7FallbackDescription, $wgWiki7ShareImage, $wgSitename;
+
+    // Description: prefer Description2's value (set during the parser phase);
+    // fall back to the site-wide tagline-style sentence when empty.
+    $description = $out->getProperty( 'description' );
+    if ( empty( $description ) ) {
+        $description = $wgWiki7FallbackDescription;
+    }
+    // OG / Twitter want short summaries; truncate to ~200 chars so providers don't trim awkwardly.
+    if ( mb_strlen( $description ) > 200 ) {
+        $description = rtrim( mb_substr( $description, 0, 197 ) ) . '…';
+    }
+
+    // og:title — augment the bare page title with the tagline so previews carry brand
+    // context. The page H1 / MediaWiki page title itself is unaffected.
+    $pageTitle = $out->getTitle()->getText();
+    $ogTitle   = $pageTitle . ' - ' . $wgWiki7Tagline;
+
+    $canonicalUrl = $out->getTitle()->getCanonicalURL();
+    $ogType       = $out->getTitle()->isMainPage() ? 'website' : 'article';
+
+    // MediaWiki's $out->addMeta() only emits `<meta name="...">`. OG tags need
+    // `<meta property="...">`, so we render head items as raw HTML.
+    $esc = static function ( $s ) {
+        return htmlspecialchars( $s, ENT_QUOTES, 'UTF-8' );
+    };
+    $tags = [
+        // Generic
+        [ 'name',     'description',       $description ],
+        // Open Graph (Facebook, WhatsApp, LinkedIn, Slack, Discord, …)
+        [ 'property', 'og:title',          $ogTitle ],
+        [ 'property', 'og:description',    $description ],
+        [ 'property', 'og:type',           $ogType ],
+        [ 'property', 'og:url',            $canonicalUrl ],
+        [ 'property', 'og:site_name',      $wgSitename ],
+        [ 'property', 'og:locale',         'he_IL' ],
+        [ 'property', 'og:image',          $wgWiki7ShareImage ],
+        [ 'property', 'og:image:type',     'image/png' ],
+        [ 'property', 'og:image:width',    '1200' ],
+        [ 'property', 'og:image:height',   '630' ],
+        // Twitter Card (Twitter/X) — large image variant
+        [ 'name',     'twitter:card',         'summary_large_image' ],
+        [ 'name',     'twitter:title',        $ogTitle ],
+        [ 'name',     'twitter:description',  $description ],
+        [ 'name',     'twitter:image',        $wgWiki7ShareImage ],
+    ];
+    foreach ( $tags as $tag ) {
+        [ $attr, $key, $value ] = $tag;
+        $id = 'wiki7-meta-' . $attr . '-' . str_replace( ':', '-', $key );
+        $out->addHeadItem(
+            $id,
+            "\t<meta {$attr}=\"" . $esc( $key ) . "\" content=\"" . $esc( $value ) . "\">\n"
+        );
+    }
+};
 
 ##
 ## Logo
