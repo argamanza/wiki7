@@ -248,6 +248,27 @@ $wgLogos = [
 ];
 
 ##
+## Favicon + Apple touch icon
+##
+# Browser tab + bookmark icon. Generated from the white brand logo on a brand-red square,
+# multi-resolution ICO (16/32/48). MW emits <link rel="shortcut icon" href="$wgFavicon">
+# when set; the Dockerfile also copies the same file to /var/www/html/favicon.ico for
+# tools that auto-fetch /favicon.ico without parsing the HTML (bookmark scrapers, RSS
+# readers, link-preview generators).
+$wgFavicon = '/assets/favicon.ico';
+
+# apple-touch-icon (180x180 PNG): used when the site is added to the iOS/iPadOS home
+# screen and by some Android browsers. MW core doesn't emit this link tag; we add it
+# explicitly via the OutputPage::addLink hook.
+$wgHooks['BeforePageDisplay'][] = function ( OutputPage $out, Skin $skin ) {
+	$out->addLink( [
+		'rel'   => 'apple-touch-icon',
+		'href'  => '/assets/apple-touch-icon.png',
+		'sizes' => '180x180',
+	] );
+};
+
+##
 ## Monitoring
 ##
 $wgPingback = true; // Help MediaWiki devs by sending anonymous usage stats

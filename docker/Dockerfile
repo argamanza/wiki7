@@ -40,6 +40,13 @@ COPY .htaccess /var/www/html/.htaccess
 # skips real files, so an actual robots.txt at the docroot is served as-is.
 COPY robots.txt /var/www/html/robots.txt
 
+# Static /favicon.ico at the docroot. $wgFavicon below makes MW emit a <link rel="icon">
+# pointing at /assets/favicon.ico (S3-backed via CloudFront), but browsers also auto-fetch
+# /favicon.ico without consulting the HTML - bookmark/feed/preview tools especially. Same
+# .htaccess passthrough logic as robots.txt: real file at the docroot wins over the
+# index.php rewrite.
+COPY assets/favicon.ico /var/www/html/favicon.ico
+
 # Copy LocalSettings.php
 COPY LocalSettings.php /var/www/html/LocalSettings.php
 
