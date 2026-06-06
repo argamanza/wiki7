@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [master, main]
 
+# Per-ref de-dup: when a branch gets two pushes in quick succession the second
+# one cancels the first. Saves runner minutes; safe because lint+test are
+# read-only and have no live-system side effects.
+concurrency:
+  group: lint-and-test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-php:
     name: PHP Lint
@@ -24,10 +31,12 @@ jobs:
           composer global config allow-plugins.dealerdirect/phpcodesniffer-composer-installer true
           composer global require mediawiki/mediawiki-codesniffer
       - name: Run PHP lint
+        # Advisory until Phase 3 enforces it across the rewritten skin diff.
+        # Findings show up in the UI as a failed step ⚠️ but don't block the workflow.
+        continue-on-error: true
         run: |
           cd docker/skins/Wiki7
           ~/.composer/vendor/bin/phpcs --standard=MediaWiki includes/
-        continue-on-error: true
 
   lint-js:
     name: JS Lint
@@ -40,10 +49,13 @@ jobs:
       - name: Install ESLint
         run: npm install -g eslint eslint-config-wikimedia
       - name: Run ESLint
+        # Advisory until Phase 3 enforces it. Removed the `|| true` shell guard so
+        # the step's actual exit status surfaces in the UI; continue-on-error keeps
+        # the workflow green.
+        continue-on-error: true
         run: |
           cd docker/skins/Wiki7
-          npx eslint resources/ || true
-        continue-on-error: true
+          npx eslint resources/
 
   test-cdk:
     name: CDK Tests
@@ -53,6 +65,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: cdk/package-lock.json
       - name: Install dependencies
         run: cd cdk && npm ci
       - name: Run CDK tests
@@ -66,20 +80,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install uv
+        # Pre-built binary install (no `pip install uv`) — faster + avoids a Python ↔ uv
+        # bootstrap cycle on the runner. Caches uv's own download for the runner.
+        uses: astral-sh/setup-uv@v3
       - name: Install dependencies
-        run: |
-          cd data
-          pip install uv
-          uv sync
+        run: cd data && uv sync
       - name: Run linter
-        run: |
-          cd data
-          uv run ruff check . || true
+        # Advisory until the Phase 3 pipeline correctness work lands (which touches
+        # the 7 ruff issues that overlap the broken transfers spider).
         continue-on-error: true
+        run: cd data && uv run ruff check .
       - name: Run tests
-        run: |
-          cd data
-          uv run pytest --tb=short -v
+        run: cd data && uv run pytest --tb=short -v
       - name: Run pipeline dry-run
         run: |
           cd data
