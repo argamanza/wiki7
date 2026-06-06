@@ -356,13 +356,13 @@ export class ComputeStack extends Construct {
 
     // === SSM Patch Manager — weekly OS patching ================================================
     // Without this, AL2023 doesn't auto-apply security updates and the OS slowly rots. The
-    // maintenance window runs Saturday 02:30 IDT (Sat 23:30 UTC, day after the RDS window) so
-    // they don't overlap. Targets this single instance by ID. RebootIfNeeded=true keeps the
-    // EC2 alarm system in scope when kernel updates land.
+    // maintenance window runs Sunday 02:30 IDT (Sat 23:30 UTC) — a day after the Friday-night
+    // RDS window so they never overlap. Targets this single instance by ID. RebootIfNeeded=true
+    // keeps the EC2 alarm system in scope when kernel updates land.
     const patchWindow = new ssm.CfnMaintenanceWindow(this, 'PatchMaintenanceWindow', {
       name: 'wiki7-weekly-patch-window',
-      description: 'Weekly OS patching for the wiki7 EC2 — Saturday 02:30 IDT',
-      schedule: 'cron(30 23 ? * SAT *)', // Saturday 23:30 UTC = Sunday 02:30 IDT (Israeli weekend night)
+      description: 'Weekly OS patching for the wiki7 EC2 — Sunday 02:30 IDT (Sat 23:30 UTC)',
+      schedule: 'cron(30 23 ? * SAT *)', // Saturday 23:30 UTC = Sunday 02:30 IDT (end of Israeli weekend)
       scheduleTimezone: 'UTC',
       duration: 2,
       cutoff: 0,
