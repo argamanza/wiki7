@@ -49,11 +49,12 @@ RUN git clone --depth 1 --branch "$TABBERNEUE_TAG" https://github.com/StarCitize
 
 # SEO extensions — emit OpenGraph + Twitter Card meta and a per-page <meta name="description">
 # extracted from the article intro. Critical for social-sharing previews and search engine
-# snippet quality. Neither has a stable release tag; pinning to MW's REL branch for the closest
-# version match. Bump these when MediaWiki itself moves.
-ARG OPENGRAPHMETA_BRANCH=REL1_43
+# snippet quality. Neither has a stable release tag; pinning to MW's REL branch for the
+# matching MW major version (REL1_45 for MediaWiki 1.45). The previous REL1_43 pin called
+# wfExpandUrl(), which is a fatal-on-call in MW 1.45 — every homepage render 500'd.
+ARG OPENGRAPHMETA_BRANCH=REL1_45
 RUN git clone --depth 1 --branch "$OPENGRAPHMETA_BRANCH" https://github.com/wikimedia/mediawiki-extensions-OpenGraphMeta.git extensions/OpenGraphMeta
-ARG DESCRIPTION2_BRANCH=REL1_43
+ARG DESCRIPTION2_BRANCH=REL1_45
 RUN git clone --depth 1 --branch "$DESCRIPTION2_BRANCH" https://github.com/wikimedia/mediawiki-extensions-Description2.git extensions/Description2
 
 # Copy extensions
