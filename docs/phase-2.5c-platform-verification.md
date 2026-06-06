@@ -258,6 +258,9 @@ Subset of the matrix run after the PR #38 deploy completed (13m34s) and the EC2 
 
 #### 🚨 Finding 1 — `$wgSecretKey` + `$wgUpgradeKey` empty in container env → prod runs on dev fallback values
 
+> **Status:** Patched in PR #44 (Phase 2.5d). Pending deploy + the 4-secret rotation choreography in [`docs/revival-plan.md`](revival-plan.md#phase-25d) before the live values stop being the dev placeholder. Mark RESOLVED with the date once post-rotation verification passes.
+
+
 **Evidence:** the cloud-init log (`/var/log/cloud-init-output.log`) shows the Secrets Manager value returns `{"secretKey":"","upgradeKey":"","adminPassword":"<real-32-char>"}` and the bash export resolves both keys to empty strings:
 ```
 + export WG_SECRET_KEY=
@@ -286,6 +289,9 @@ Option 1 is the cleanest IaC story. Recommend option 1 — bake correctness into
 **Surface area note:** the dev fallback strings have been in `LocalSettings.php` since before Phase 2 and the same bug has been latent on every prod deploy since #24 (2026-06-06). Currently no editor activity means no actual session/CSRF use; window where exploitability matters opens with Phase 3.
 
 #### 🚨 Finding 2 — DB password + admin password leaked in cloud-init log (disk + CloudWatch)
+
+> **Status:** Patched in PR #44 (Phase 2.5d). UserData now writes a chmod-0600 `/tmp/wiki7.env` under `set +x` and runs `docker run --env-file`, so neither the values nor the `-e KEY=VALUE` shape end up in the cloud-init log or the mediawiki CloudWatch stream. Rotation closes the historical leak — see [`docs/revival-plan.md`](revival-plan.md#phase-25d). Mark RESOLVED with the date once post-rotation verification passes.
+
 
 **Evidence:** cloud-init log lines from the `set -euxo pipefail` UserData echo every command (including secret-bearing exports + the `docker run -e ...` line). They land in `/var/log/cloud-init-output.log` on the EC2 AND in CloudWatch via the awslogs driver on the mediawiki stream. Anyone with `logs:GetLogEvents` on the wiki7 log group OR SSM access to the instance can read them.
 
@@ -320,6 +326,9 @@ Schema.org canonical types use CamelCase: `WebSite`, `Article`, `Person`, etc.
 **Severity:** 🟡 fix before Phase 3, low priority.
 
 #### ⚠️ Finding 4 — `cdk diff` from a developer machine always shows EC2 instance replacement
+
+> **Status:** RESOLVED in PR #44 (Phase 2.5d) via `docker/.dockerignore` excluding `.DS_Store` and `**/.DS_Store`. Verified locally: a `cdk diff` from a macOS dev machine now shows only the genuine UserData/secret changes, not a phantom image-asset hash drift.
+
 
 **Evidence:** post-deploy `cdk diff Wiki7CdkStack` shows
 ```

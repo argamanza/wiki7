@@ -64,9 +64,31 @@ $wgWiki7EnableHEFonts = true; // Enable Hebrew fonts
 ##
 ## Security Settings
 ##
-$wgSecretKey = getenv('WG_SECRET_KEY') ?: 'dev-only-secret-key-replace-in-production';
+# In production both keys MUST come from the environment (EC2 UserData reads them from
+# Secrets Manager and writes them into the container's --env-file). The dev placeholders
+# below are visible in this public repo and are NOT acceptable on a prod boot — they were
+# silently used between PR #24 and #44 because the CDK Secrets Manager template only
+# auto-generated `adminPassword`, leaving `secretKey`/`upgradeKey` as empty strings and
+# tripping PHP's `?:` "empty is falsy" fallback. Phase 2.5d added dedicated CDK secrets;
+# this guard catches any future regression (e.g. a Secret resource gets renamed or its
+# read grant is removed) before MW boots on the exploitable dev values.
+$wgWiki7SecretKeyEnv  = getenv('WG_SECRET_KEY');
+$wgWiki7UpgradeKeyEnv = getenv('WG_UPGRADE_KEY');
+if ( getenv('WIKI_ENV') === 'production' ) {
+    if ( $wgWiki7SecretKeyEnv === false || $wgWiki7SecretKeyEnv === '' ) {
+        throw new RuntimeException(
+            'WG_SECRET_KEY is empty in production - refusing to boot on the dev placeholder.'
+        );
+    }
+    if ( $wgWiki7UpgradeKeyEnv === false || $wgWiki7UpgradeKeyEnv === '' ) {
+        throw new RuntimeException(
+            'WG_UPGRADE_KEY is empty in production - refusing to boot on the dev placeholder.'
+        );
+    }
+}
+$wgSecretKey = $wgWiki7SecretKeyEnv ?: 'dev-only-secret-key-replace-in-production';
 $wgAuthenticationTokenVersion = "1";
-$wgUpgradeKey = getenv('WG_UPGRADE_KEY') ?: 'dev-only-upgrade'; // Upgrade key for web installer
+$wgUpgradeKey = $wgWiki7UpgradeKeyEnv ?: 'dev-only-upgrade'; // Upgrade key for web installer
 
 ##
 ## Cache Settings

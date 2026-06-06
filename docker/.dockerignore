@@ -3,3 +3,9 @@ docker-compose.yaml
 images/
 *.md
 .git
+# macOS Finder turds: Finder mutates these on every directory browse, which
+# leaks into the DockerImageAsset source hash and produces a phantom EC2
+# replacement in every local `cdk diff`. CI runners don't have Finder so the
+# noise is local-only — still surfaces on every dev machine until ignored.
+.DS_Store
+**/.DS_Store
