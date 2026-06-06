@@ -39,6 +39,15 @@ export class BackupStack extends Construct {
       deleteAfter: cdk.Duration.days(7),
     }));
 
+    // Long-retention monthly snapshot — covers the >7-day "I deleted something
+    // and didn't notice for a few weeks" scenario that the daily rule misses.
+    // 1st of month at 02:00 UTC, kept for 1 year. ~$0.50/mo at our DB size.
+    backupPlan.addRule(new backup.BackupPlanRule({
+      ruleName: 'MonthlyLongRetention',
+      scheduleExpression: events.Schedule.cron({ day: '1', hour: '2', minute: '0' }),
+      deleteAfter: cdk.Duration.days(365),
+    }));
+
     // Add resources to the backup plan - just the RDS instance
     backupPlan.addSelection('Wiki7BackupSelection', {
       resources: [

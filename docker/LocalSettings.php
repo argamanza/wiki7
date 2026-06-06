@@ -123,6 +123,13 @@ wfLoadExtension( 'Cargo' );
 wfLoadExtension( 'PageForms' );
 wfLoadExtension( 'TabberNeue' );
 
+# SEO — OpenGraph/Twitter Card meta + per-page meta description from article intro.
+# Description2 must load before OpenGraphMeta so the description is available when the OG
+# tags are emitted.
+wfLoadExtension( 'Description2' );
+wfLoadExtension( 'OpenGraphMeta' );
+$wgEnableMetaDescriptionFunctions = true; // expose {{#description2:}} for explicit overrides
+
 ##
 ## Logo
 ##

@@ -8,6 +8,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  pull-requests: write
 
 jobs:
   cdk-diff:
@@ -24,7 +25,41 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
       - name: Install dependencies
         run: cd cdk && npm ci
+
       - name: CDK Diff
-        run: cd cdk && npx cdk diff --all 2>&1 || true
+        id: diff
+        run: |
+          set +e
+          # `cdk diff` exits non-zero when a diff exists (the documented behavior).
+          # Capture stdout+stderr regardless; surface the exit code as an output.
+          cd cdk
+          diff_output=$(npx cdk diff --all 2>&1)
+          diff_exit=$?
+          {
+            echo 'diff<<DIFF_EOF'
+            echo "$diff_output"
+            echo 'DIFF_EOF'
+            echo "exit_code=$diff_exit"
+          } >> "$GITHUB_OUTPUT"
+          # Mirror to the action log so reviewers can still read it in the UI.
+          echo "$diff_output"
+          exit 0
+
+      - name: Post diff as sticky PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: cdk-diff
+          message: |
+            ## CDK Diff
+
+            <details>
+            <summary>Output of <code>npx cdk diff --all</code> (click to expand)</summary>
+
+            ```
+            ${{ steps.diff.outputs.diff }}
+            ```
+
+            </details>

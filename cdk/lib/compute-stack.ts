@@ -12,6 +12,7 @@ import * as cr from 'aws-cdk-lib/custom-resources';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Platform } from 'aws-cdk-lib/aws-ecr-assets';
 import { DockerImageAsset } from 'aws-cdk-lib/aws-ecr-assets';
 
@@ -27,6 +28,9 @@ export class ComputeStack extends Construct {
   // The Elastic IP — CloudFront origin (via the ec2.<domain> A-record) points here.
   readonly elasticIp: ec2.CfnEIP;
   readonly mediawikiStorageBucket: s3.Bucket;
+  // Exposed so the ObservabilityStack can attach metric filters + alarms.
+  readonly appLogGroup: logs.LogGroup;
+  readonly instance: ec2.Instance;
 
   constructor(scope: Construct, id: string, props: ComputeStackProps) {
     super(scope, id);
@@ -137,9 +141,13 @@ export class ComputeStack extends Construct {
     });
 
     // === Container log group (Docker writes here via the awslogs driver) =======================
+    // Holds two streams: 'mediawiki' (MW container) and 'redis' (sidecar). Same retention
+    // for both so an incident timeline can correlate cache misbehavior with MW errors.
     const logGroup = new logs.LogGroup(this, 'Wiki7AppLogs', {
       retention: logs.RetentionDays.ONE_MONTH,
     });
+    // Expose the log group so the ObservabilityStack can attach a metric filter.
+    this.appLogGroup = logGroup;
 
     // === Docker image asset — CDK builds for ARM64, pushes to ECR ==============================
     // The image URI hash baked into UserData below. When the image changes, UserData changes,
@@ -244,12 +252,18 @@ export class ComputeStack extends Construct {
       ``,
       `# 3b. Sidecar Redis — cache only (no persistence), 256 MB cap, LRU eviction.`,
       `#     If Redis dies, MW falls back to the DB; cache rebuilds on first request.`,
+      `#     Logs ship to the shared CloudWatch group under stream 'redis' so incident timelines`,
+      `#     can correlate cache misbehavior (OOM evictions, hung connections) with MW errors.`,
       `docker rm -f redis 2>/dev/null || true`,
       `docker run -d \\`,
       `  --name redis \\`,
       `  --network wiki7-net \\`,
       `  --restart=always \\`,
       `  --memory=320m \\`,
+      `  --log-driver=awslogs \\`,
+      `  --log-opt awslogs-region=${region} \\`,
+      `  --log-opt awslogs-group=${logGroupName} \\`,
+      `  --log-opt awslogs-stream=redis \\`,
       `  redis:7-alpine \\`,
       `  redis-server --save "" --maxmemory 256mb --maxmemory-policy allkeys-lru`,
       ``,
@@ -337,6 +351,75 @@ export class ComputeStack extends Construct {
       evaluationPeriods: 2,
       alarmDescription: 'Recover the instance when AWS detects underlying hardware failure',
     }).addAlarmAction(new cwActions.Ec2Action(cwActions.Ec2InstanceAction.RECOVER));
+
+    this.instance = instance;
+
+    // === SSM Patch Manager — weekly OS patching ================================================
+    // Without this, AL2023 doesn't auto-apply security updates and the OS slowly rots. The
+    // maintenance window runs Saturday 02:30 IDT (Sat 23:30 UTC, day after the RDS window) so
+    // they don't overlap. Targets this single instance by ID. RebootIfNeeded=true keeps the
+    // EC2 alarm system in scope when kernel updates land.
+    const patchWindow = new ssm.CfnMaintenanceWindow(this, 'PatchMaintenanceWindow', {
+      name: 'wiki7-weekly-patch-window',
+      description: 'Weekly OS patching for the wiki7 EC2 — Saturday 02:30 IDT',
+      schedule: 'cron(30 23 ? * SAT *)', // Saturday 23:30 UTC = Sunday 02:30 IDT (Israeli weekend night)
+      scheduleTimezone: 'UTC',
+      duration: 2,
+      cutoff: 0,
+      allowUnassociatedTargets: false,
+    });
+    const patchTarget = new ssm.CfnMaintenanceWindowTarget(this, 'PatchTarget', {
+      windowId: patchWindow.ref,
+      resourceType: 'INSTANCE',
+      targets: [{ key: 'InstanceIds', values: [instance.instanceId] }],
+    });
+    new ssm.CfnMaintenanceWindowTask(this, 'PatchTask', {
+      windowId: patchWindow.ref,
+      targets: [{ key: 'WindowTargetIds', values: [patchTarget.ref] }],
+      taskArn: 'AWS-RunPatchBaseline',
+      taskType: 'RUN_COMMAND',
+      maxConcurrency: '1',
+      maxErrors: '0',
+      priority: 1,
+      taskInvocationParameters: {
+        maintenanceWindowRunCommandParameters: {
+          parameters: { Operation: ['Install'], RebootOption: ['RebootIfNeeded'] },
+          documentVersion: '$LATEST',
+          timeoutSeconds: 3600,
+        },
+      },
+    });
+
+    // === Sitemap-generation SSM Document ======================================================
+    // Trigger via `aws ssm send-command --document-name Wiki7-GenerateSitemap --targets ...`.
+    // Generates the sitemap inside the MW container, copies it out to the host, and uploads to
+    // the S3 storage bucket. Reachable at:
+    //   https://wiki7.co.il/assets/sitemap/sitemap-index-wikidb.xml
+    // (the existing CloudFront /assets/* behavior serves S3 via OAC).
+    //
+    // Manual until content is curated and we know what's worth indexing. Phase 4 wires a
+    // weekly EventBridge schedule.
+    new ssm.CfnDocument(this, 'GenerateSitemapDoc', {
+      name: 'Wiki7-GenerateSitemap',
+      documentType: 'Command',
+      documentFormat: 'YAML',
+      content: [
+        'schemaVersion: "2.2"',
+        'description: Generate the MediaWiki sitemap and upload to the S3 storage bucket',
+        'parameters: {}',
+        'mainSteps:',
+        '  - action: aws:runShellScript',
+        '    name: generateSitemap',
+        '    inputs:',
+        '      runCommand:',
+        '        - set -eux',
+        '        - rm -rf /tmp/wiki7-sitemap && mkdir -p /tmp/wiki7-sitemap',
+        '        - docker exec wiki7 bash -c "mkdir -p /tmp/sitemap && rm -f /tmp/sitemap/* && php maintenance/run.php generateSitemap --fspath=/tmp/sitemap/ --urlpath=https://wiki7.co.il/assets/sitemap/ --server=https://wiki7.co.il --identifier=wikidb"',
+        '        - docker cp wiki7:/tmp/sitemap/. /tmp/wiki7-sitemap/',
+        `        - aws s3 sync /tmp/wiki7-sitemap/ s3://${this.mediawikiStorageBucket.bucketName}/sitemap/ --region ${region} --delete --content-type application/xml`,
+        '        - ls -la /tmp/wiki7-sitemap',
+      ].join('\n'),
+    });
 
     // Outputs for ops + debugging.
     new cdk.CfnOutput(this, 'InstanceId', { value: instance.instanceId });

@@ -35,12 +35,26 @@ WORKDIR /var/www/html
 # Copy .htaccess
 COPY .htaccess /var/www/html/.htaccess
 
+# Static robots.txt — without this, the .htaccess rewrite would route /robots.txt
+# through index.php and MW would treat it as a page title. The .htaccess rule
+# skips real files, so an actual robots.txt at the docroot is served as-is.
+COPY robots.txt /var/www/html/robots.txt
+
 # Copy LocalSettings.php
 COPY LocalSettings.php /var/www/html/LocalSettings.php
 
 # Install TabberNeue extension (tabbed content for stats, lyrics, galleries; pinned)
 ARG TABBERNEUE_TAG=v3.4.1
 RUN git clone --depth 1 --branch "$TABBERNEUE_TAG" https://github.com/StarCitizenTools/mediawiki-extensions-TabberNeue.git extensions/TabberNeue
+
+# SEO extensions — emit OpenGraph + Twitter Card meta and a per-page <meta name="description">
+# extracted from the article intro. Critical for social-sharing previews and search engine
+# snippet quality. Neither has a stable release tag; pinning to MW's REL branch for the closest
+# version match. Bump these when MediaWiki itself moves.
+ARG OPENGRAPHMETA_BRANCH=REL1_43
+RUN git clone --depth 1 --branch "$OPENGRAPHMETA_BRANCH" https://github.com/wikimedia/mediawiki-extensions-OpenGraphMeta.git extensions/OpenGraphMeta
+ARG DESCRIPTION2_BRANCH=REL1_43
+RUN git clone --depth 1 --branch "$DESCRIPTION2_BRANCH" https://github.com/wikimedia/mediawiki-extensions-Description2.git extensions/Description2
 
 # Copy extensions
 COPY extensions/Cargo/ /var/www/html/extensions/Cargo/

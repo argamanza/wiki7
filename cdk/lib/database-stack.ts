@@ -51,6 +51,10 @@ export class DatabaseStack extends Construct {
       backupRetention: cdk.Duration.days(7),
       databaseName: 'wikidb',
       storageEncrypted: true,
+      // Friday 23:00–23:30 UTC = Saturday 02:00–02:30 IDT — Israeli weekend, off-peak.
+      // AWS default lands on Sunday morning IDT which is a regular workday.
+      preferredMaintenanceWindow: 'fri:23:00-fri:23:30',
+      preferredBackupWindow: 'fri:22:00-fri:22:30',
     });
 
     this.dbInstance.connections.allowFrom(

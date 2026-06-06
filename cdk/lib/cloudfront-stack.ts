@@ -19,6 +19,9 @@ interface CloudFrontProps {
 }
 
 export class CloudFrontConstruct extends Construct {
+  // Exposed so the ObservabilityStack can alarm on the distribution's 5xx error rate.
+  readonly distribution: cloudfront.Distribution;
+
   constructor(scope: Construct, id: string, props: CloudFrontProps) {
     super(scope, id);
 
@@ -169,6 +172,11 @@ export class CloudFrontConstruct extends Construct {
 
     // === The distribution =====================================================================
     const distribution = new cloudfront.Distribution(this, 'Wiki7Distribution', {
+      // PriceClass_200 covers US + EU + Asia + Middle East (where IL users hit) but skips
+      // the more expensive edge locations in South America, Africa, Australia. Trivial cost
+      // savings; no latency impact for the actual audience.
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_200,
+      httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
       defaultBehavior: {
         origin: ec2Origin,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -210,6 +218,7 @@ export class CloudFrontConstruct extends Construct {
       certificate,
       webAclId: wafWebAclArn,
     });
+    this.distribution = distribution;
 
     // === DNS — IPv4 + IPv6 alias for apex + www ===============================================
     new route53.ARecord(this, 'Wiki7ApexAlias', {
