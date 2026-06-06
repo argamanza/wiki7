@@ -282,14 +282,26 @@ $wgHooks['BeforePageDisplay'][] = function ( OutputPage $out, Skin $skin ) {
 	// via that hook never reaches modifyPageTitle - it returns early on the missing key
 	// and the bare default <title> (just $wgSitename on the main page, or "<page> - <site>"
 	// elsewhere) leaks through. Setting the HTML title ourselves at BeforePageDisplay
-	// time guarantees the tab text matches the og:title and the social-share preview.
+	// time fires AFTER WikiSEO's hook completes and BEFORE the skin reads getHTMLTitle
+	// to compose the <title> element, so the value sticks.
+	//
+	// Per-page {{#seo:title=...}} overrides still win: that parser-function call writes
+	// the 'title' value to the page_props table, modifyPageTitle reads it from there and
+	// calls setHTMLTitle BEFORE our hook runs, and we detect the page-prop and skip our
+	// force-set so we don't clobber the editor's choice.
 	$title = $out->getTitle();
-	if ( $title ) {
-		$htmlTitle = $title->isMainPage()
-			? $wgSitename . ' - ' . $wgWiki7Tagline
-			: $title->getPrefixedText() . ' - ' . $wgSitename;
-		$out->setHTMLTitle( $htmlTitle );
+	if ( !$title ) {
+		return;
 	}
+	$pageProps = \MediaWiki\MediaWikiServices::getInstance()->getPageProps();
+	$customTitleProp = $pageProps->getProperties( $title, 'title' );
+	if ( !empty( $customTitleProp ) ) {
+		return;
+	}
+	$htmlTitle = $title->isMainPage()
+		? $wgSitename . ' - ' . $wgWiki7Tagline
+		: $title->getPrefixedText() . ' - ' . $wgSitename;
+	$out->setHTMLTitle( $htmlTitle );
 };
 
 ##
