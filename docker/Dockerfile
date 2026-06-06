@@ -35,10 +35,17 @@ WORKDIR /var/www/html
 # Copy .htaccess
 COPY .htaccess /var/www/html/.htaccess
 
-# Static robots.txt — without this, the .htaccess rewrite would route /robots.txt
+# Static robots.txt - without this, the .htaccess rewrite would route /robots.txt
 # through index.php and MW would treat it as a page title. The .htaccess rule
 # skips real files, so an actual robots.txt at the docroot is served as-is.
 COPY robots.txt /var/www/html/robots.txt
+
+# Static /favicon.ico at the docroot. $wgFavicon below makes MW emit a <link rel="icon">
+# pointing at /assets/favicon.ico (S3-backed via CloudFront), but browsers also auto-fetch
+# /favicon.ico without consulting the HTML - bookmark/feed/preview tools especially. Same
+# .htaccess passthrough logic as robots.txt: real file at the docroot wins over the
+# index.php rewrite.
+COPY assets/favicon.ico /var/www/html/favicon.ico
 
 # Copy LocalSettings.php
 COPY LocalSettings.php /var/www/html/LocalSettings.php
@@ -57,7 +64,7 @@ RUN git clone --depth 1 --branch "$TABBERNEUE_TAG" https://github.com/StarCitize
 #    glue PHP in LocalSettings.php.
 # Both pinned to REL branches matching the MediaWiki major version (REL1_45 for MW 1.45).
 # Earlier REL1_43 pin on OpenGraphMeta called wfExpandUrl(), which is fatal-on-call in
-# MW 1.45 — every homepage render 500'd. Lesson: match the REL branch.
+# MW 1.45 - every homepage render 500'd. Lesson: match the REL branch.
 ARG DESCRIPTION2_BRANCH=REL1_45
 RUN git clone --depth 1 --branch "$DESCRIPTION2_BRANCH" https://github.com/wikimedia/mediawiki-extensions-Description2.git extensions/Description2
 ARG WIKISEO_BRANCH=REL1_45
