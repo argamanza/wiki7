@@ -250,17 +250,25 @@ $wgLogos = [
 ##
 ## Favicon + Apple touch icon
 ##
-# Browser tab + bookmark icon. Generated from the white brand logo on a brand-red square,
-# multi-resolution ICO (16/32/48). MW emits <link rel="shortcut icon" href="$wgFavicon">
-# when set; the Dockerfile also copies the same file to /var/www/html/favicon.ico for
-# tools that auto-fetch /favicon.ico without parsing the HTML (bookmark scrapers, RSS
-# readers, link-preview generators).
+# Browser tab, bookmark icon, and iOS/Android home screen. Modern browsers prefer the SVG
+# variant (crisp at every tab DPI, ~7 KB) and fall back to the multi-resolution ICO. iOS
+# uses the 180x180 PNG for home-screen bookmarks. All three assets are generated from the
+# same brand-red + white-logo recipe as social-share.png.
+#
+# - $wgFavicon emits the legacy <link rel="shortcut icon"> for older browsers.
+# - The BeforePageDisplay hook adds the modern <link rel="icon" type="image/svg+xml"> and
+#   the <link rel="apple-touch-icon"> tags, both of which MW core doesn't emit.
+# - The Dockerfile also copies favicon.ico to /var/www/html/favicon.ico for tools that
+#   auto-fetch /favicon.ico without parsing the HTML (bookmark scrapers, RSS readers,
+#   link-preview generators).
 $wgFavicon = '/assets/favicon.ico';
 
-# apple-touch-icon (180x180 PNG): used when the site is added to the iOS/iPadOS home
-# screen and by some Android browsers. MW core doesn't emit this link tag; we add it
-# explicitly via the OutputPage::addLink hook.
 $wgHooks['BeforePageDisplay'][] = function ( OutputPage $out, Skin $skin ) {
+	$out->addLink( [
+		'rel'  => 'icon',
+		'type' => 'image/svg+xml',
+		'href' => '/assets/favicon.svg',
+	] );
 	$out->addLink( [
 		'rel'   => 'apple-touch-icon',
 		'href'  => '/assets/apple-touch-icon.png',
