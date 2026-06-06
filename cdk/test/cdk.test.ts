@@ -163,9 +163,13 @@ describe('ComputeStack', () => {
     });
   });
 
-  test('termination protection ON', () => {
+  test('termination protection OFF (CFN must be able to replace the instance on UserData change)', () => {
+    // DisableApiTermination=true blocks CFN's replacement-delete and rolls the whole stack back
+    // on every UserData change. The EC2 is stateless; the irreplaceable data lives in RDS,
+    // which keeps `deletionProtection: true`. Regression guard for the 2026-06-06 stuck-deploy
+    // incident (5 orphan instances were left running after rollback failures).
     template.hasResourceProperties('AWS::EC2::Instance', {
-      DisableApiTermination: true,
+      DisableApiTermination: Match.absent(),
     });
   });
 
