@@ -221,11 +221,20 @@ $wgHooks['WikiSEOPreAddMetadata'][] = function ( array &$metadata ) {
         $metadata['title_mode'] = 'replace';
     }
 
-    // og:type - 'website' on the main page, 'article' everywhere else. RequestContext is
-    // the supported way to reach the current title from a hook that only receives metadata.
+    // og:type AND Schema.org @type - WikiSEO REL1_45 reads $metadata['type'] for BOTH the
+    // OpenGraph generator's og:type tag AND the Schema.org generator's @type field in JSON-LD
+    // (Generator/Plugins/SchemaOrg.php passes the value through verbatim; no CamelCase mapping,
+    // no separate `schema_type` key). One value has to satisfy both standards.
+    //
+    // Schema.org canonical types are CamelCase ('WebSite', 'Article'); OG spec defines lowercase
+    // ('website', 'article'). The two clash, but in practice every major OG consumer (Facebook,
+    // Twitter/X, LinkedIn, Slack, Discord) is case-insensitive on og:type for these basic types -
+    // upstream WikiSEO's own default value when nothing is set is 'Article' (CamelCase), which
+    // implicitly endorses this path. Going CamelCase fixes Schema.org without measurable
+    // OG-side fallout. (Phase 2.5c Round 1 Finding 3, rolled into 2.5b.)
     if ( !isset( $metadata['type'] ) ) {
         $title = \RequestContext::getMain()->getTitle();
-        $metadata['type'] = ( $title && $title->isMainPage() ) ? 'website' : 'article';
+        $metadata['type'] = ( $title && $title->isMainPage() ) ? 'WebSite' : 'Article';
     }
 
     // og:locale - Hebrew Israel; matches $wgLanguageCode='he' and the RTL skin direction.
@@ -354,17 +363,44 @@ if ( getenv('WIKI_ENV') === 'production' ) {
 
     // === CDN awareness =====================================================================
     // $wgUseCdn = true tells MW it's behind a shared cache: it emits Vary: Cookie correctly,
-    // skips internal cache-key choices that assume direct-to-origin, and is the right
-    // baseline before the CloudFront default behavior is ever relaxed off CACHING_DISABLED.
+    // skips internal cache-key choices that assume direct-to-origin, and is the prerequisite
+    // for CloudFront actually honoring the s-maxage MW emits.
     //
-    // It also makes MW emit Cache-Control: s-maxage=... on anonymous responses — but with
-    // CloudFront's default behavior currently set to CachePolicy.CACHING_DISABLED (MinTTL =
-    // MaxTTL = DefaultTTL = 0), the edge ignores origin TTL and HTML responses never cache
-    // at the edge today. Genuine edge caching of MW HTML needs a cookie-aware cache policy
-    // (so an anon response can't be served to a logged-in editor) + an invalidation story
-    // for edits, which is a Phase 2.5b follow-up after this PR validates — see
-    // docs/revival-plan.md §Phase 2.5.
+    // Phase 2.5b (this PR) switched CloudFront's default behavior off CachePolicy.CACHING_DISABLED
+    // onto the new Wiki7DynamicHtml cache policy (cookie-aware, MinTTL=0 so origin Cache-Control
+    // is trusted, MaxTTL=1d as a safety cap). MW emits `Cache-Control: s-maxage=$wgCdnMaxAge,
+    // max-age=0` for anon responses and `Cache-Control: private, no-cache` for logged-in
+    // responses, so anon HTML caches at the edge for $wgCdnMaxAge seconds and logged-in HTML
+    // bypasses the cache. See cdk/lib/cloudfront-stack.ts for the cookie-keying details.
     $wgUseCdn = true;
+
+    // $wgCdnMaxAge — bounded worst-case staleness for edits.
+    //
+    // MW default is 18000s (5h). For Phase 3 (content + data pipeline, edit-heavy) we want
+    // edits to be visible to anon readers reasonably quickly without standing up edit-driven
+    // CloudFront invalidation (Lambda + IAM + AWS SDK PHP integration + per-edit cost).
+    //
+    // Options considered:
+    //   (a) Default 5h, no invalidation       — simplest, but 5h is too stale during a pipeline run
+    //   (b) Shorten to 600s (10 min)          — bounded staleness, no new infra, slight hit-ratio cost
+    //   (c) Default 5h + CreateInvalidation   — sub-second edit→fresh, but real infra cost
+    //
+    // Chose (b). 10-min worst-case is fine for both human edits and pipeline review; the
+    // cache-hit-ratio cost vs option (c) is small at our traffic volume. Revisit and add (c)
+    // in Phase 4 if real edit cadence makes 10-min staleness painful. The CloudFront cache
+    // policy's MaxTTL is 1d (clamps origin even if this ever gets set higher accidentally).
+    $wgCdnMaxAge = 600;
+
+    // $wgRateLimits — left at MW defaults intentionally.
+    //
+    // Pre-PR #38 every viewer looked like a CloudFront edge IP, so per-IP rate limits were
+    // nonsense (everyone shared one IP at the MW layer). After #38 + 2.5d the per-IP buckets
+    // actually apply per real client. MW 1.45 defaults: edit=8/60s (ip/newbie), 90/60s (user);
+    // move/linkpurge/purge similar. For the Phase 3 data-pipeline bot, the standard pattern
+    // is to add the bot account to the `bot` user-group, which carries the `noratelimit`
+    // user right and bypasses these checks entirely (`data/BOT_SETUP.md`). No site-wide
+    // override needed; if a future ad-hoc burst trips the user-bucket limit (90 edits/min),
+    // raise the offending group here with a comment naming the bucket + reason.
 
     // Real client IP recovery behind CloudFront. CloudFront's origin request policy
     // (ALL_VIEWER_AND_CLOUDFRONT_2022, set in cloudfront-stack.ts) adds the

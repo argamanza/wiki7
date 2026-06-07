@@ -147,6 +147,51 @@ export class CloudFrontConstruct extends Construct {
       cookieBehavior: cloudfront.CacheCookieBehavior.none(),
     });
 
+    // MediaWiki HTML — anon hits cache, logged-in editors bypass.
+    //
+    // MW emits `Cache-Control: s-maxage=<wgCdnMaxAge>, max-age=0` for anon responses (no
+    // session) and `Cache-Control: private, no-cache` for logged-in responses. By setting
+    // MinTTL=0 here, CloudFront trusts that origin Cache-Control verbatim — the `private`
+    // directive on logged-in responses keeps them out of the cache. MaxTTL=1d is a safety
+    // cap so a misbehaving origin can never pin stale HTML beyond a day.
+    //
+    // Cookie keying — the auth-bearing cookies only.
+    //   - `wikidbUserID` / `wikidbToken` / `sessionJwt` go in the cache key so anon requests
+    //     (which carry none of them) share one cache entry, while logged-in requests get
+    //     unique cache keys per user. Combined with the `Cache-Control: private` MW emits
+    //     for those, logged-in HTML is never served to anon and vice versa.
+    //   - `wikidb_session` is DELIBERATELY EXCLUDED. MW's CookieSessionProvider sets it on
+    //     any persisted session — including anonymous notice dismissals, edit-page views,
+    //     and CSRF token issuance — so including it in the cache key would explode anon
+    //     cache fragmentation to one entry per visitor (effectively defeating the cache).
+    //     Wikimedia's own Varnish VCL excludes it for the same reason
+    //     (Manual:Varnish_caching, "[sS]ession|Token" regex matches Token but not session).
+    //   - `wikidbUserName` is also EXCLUDED. MW retains it post-logout as a login-form
+    //     name-hint, so its presence doesn't mean auth — pairing it with UserID/Token does.
+    //
+    // Query string — `all()`. MW URLs vary on ?action= (edit/history/raw), ?oldid=, ?diff=,
+    // ?redirect=, and parser tags like ?useformat=mobile; each is a distinct cacheable view.
+    //
+    // Headers — `Accept-Language` only. MW currently serves Hebrew only ($wgLanguageCode='he')
+    // and doesn't negotiate, but including this keeps the cache shape future-proof if we
+    // ever add an English variant or per-user language preference.
+    const dynamicHtmlCachePolicy = new cloudfront.CachePolicy(this, 'DynamicHtmlCachePolicy', {
+      cachePolicyName: 'Wiki7DynamicHtml',
+      comment: 'Edge cache for MW HTML; cookie-aware bypass for logged-in editors via $wgCdnMaxAge / Cache-Control',
+      defaultTtl: cdk.Duration.seconds(0),
+      minTtl: cdk.Duration.seconds(0),
+      maxTtl: cdk.Duration.days(1),
+      enableAcceptEncodingGzip: true,
+      enableAcceptEncodingBrotli: true,
+      headerBehavior: cloudfront.CacheHeaderBehavior.allowList('Accept-Language'),
+      queryStringBehavior: cloudfront.CacheQueryStringBehavior.all(),
+      cookieBehavior: cloudfront.CacheCookieBehavior.allowList(
+        'wikidbUserID',
+        'wikidbToken',
+        'sessionJwt',
+      ),
+    });
+
     // Behavior for /load.php — keep MediaWiki's own Cache-Control (5 min). MW generates load.php
     // responses dynamically; its short browser TTL is intentional, and CloudFront caches at the
     // edge for 1 day per the cache policy regardless of the browser-facing header.
@@ -181,8 +226,11 @@ export class CloudFrontConstruct extends Construct {
         origin: ec2Origin,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-        // Dynamic pages — uncached. MW emits its own cache headers for browser caching.
-        cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+        // Edge cache MW HTML — see Wiki7DynamicHtml definition above for the cookie-keying
+        // story. Phase 2.5b switched off CACHING_DISABLED to start honoring the s-maxage MW
+        // emits when $wgUseCdn=true; logged-in editors still bypass via MW's Cache-Control:
+        // private + the auth-cookie cache key.
+        cachePolicy: dynamicHtmlCachePolicy,
         // ALL_VIEWER_AND_CLOUDFRONT_2022 forwards every viewer header plus the unspoofable
         // CloudFront-* headers (CloudFront-Viewer-Address, -Country, -Forwarded-Proto, …).
         // LocalSettings.php uses CloudFront-Viewer-Address to set REMOTE_ADDR so MW sees
