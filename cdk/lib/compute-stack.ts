@@ -79,6 +79,27 @@ export class ComputeStack extends Construct {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // Wiki7Bot — Phase 3a data-pipeline credential. Decoupled from compute: NOT granted to the
+    // EC2 instance role and NOT threaded into UserData / the docker --env-file. The container
+    // never holds this value; only the pipeline runner (Tzahi's laptop, or a future CI runner)
+    // fetches it via `aws secretsmanager get-secret-value` and exports WIKI_BOT_USER /
+    // WIKI_BOT_PASS, which `data/run_pipeline.py` reads. The MW user is created out-of-band via
+    // `php maintenance/run.php createAndPromote --custom-groups=bot --force Wiki7Bot <pass>`
+    // (SSM Run Command against the live container) — see data/BOT_SETUP.md for the recipe.
+    // The `bot` group carries `noratelimit` (documented at LocalSettings.php §rate-limits) so
+    // a Phase 3a bulk import doesn't trip the per-user 90 edits/min bucket. RETAIN so a future
+    // restack doesn't invalidate the live wiki user's password.
+    new secretsmanager.Secret(this, 'Wiki7BotSecret', {
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({ username: 'Wiki7Bot' }),
+        generateStringKey: 'password',
+        excludePunctuation: true,
+        passwordLength: 32,
+      },
+      description: 'Wiki7Bot MediaWiki bot account password (Phase 3a data pipeline)',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
     // === S3 bucket for MediaWiki uploads (read by CloudFront via OAC) ==========================
     this.mediawikiStorageBucket = new s3.Bucket(this, 'Wiki7StorageBucket', {
       encryption: s3.BucketEncryption.S3_MANAGED,

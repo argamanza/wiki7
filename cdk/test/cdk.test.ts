@@ -286,6 +286,34 @@ describe('ComputeStack', () => {
     });
   });
 
+  test('Wiki7Bot secret retained, decoupled from compute (Phase 3a)', () => {
+    // The bot credential lives next to the other MW secrets but is intentionally NOT granted
+    // to the EC2 instance role and NOT threaded into UserData — the container never holds it.
+    // The pipeline runner fetches it directly via Secrets Manager.
+    template.hasResource('AWS::SecretsManager::Secret', {
+      Properties: Match.objectLike({
+        Description: Match.stringLikeRegexp('.*Wiki7Bot.*'),
+        GenerateSecretString: Match.objectLike({
+          PasswordLength: 32,
+          ExcludePunctuation: true,
+          GenerateStringKey: 'password',
+          SecretStringTemplate: Match.stringLikeRegexp('.*"username":"Wiki7Bot".*'),
+        }),
+      }),
+      DeletionPolicy: 'Retain',
+    });
+    // Decoupling guard: the EC2 UserData must NOT reference the bot secret's logical id or any
+    // BOT_USER / BOT_PASS env-var name. If a future change tries to thread the bot creds through
+    // the container env-file, this assertion fails and forces a conscious re-decision.
+    const instances = template.findResources('AWS::EC2::Instance');
+    const userDataB64 = JSON.stringify(Object.values(instances)[0]);
+    expect(userDataB64).not.toContain('Wiki7BotSecret');
+    expect(userDataB64).not.toContain('WIKI_BOT_USER');
+    expect(userDataB64).not.toContain('WIKI_BOT_PASS');
+    expect(userDataB64).not.toContain('MEDIAWIKI_BOT_USER');
+    expect(userDataB64).not.toContain('MEDIAWIKI_BOT_PASSWORD');
+  });
+
   test('UserData uses docker run --env-file (Phase 2.5d Finding 2)', () => {
     // Inline -e SECRET="$VAR" leaks values to /var/log/cloud-init-output.log AND to the
     // mediawiki CloudWatch stream because UserData runs under `set -x` and bash echoes
