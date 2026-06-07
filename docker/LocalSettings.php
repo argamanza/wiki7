@@ -221,25 +221,59 @@ $wgHooks['WikiSEOPreAddMetadata'][] = function ( array &$metadata ) {
         $metadata['title_mode'] = 'replace';
     }
 
-    // og:type AND Schema.org @type - WikiSEO REL1_45 reads $metadata['type'] for BOTH the
-    // OpenGraph generator's og:type tag AND the Schema.org generator's @type field in JSON-LD
-    // (Generator/Plugins/SchemaOrg.php passes the value through verbatim; no CamelCase mapping,
-    // no separate `schema_type` key). One value has to satisfy both standards.
+    // og:type - lowercase per the OG spec ('website', 'article'). WikiSEO REL1_45 reads
+    // $metadata['type'] for BOTH og:type AND Schema.org @type (single shared key, no
+    // separate schema_type; verified in Generator/Plugins/SchemaOrg.php and OpenGraph.php).
+    // The two standards clash on casing (OG = lowercase, Schema.org = CamelCase). We resolve
+    // it by emitting lowercase here for og:type correctness, and the
+    // OutputPageAfterGetHeadLinksArray hook below post-processes the JSON-LD <script> tag to
+    // CamelCase the @type field only.
     //
-    // Schema.org canonical types are CamelCase ('WebSite', 'Article'); OG spec defines lowercase
-    // ('website', 'article'). The two clash, but in practice every major OG consumer (Facebook,
-    // Twitter/X, LinkedIn, Slack, Discord) is case-insensitive on og:type for these basic types -
-    // upstream WikiSEO's own default value when nothing is set is 'Article' (CamelCase), which
-    // implicitly endorses this path. Going CamelCase fixes Schema.org without measurable
-    // OG-side fallout. (Phase 2.5c Round 1 Finding 3, rolled into 2.5b.)
+    // Why split rather than just CamelCase both:
+    //   - Mastodon's link_details_extractor matches `og:type == 'article'` exactly (case
+    //     sensitive); CamelCase misses the article-styled card variant for a generic link
+    //     card. Other OG consumers (FB, Twitter, Slack, Lemmy, Misskey) either don't read
+    //     og:type or pass it through; only Mastodon's richer rendering is measurably impacted.
+    //   - Schema.org JSON-LD context is case-sensitive IRI matching ('schema:WebSite' is a
+    //     defined term, 'schema:website' isn't), so CamelCase is required for Google Rich
+    //     Results eligibility.
+    // (Phase 2.5c Round 1 Finding 3, rolled into 2.5b.)
     if ( !isset( $metadata['type'] ) ) {
         $title = \RequestContext::getMain()->getTitle();
-        $metadata['type'] = ( $title && $title->isMainPage() ) ? 'WebSite' : 'Article';
+        $metadata['type'] = ( $title && $title->isMainPage() ) ? 'website' : 'article';
     }
 
     // og:locale - Hebrew Israel; matches $wgLanguageCode='he' and the RTL skin direction.
     if ( !isset( $metadata['locale'] ) ) {
         $metadata['locale'] = 'he_IL';
+    }
+};
+
+# Schema.org @type CamelCase fix. WikiSEO emits OG meta tags AND a JSON-LD <script> from the
+# same metadata['type'] key, so we can't fix one without the other from the metadata array.
+# We emit lowercase for og:type (the hook above) and post-process the JSON-LD <script> tag
+# here to give Schema.org its canonical CamelCase @type.
+#
+# WikiSEO's PageHooks::onBeforePageDisplay calls SchemaOrg generator → addHeadItem(
+# 'jsonld-metadata', '<script>...</script>'). We hook OutputPageAfterGetHeadLinksArray
+# which fires LATER in the render pipeline (during the head-rendering pass, after all
+# BeforePageDisplay handlers have run), so the head item already exists when we run.
+# addHeadItem() overwrites by key (OutputPage::$mHeadItems[$name] = $value), so re-calling
+# it with the same 'jsonld-metadata' key replaces WikiSEO's emission with our fixed value.
+# We don't mutate the $tags array directly because the JSON-LD <script> is in $mHeadItems,
+# not in the head-links array that $tags carries.
+$wgHooks['OutputPageAfterGetHeadLinksArray'][] = function ( array &$tags, OutputPage $out ) {
+    $items = $out->getHeadItemsArray();
+    if ( !isset( $items['jsonld-metadata'] ) ) {
+        return;
+    }
+    $original = $items['jsonld-metadata'];
+    $fixed = strtr( $original, [
+        '"@type":"website"' => '"@type":"WebSite"',
+        '"@type":"article"' => '"@type":"Article"',
+    ] );
+    if ( $fixed !== $original ) {
+        $out->addHeadItem( 'jsonld-metadata', $fixed );
     }
 };
 
