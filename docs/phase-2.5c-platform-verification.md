@@ -594,3 +594,154 @@ After the patch PR lands + secrets rotated, **2.5b starts on a clean platform st
 - **Finding 3 (Schema.org `@type` casing)** — still deferred to Phase 2.5b's WikiSEO config work, per the original plan.
 - **Finding 5 (local IAM `backup:ListRecoveryPointsByBackupVault`)** — still on Phase 4 deferral.
 - **Next: Phase 2.5b** (CloudFront edge caching of MW HTML + Finding 3 roll-in), then Phase 2.5c Round 2 (~85 remaining matrix items), then Phase 3 (content + data pipeline).
+
+---
+
+## Round 2 — Pre-Phase-3 platform verification (executed 2026-06-07)
+
+Final pass: the ~85 matrix items that Round 1 didn't cover, plus re-verification of the six matrix rows whose outcome was expected to shift after PR #46 (Phase 2.5b — CloudFront default behavior off `CACHING_DISABLED` + Schema.org `@type` CamelCase). Six 2.5b proof points checked first: all green. One new finding (Finding 6 — KMS cost surprise). Phase 3 is unblocked.
+
+### 2.5b proof points — outcomes shifted since Round 1
+
+| # | Item | Round 1 | Round 2 | Note |
+|---|---|---|---|---|
+| G2 | Anon HTML edge cache hits | Miss / Miss (G7 expected) | **Miss → Hit + `age:N`** ✅ | First hit Miss, second hit Hit + Age=414s observed at 17:02Z. The headline 2.5b payoff. |
+| G6 | Cookie-keyed bypass (logged-in) | n/a (pre-2.5b) | ✅ | Logged-in `curl -b cookies /`: `Cache-Control: private`, `X-Cache: Miss` on both hits. Parallel anon GET to same URL kept hitting cache (Age=414). Cookie allowList works exactly as designed. |
+| B14 | `s-maxage` on anon response | `s-maxage=18000` (MW default) | **`s-maxage=600`** ✅ | `$wgCdnMaxAge=600` from PR #46 in effect end-to-end. |
+| C11 | `og:type` per page | `og:type=website` lowercase | ✅ unchanged | Homepage still emits lowercase per OG-spec + Mastodon-compat. Article case can't be verified (no article exists yet — see J1). |
+| C13 | Schema.org JSON-LD `@type` Organization | `"@type":"website"` (Finding 3) | **`"@type":"WebSite"`** ✅ | Two-hook split working: lowercase OG + CamelCase JSON-LD from one config. Finding 3 closure double-confirmed live. |
+| C14 | Schema.org JSON-LD `@type` (page root) | lowercase | **`"@type":"WebSite"`** ✅ | Same hook, same result. Image emitted as nested `ImageObject` with absolute `social-share.png` URL. |
+
+All six proof points green — 2.5b is delivering exactly the value designed for.
+
+### Outcomes table — Round 2
+
+| # | Item | Outcome | Notes |
+|---|---|---|---|
+| A6 | AWS Backup vault recent recovery point < 24h | ✅ | `list-recovery-points-by-backup-vault` returned a COMPLETED RDS recovery point from 2026-06-07T04:00 (~13h old). Note: this CLI call now succeeds from the local `argamanza` profile — Finding 5 appears partially or fully closed since Round 1 (or this specific permission was always present and only the `Describe*` variants are missing); not investigated further this pass. |
+| A7 | MW SG ingress 80/CF prefix list only | ✅ | Single rule: tcp/80 from `pl-0dd89524416301988` (CloudFront managed prefix list). No 0.0.0.0/0. |
+| A8 | DB SG ingress 3306/MW SG only | ✅ | Single rule: tcp/3306 from `sg-0e939eb21c6e22db7` (MW SG). |
+| A9 | S3 BLOCK_ALL + BUCKET_OWNER_ENFORCED | ✅ | All 4 block flags `true`; `BucketOwnerEnforced`. |
+| A10 | Secrets Manager: wiki7 secrets present | ✅ | 4 secrets (DB, MediaWiki app, SecretKey, UpgradeKey) — exceeds the matrix's "2 secrets" expectation; the extra two are the 2.5d security additions. |
+| A11 | SSM Session Manager works | ✅ | Proven by this verification pass — `aws ssm send-command` batched 12+ commands end-to-end (status `Success`). |
+| A14 | Redis sidecar running + clean | ✅ | `Up 6 hours`; logs show clean Redis 7.4.9 startup, no errors. The standard "Memory overcommit" host warning is informational. |
+| B2 | www → apex 301 | ✅ | HTTP/2 301 → `Location: https://wiki7.co.il/` (CloudFront function generated). |
+| B3 | http → https redirect at edge | ✅ | HTTP/1.1 301 → `Location: https://wiki7.co.il/` (CloudFront viewer-protocol-policy). |
+| B6 | Default skin is Wiki7 | ✅ | Homepage HTML body class includes `skin-wiki7`; `siteinfo.general.skin` field is null/absent in MW 1.45 API output but the class confirms the active skin. |
+| B7 | Hebrew RTL renders correctly | ✅ | `<html lang="he" dir="rtl">` + body class includes `rtl sitedir-rtl mw-hide-empty-elt`. (Full visual check is a Phase 3 design pass; no regression observed in HTML structure.) |
+| B8 | Anon edit denied | ✅ behavioral | Edit URL returns HTTP 200 with a Hebrew "log in" prompt; no `wpTextbox1` textarea present in the response → MW is blocking the edit form for anonymous users (the MW pattern is in-app permission gate, not a 302). |
+| B9 | Search functional | ⚠️ | API responds 200 with empty suggestions for `"הפועל"` — expected for seed state (only the main page exists; no article matches). Functional path verified. |
+| B10 | VisualEditor API responsive | ✅ | HTTP/2 200, ~36KB JSON response. |
+| B16 | MW container logs to CloudWatch | ✅ | `mediawiki` log stream lastEvent timestamp recent (within minutes during the SSM probe). |
+| B17 | Redis stream logs to CloudWatch | ⚠️ | `redis` log stream lastEvent ~5.5h old at check time. Matrix expected "within 30 min" — too tight for an idle Redis sidecar that only emits logs on startup or under pressure. Not a regression; tune the matrix expectation. |
+| B19 | Redis BagOStuff working | ✅ inferred | Pre-2.5b K6 baseline showed 5-10× warm-cache speedup (97-149ms warm CSS TTFB vs 453ms cold); post-2.5b K6 holds the same edge cache + Redis-warmed origin numbers. A direct PHP `ObjectStash::set/get` probe via `maintenance/run.php eval` was attempted but blocked by MW's eval CLI escape handling — behavioral evidence stands. |
+| C9 | og:title brand-augmented (article) | ⏸️ | Cannot validate until Phase 3 lands content — the prod wiki has only the main page (`עמוד ראשי`). The hook (`BeforePageDisplay`) is shared across page types and was tested at deploy time; revisit on first article publish. |
+| D5 | CF 5xx cross-region issue documented | ✅ | Inline comment in `cdk/lib/observability-stack.ts:103-116` (and dashboard widget comment at line 264) accurately describes the gap; `docs/revival-plan.md` §Phase 4 carries the deferred-fix narrative. |
+| D6 | GuardDuty findings clean | ✅ | `list-findings` with severity ≥4 → `FindingIds: []`. |
+| D7 | UptimeRobot monitor live + alerts wired | ⏸️ | Dashboard check is user-action; the site has been continuously responsive throughout this verification window (G2/G6 hits + no `wiki7-cloudfront-5xx-high` alarm trips). |
+| D8 | App-errors metric accumulating zero | ✅ | `Wiki7/Application/ErrorCount` Sum over last 24h = 0 across all 24 hourly buckets. |
+| D9 | Redis-exception metric accumulating zero | ✅ | `Wiki7/Application/RedisExceptionCount` Sum over last 24h = 0 across all 24 hourly buckets. |
+| D10 | Status-check auto-recover alarm OK | ✅ | `Wiki7CdkStack-ComputeStatusCheckRecoverAlarmAA472FFC-ps9aMkCNucBS` State=`OK`, Action=`arn:aws:automate:il-central-1:ec2:recover`. |
+| E1 | WAF attached to distribution | ✅ | `CloudFront.DistributionConfig.WebACLId` = `arn:aws:wafv2:us-east-1:...:webacl/Wiki7WebAcl-MksPClMUHail/...`. |
+| E2 | WAF rule ordering (bot-allow < bot-block) | ✅ | `AllowLegitimateBot` priority 6 < `BlockSuspiciousMediaWikiPatterns` priority 8. |
+| E3 | WAF managed rule sets present | ✅ | `AWS-AWSManagedRulesCommonRuleSet` (2), `KnownBadInputsRuleSet` (3), `SQLiRuleSet` (4), `PHPRuleSet` (5). |
+| E4 | WAF custom: geo-block + rate-limit | ✅ | `BlockCertainCountries` (priority 1) + `RateLimitPerIP` (priority 7). |
+| E5 | WAF allowlist covers crawlers + uptimerobot | ✅ | Decoded base64: `googlebot, bingbot, applebot, duckduckbot, slackbot, discordbot, twitterbot, facebookexternalhit, linkedinbot, pinterestbot, embedly, telegrambot, whatsapp, uptimerobot` — all required UAs present. |
+| E6 | No port 22 open anywhere | ✅ | `describe-security-groups --query 'SecurityGroups[?IpPermissions[?FromPort==\`22\`]]'` → empty. |
+| E7 | HSTS header present | ✅ | `strict-transport-security: max-age=31536000; includeSubDomains` on all responses. |
+| E8 | `$wgCookieSecure` = true | ✅ | LocalSettings.php:386 has `$wgCookieSecure = true`. Confirmed at runtime: the cookie jar after admin login shows all four wikidb cookies with the Secure flag set (TRUE in the 4th netscape-format column). |
+| E9 | S3 bucket policy: CloudFront OAC only | ✅ | Single statement; Principal=`cloudfront.amazonaws.com`; `AWS:SourceArn = arn:aws:cloudfront::368127906643:distribution/EKUXAFE4HMSJ3`. |
+| E10 | RDS encrypted at rest | ✅ | `StorageEncrypted: true` (covered in A4 too). |
+| E11 | EBS encrypted | ✅ | `vol-0875b909bbd6e6744` (30GB) `Encrypted: true`. |
+| E12 | Backup vault KMS-encrypted | ✅ | `EncryptionKeyArn: arn:aws:kms:il-central-1:368127906643:key/990bd736-2540-400b-8930-4c53081707f2`. |
+| E13 | No secrets in git history | ✅ | `git log --all -S 'AKIA' / 'eyJhbGciOi'` → only matches are this docs file itself (search-string literals in evidence blocks), not real credentials. |
+| F1 | RDS deletion protection ON | ✅ | `DeletionProtection: true` (covered in A4 too). |
+| F2 | RDS snapshot-on-delete configured | ⚠️ | `describe-db-instances` returns `DeleteAutomatedBackups: null` (the field is a write-side parameter; the API doesn't expose its current value reliably for instances that haven't been modified). Trust the CDK config (`database-stack.ts` sets `deleteAutomatedBackups: false`); the prior Round-1 outcome left this ⏸️ for the same reason. |
+| F3 | Automated backup retention = 7 | ✅ | `BackupRetentionPeriod: 7`. |
+| F4 | Backup vault: daily + monthly long-retention | ✅ | Plan `d52135f8-...` has two rules: `DailyBackup` (`cron(0 1 * * ? *)`, 7-day retain) + `MonthlyLongRetention` (`cron(0 2 1 * ? *)`, 365-day retain). |
+| F5 | Restore drill recency | ✅ | Drill on 2026-06-06 documented in revival-plan §Phase 2 — 1 day old, well inside the 30-day window. |
+| F6 | (Conditional) Re-run restore drill | ➖ | Not required — F5 within window. |
+| G2 | Anon HTML edge cache hits | ✅ | See 2.5b proof points table above. |
+| G6 | Cookie-keyed bypass (logged-in) | ✅ | See 2.5b proof points table above. |
+| G8 | (After 2.5b) Default HTML behavior IS edge-cached | ✅ | Same evidence as G2; the post-2.5b row. |
+| H1 | Last 30 days actual spend in $47-52 band | ⚠️ | Cost Explorer 30-day total = ~$33 — but ~24 of those 30 days were the May teardown period; only ~1.5 days of the rebuilt stack contribute. Cannot validate the ADR band yet. Re-baseline after 30 days of continuous live operation (target: re-run around 2026-07-06). |
+| H2 | Service breakdown vs ADR | ⚠️ | June 6 (one full live-stack day) projects to ~$75/mo, mostly because of the new H3 finding. Components matching the ADR within rounding: WAF ($0.44/day → ~$13/mo ✅), RDS ($0.53/day → ~$16/mo, close to the $12 ADR), Secrets Manager (~$0.90/mo ✅). EC2 compute / CloudFront / GuardDuty / Backup show billing latency (instance was launched 2026-06-07T11:06Z — only ~6 hours of EC2 hours posted by end of run). |
+| H3 | No surprise services > $1/mo | ❌ Finding 6 | KMS at ~$30/mo from 18 enabled customer-managed keys (likely orphans across prior teardown cycles). See §6.2 Finding 6 below. |
+| H4 | Free tier remaining | ⏸️ | User-action via Billing → Free Tier console page. |
+| I1 | GH Actions deploy.yml last run successful | ✅ | Last 3 runs all `conclusion: success` (most recent: 2026-06-07T14:00Z, "docs: track 'Use efficient cache lifetimes' diagnostic…"). |
+| I2 | Sticky cdk-diff PR comment | ✅ | PR #46 has a `github-actions` bot comment "## CDK Diff …" updated through the PR's life. |
+| I3 | CDK tests pass on master | ✅ | `51/51` pass (matrix's "39/39" reflected the pre-2.5b suite — 2.5b's PR #46 added 8 lock-in tests for the new `Wiki7DynamicHtml` cache policy + extended the WAF/backup suites; 4 more were already added in 2.5d). |
+| I4 | OIDC auth working | ✅ | Implicit from I1 — deploys ran end-to-end with no OIDC errors. |
+| J1 | Seed pages imported | ⚠️ | `allpages` returns exactly 1 page (`עמוד ראשי`) — matches the prompt-stated seed state ("Sole page on prod: main page"). Phase 3 is the moment this changes. |
+| J2 | Main page renders cleanly | ✅ | HTML body class contains `skin-wiki7 action-view`; `<title>` = `ויקישבע - אנציקלופדיית הפועל באר שבע`; `og:image` resolves to `social-share.png` (200, image/png, 39540 bytes). No `cargo_error` or template-include errors in the response body. |
+| J3 | Cargo tables present | ✅ | Covered by Round 1 B18 — `cargo_pages`, `cargo_backlinks`, `cargo_tables` exist (bookkeeping tables ready for content). |
+| J4 | Cargo query renders without errors | ⏸️ | No Cargo-using template page exists yet. Phase 3 content lands the first one. |
+| J5 | TabberNeue renders | ⏸️ | No tabbed page exists. Phase 3. |
+| J6 | VisualEditor opens (smoke) | ⏸️ | Needs a browser session — user-action. (The `B10` API probe confirms the VE backend is responsive.) |
+| J7 | Upload works (smoke) | ⏸️ | Needs Special:Upload via browser — user-action. (S3 bucket + CloudFront /assets behavior already proven by the favicon + sitemap delivery.) |
+| K1 | PageSpeed Insights — desktop | ✅ recorded | K6 post-2.5b snapshot above (desktop perf 99 → 100; Speed Index 1.3s → 0.7s). |
+| K2 | PageSpeed Insights — mobile | ✅ recorded | K6 post-2.5b snapshot above (mobile perf 92 → 94; Speed Index 5.7s → 4.4s). |
+| K3 | Lighthouse local | ➖ | Explicitly skipped — PageSpeed runs Lighthouse 13.3.0 in lab mode under consistent throttling; local re-run adds noise without signal. |
+| K6 | Snapshot recorded in this file | ✅ | Both pre-2.5b and post-2.5b K6 blocks present above with date+source metadata. |
+
+### 6.2 Round 2 findings
+
+#### ⚠️ Finding 6 — KMS at ~$30/mo from 18 enabled customer-managed keys
+
+**Evidence:** Cost Explorer daily (2026-06-06, the only full day of the rebuilt live stack within the 30-day window):
+```
+AWS Key Management Service     $1.0000/day   → projects ~$30/mo
+Amazon RDS                     $0.5340/day   → projects ~$16/mo
+AWS WAF                        $0.4350/day   → projects ~$13/mo
+Amazon VPC                     $0.2470/day   → projects ~$7/mo
+EC2 - Other                    $0.2089/day   → projects ~$6/mo
+TOTAL (incl. all visible items) $2.4894/day  → projects ~$75/mo
+```
+`aws kms list-keys` in `il-central-1` returns 25 keys total; describing each shows `KeyManager=CUSTOMER, KeyState=Enabled` for **18 of them**. Each customer-managed KMS key in Enabled state bills $1/month for key storage (plus per-API charges) → key storage alone explains ~$18/mo, with API calls (EBS volume operations, RDS encryption, Secrets Manager fetches at boot) accounting for the rest.
+
+**Root cause:** the rebuilt stack genuinely needs only a handful of customer-managed keys — backup-vault key (1), Secrets Manager keys for the four retained Secrets (3-4 if each got its own), RDS storage key (1, often AWS-managed alias), EBS key (1 if customer-managed, often AWS-managed). That's 5-7 keys at most. The other 11-13 are most likely orphans from prior CDK deploys + the 2026-06-04/06 teardown cycle (KMS keys default to a 7-30-day "pending deletion" waiting period and stay billable until that window expires; if `removalPolicy` wasn't `DESTROY` everywhere, keys never even entered that window).
+
+**Impact:** ADR-0001 target was `~$47-52/mo` total for the Option B stack with KMS expected at `~$1-2/mo`. The actual KMS cost is roughly 15-30× that. On the projected $75/mo bill, KMS is ~40% of total spend instead of the ~3% the ADR expected. No functional impact — site works fine. Cost only.
+
+**Fix (Phase 4):**
+1. Inventory the 18 keys: `aws kms describe-key` each and tie it to a live consumer via aliases (`aws kms list-aliases`) and the CloudTrail event for last use. Keys with no alias and no events in 30 days are the orphan candidates.
+2. For confirmed orphans: `aws kms schedule-key-deletion --key-id <id> --pending-window-in-days 7` (minimum window). The cost stops the day the key enters `PendingDeletion`.
+3. For keys still in active use by torn-down stacks (Option A archive, prior stacks): decide whether to keep or also schedule for deletion — if scheduling, ensure no production resource (snapshot, encrypted volume, secret) still references the key, or those resources become unreadable.
+4. Optionally add a CDK guardrail: a small `aws_cdk.aws_kms.Key` count assertion in tests + a Cost Anomaly Detection monitor wired into the existing SNS topic.
+
+**Severity:** 🟢 nice-to-have — informational, cost-only, does not block Phase 3. ADR target is now off by ~50% mostly because of this single line; updating the ADR's expected KMS line (or scheduling the orphan keys) restores the original cost story.
+
+#### Watch-outs cross-checked and NOT filed
+
+Cross-checked against the prompt's pre-flight watch-out list — none of the items below were re-filed as new findings:
+
+- `cdk diff` phantom EC2 instance replacement from macOS local synth → Finding 4 Phase-4 residual, still expected.
+- B12 ($wgJobRunRate=0) — direct PHP probe via `maintenance/run.php eval` is blocked by MW eval CLI escape handling, same as Round 1. Behaviorally confirmed via grep of `LocalSettings.php:396` (literal `$wgJobRunRate = 0`) and B11 ("queue draining" empty/empty). Also see E8 entry — both flags grepped from source in the same SSM batch.
+- F2 (snapshot-on-delete) — API field is null/write-side, same caveat as Round 1.
+- "Use efficient cache lifetimes — 43 KiB" PageSpeed diagnostic — already tracked as a Phase 4 item per [`docs/revival-plan.md`](revival-plan.md#phase-4--ops--automation-cross-cutting), unchanged.
+- C18 Google Rich Results Test on an article page — no article exists yet.
+
+### What needs the user (Round 2)
+
+Pure ⏸️ items that need a human-in-the-loop click and can't be exercised from CLI:
+
+1. **C4-C6** — Search Console (verify property; verify sitemap submission/ingestion; check indexed page count; investigate "Discovered – currently not indexed" if > 5%). All blocked on Phase 3 actually publishing content; revisit after the first content batch lands.
+2. **C19** — Facebook Sharing Debugger paste-and-scrape.
+3. **C20** — LinkedIn Post Inspector card preview.
+4. **C21** — opengraph.xyz audit; expect only the known-deferred items from revival-plan §Phase 3 list.
+5. **C22** — WhatsApp link preview (paste into your own DM).
+6. **C23** — Telegram link preview.
+7. **C24** — Google `site:wiki7.co.il` coverage.
+8. **D4** — CloudWatch console → Dashboards → wiki7 — confirm widgets render data (CF 5xx panel may show "No data" cross-region, that's expected).
+9. **D7** — UptimeRobot dashboard: monitor UP, recent check < 5 min ago, alert contacts include your email.
+10. **H4** — Billing → Free Tier headroom (informational only).
+11. **J6** — Browser admin VE smoke (any seed-state edit is fine).
+12. **J7** — Special:Upload smoke (any small test image; verify S3 key + CloudFront delivery).
+
+None of these gate Phase 3 (they are 🟡/🟢 informational checks, or content-shape items that only become exercisable once Phase 3 lands content).
+
+### Status as of 2026-06-07 (end of Round 2)
+
+- **Phase 2.5c DONE.** Round 1 + Round 2 together cover every matrix item; the six 2.5b proof points (G2, G6, B14, C11, C13, C14) all green; one new finding (Finding 6 — KMS cost surprise) filed at severity 🟢.
+- **Findings status:** 1 ✅ (2.5d), 2 ✅ (2.5d), 3 ✅ (2.5b), 4 ✅ (2.5d), 5 partially closed in practice (the specific `list-recovery-points-by-backup-vault` call now works; `describe-backup-vault` / `describe-recovery-point` not retried this pass — Phase 4 carry-over unchanged), 6 (this pass — Phase 4 carry-over).
+- **🟢 Phase 3 unblocked.** No 🔴 items outstanding; the only ❌ outcome is a 🟢-severity cost finding. Platform is "delivered".
