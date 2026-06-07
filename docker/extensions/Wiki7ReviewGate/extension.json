@@ -1,0 +1,66 @@
+{
+	"name": "Wiki7ReviewGate",
+	"version": "0.1.0",
+	"author": [
+		"Tzahi Argaman"
+	],
+	"descriptionmsg": "wiki7reviewgate-desc",
+	"license-name": "GPL-3.0-or-later",
+	"type": "other",
+	"requires": {
+		"MediaWiki": ">= 1.43.0",
+		"extensions": {
+			"Approved Revs": "*",
+			"Lockdown": "*",
+			"Echo": "*"
+		}
+	},
+	"AutoloadNamespaces": {
+		"MediaWiki\\Extension\\Wiki7ReviewGate\\": "includes/"
+	},
+	"MessagesDirs": {
+		"Wiki7ReviewGate": [
+			"i18n"
+		]
+	},
+	"Hooks": {
+		"BeforeCreateEchoEvent": "main",
+		"EchoGetDefaultNotifiedUsers": "main",
+		"PageSaveComplete": "main",
+		"ChangesListSpecialPageQuery": "main",
+		"ApiQueryBaseBeforeQuery": "main",
+		"SpecialPageBeforeExecute": "main",
+		"ApiCheckCanExecute": "main"
+	},
+	"HookHandlers": {
+		"main": {
+			"class": "MediaWiki\\Extension\\Wiki7ReviewGate\\Hooks",
+			"services": [
+				"PermissionManager",
+				"MainConfig"
+			]
+		}
+	},
+	"config": {
+		"Wiki7TelegramChatId": {
+			"description": "Telegram chat / channel / group ID to dispatch review-gate notifications to. Empty string disables Telegram dispatch (in-wiki Echo notifications still fire).",
+			"value": "",
+			"public": false
+		},
+		"Wiki7TelegramBotName": {
+			"description": "Display name used when constructing Telegram message URLs back to the wiki. Defaults to 'Wiki7Bot' to match the MediaWiki bot account.",
+			"value": "Wiki7Bot",
+			"public": false
+		},
+		"Wiki7ReviewGateNotifyOnGroups": {
+			"description": "User groups whose page saves trigger a review-gate notification. The bot's account ('Wiki7Bot') is in the 'bot' group; any other group listed here will also produce notifications when its members save pages in NS_DRAFT or against an approved-revs-gated page.",
+			"value": ["bot"],
+			"public": false
+		}
+	},
+	"DefaultUserOptions": {
+		"echo-subscriptions-web-wiki7-bot-review-pending": true,
+		"echo-subscriptions-email-wiki7-bot-review-pending": true
+	},
+	"manifest_version": 2
+}

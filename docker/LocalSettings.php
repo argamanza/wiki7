@@ -145,6 +145,82 @@ wfLoadExtension( 'Cargo' );
 wfLoadExtension( 'PageForms' );
 wfLoadExtension( 'TabberNeue' );
 
+# === Phase 3.5 review-gate ==========================================================
+# Architecture: docs/adr/0002-review-gate-architecture.md. Two halves:
+#
+#   1. NEW pages — bot writes to the Draft: namespace (NS=3000). Lockdown restricts
+#      read+edit on that namespace to the 'reviewer' group. Public readers cannot
+#      see drafts. Reviewer promotes by Special:MovePage → mainspace.
+#
+#   2. UPDATES — bot writes to existing mainspace pages. ApprovedRevs holds the new
+#      revision as "latest unapproved" while public continues to see the previously
+#      approved revision. Reviewer approves via Special:UnapprovedPages.
+#
+# Defining the Draft namespace must happen BEFORE wfLoadExtension('Lockdown') so the
+# constant is available when Lockdown reads $wgNamespacePermissionLockdown.
+define( 'NS_DRAFT',      3000 );
+define( 'NS_DRAFT_TALK', 3001 );
+$wgExtraNamespaces[NS_DRAFT]      = 'Draft';
+$wgExtraNamespaces[NS_DRAFT_TALK] = 'Draft_talk';
+
+# Default-exclude Draft from search; keep it OUT of $wgContentNamespaces so it doesn't
+# appear in RecentChanges defaults or sitemap. (Verified during Phase 3.5 step 5
+# leakage-edge testing — see docs/research/0001-mediawiki-review-gate.md §Open Q #2.)
+$wgNamespacesToBeSearchedDefault[NS_DRAFT] = false;
+# Block transclusion of drafts into public pages — one of Lockdown's documented
+# leakage paths (transclusion bypasses Lockdown's read gate).
+$wgNonincludableNamespaces[] = NS_DRAFT;
+
+# 'reviewer' group: can read+edit Drafts, can approve mainspace revisions, can promote
+# Drafts via move-to-mainspace. Scales 1 → 10 by adding users to this group.
+$wgGroupPermissions['reviewer']['read']              = true;
+$wgGroupPermissions['reviewer']['edit']              = true;
+$wgGroupPermissions['reviewer']['move']              = true;
+$wgGroupPermissions['reviewer']['approverevisions']  = true;
+$wgGroupPermissions['reviewer']['unapprovedpages']   = true;
+# sysop can grant/revoke 'reviewer'; reviewers can self-remove.
+$wgAddGroups['sysop'][]       = 'reviewer';
+$wgRemoveGroups['sysop'][]    = 'reviewer';
+$wgRemoveGroups['reviewer'][] = 'reviewer';
+
+wfLoadExtension( 'Lockdown' );
+$wgNamespacePermissionLockdown[NS_DRAFT]['read']      = ['reviewer'];
+$wgNamespacePermissionLockdown[NS_DRAFT]['edit']      = ['reviewer', 'bot'];
+$wgNamespacePermissionLockdown[NS_DRAFT]['create']    = ['reviewer', 'bot'];
+$wgNamespacePermissionLockdown[NS_DRAFT]['move']      = ['reviewer'];
+$wgNamespacePermissionLockdown[NS_DRAFT_TALK]['read'] = ['reviewer'];
+$wgNamespacePermissionLockdown[NS_DRAFT_TALK]['edit'] = ['reviewer', 'bot'];
+
+wfLoadExtension( 'ApprovedRevs' );
+# In-repo glue: declares the custom Echo notification type, fires it on bot
+# saves into NS_DRAFT or against an approved-revs-gated page, dispatches to
+# Telegram (when $wgWiki7TelegramChatId + WIKI7_TELEGRAM_BOT_TOKEN env are set),
+# and filters NS_DRAFT rows out of Special:RecentChanges for non-reviewers
+# (mitigation for Phase 3.5 Open Question #2 title-leak finding). Load order
+# matters — must come after ApprovedRevs + Echo + Lockdown have been loaded.
+wfLoadExtension( 'Wiki7ReviewGate' );
+
+# CRITICAL: disable auto-approval. Without this, a reviewer making any edit to a page
+# with an existing approved revision would silently re-approve their edit instead of
+# approving the bot's proposal deliberately. Same for files.
+$egApprovedRevsAutomaticApprovals     = false;
+$egApprovedRevsFileAutomaticApprovals = false;
+# Approval applies in mainspace and templates (where bot rebuilds Cargo templates),
+# explicitly NOT in Draft (which uses the move-to-promote model).
+$egApprovedRevsEnabledNamespaces = [
+    NS_MAIN     => true,
+    NS_TEMPLATE => true,
+    NS_FILE     => true,
+];
+# Show the "approve latest revision" UI affordance to reviewers viewing unapproved pages.
+$egApprovedRevsShowApproveLatest = true;
+# Leave $egApprovedRevsBlankIfUnapproved at default (false). We are NOT blanking
+# unapproved pages site-wide — that would blank every existing mainspace page until
+# back-approved one-by-one. ApprovedRevs's "show APPROVED to public, hold LATEST for
+# reviewers" mode covers our UPDATE case correctly without the blanking flag.
+
+# === End Phase 3.5 review-gate =====================================================
+
 # === SEO ============================================================================
 # Two extensions cooperate:
 #   - Description2 extracts a per-page <meta name="description"> from the article's

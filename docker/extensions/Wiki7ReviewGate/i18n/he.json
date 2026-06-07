@@ -1,0 +1,13 @@
+{
+	"@metadata": {
+		"authors": ["Tzahi Argaman"]
+	},
+	"wiki7reviewgate-desc": "מגשרת בין עריכות הבוט (טיוטות + עדכונים לא מאושרים) לבין התראות Echo ו-Telegram עבור קבוצת המבקרים.",
+	"echo-category-title-wiki7-bot-review-pending": "תור סקירת בוט",
+	"echo-pref-tooltip-wiki7-bot-review-pending": "התראה כאשר Wiki7Bot יוצר טיוטה או מציע עדכון לסקירה.",
+	"notification-header-wiki7-bot-review-pending-draft": "$1 יצר טיוטה: $2",
+	"notification-header-wiki7-bot-review-pending-update": "$1 הציע עדכון ל$2 (ממתין לאישור)",
+	"notification-compact-header-wiki7-bot-review-pending-draft": "טיוטה חדשה מאת $1",
+	"notification-compact-header-wiki7-bot-review-pending-update": "עדכון הוצע מאת $1",
+	"notification-link-text-view-wiki7-bot-review-pending": "לסקירה"
+}
