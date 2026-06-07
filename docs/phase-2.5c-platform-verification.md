@@ -307,6 +307,8 @@ Approach 2 is cleaner because `env-file` is the documented Docker pattern; appro
 
 #### ⚠️ Finding 3 — Schema.org `@type` is lowercase `"website"` instead of canonical `"WebSite"`
 
+> **Status: ✅ RESOLVED 2026-06-07 via PR #46 (Phase 2.5b)** — two-hook split: `WikiSEOPreAddMetadata` emits lowercase `'website'`/`'article'` (OG-spec correct + matches Mastodon's case-sensitive `og:type == 'article'` article-card branch), and a new `OutputPageAfterGetHeadLinksArray` hook post-processes the JSON-LD `<script>` tag (keyed by WikiSEO's `'jsonld-metadata'` head item) to rewrite `@type` to CamelCase via `strtr` + `addHeadItem` overwrite. Hook chosen for ordering (WikiSEO's BeforePageDisplay-based emission has non-deterministic ordering vs `$wgHooks`-registered handlers; `OutputPageAfterGetHeadLinksArray` fires later in the render pipeline after all BPD handlers complete). Live verification 2026-06-07: homepage emits `og:type=website` + `"@type":"WebSite"`; article shape emits `og:type=article` + `"@type":"Article"`.
+
 **Evidence:** JSON-LD emitted on the home page:
 ```json
 {
@@ -395,9 +397,9 @@ aws backup list-recovery-points-by-backup-vault ... → AccessDeniedException
 | C7 | og:image absolute + reachable | ✅ | `https://wiki7.co.il/assets/social-share.png` → 200 |
 | C8 | og:title brand-augmented (main page) | ✅ | `"ויקישבע - אנציקלופדיית הפועל באר שבע"` |
 | C10 | og:locale = he_IL | ✅ | |
-| C11 | og:type correct (main = website) | ✅ | But see Finding 3 — Schema.org @type uses the same value |
+| C11 | og:type correct (main = website) | ✅ | Verified live 2026-06-07 post-PR #46: `og:type=website` (lowercase, OG-spec) + `"@type":"WebSite"` (CamelCase, Schema.org) emitted from same metadata key via the new split. Finding 3 RESOLVED. |
 | C12 | Twitter Card | ✅ | `summary_large_image` |
-| C13 | Schema.org: Organization with logo | ⚠️ See Finding 3 | Structure correct (author + publisher both have Organization with logo URL pointing to PNG), but @type casing is wrong |
+| C13 | Schema.org: Organization with logo | ✅ | Structure correct (author + publisher both have Organization with logo URL pointing to PNG). @type casing fixed in PR #46 — Finding 3 RESOLVED. |
 | C14 | Schema.org: image | ✅ | ImageObject with absolute URL |
 | C15 | Canonical link | ✅ | `<link rel="canonical" href="https://wiki7.co.il/">` |
 | C16 | HTML `<title>` brand-augmented | ✅ | Matches og:title |
