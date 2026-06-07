@@ -483,6 +483,84 @@ aws backup list-recovery-points-by-backup-vault ... → AccessDeniedException
 }
 ```
 
+### K6 — post-2.5b snapshot (recorded 2026-06-07, ~5 hours after PR #46 deploy)
+
+```json
+{
+  "captured_at": "2026-06-07T13:38Z",
+  "captured_from": "PageSpeed Insights (pagespeed.web.dev)",
+  "pagespeed_desktop": {
+    "captured_at": "2026-06-07T13:38Z",
+    "lighthouse_version": "13.3.0",
+    "performance": 100,
+    "accessibility": 96,
+    "best_practices": 100,
+    "seo": 100,
+    "metrics": {
+      "fcp_s": 0.3,
+      "lcp_s": 0.4,
+      "tbt_ms": 0,
+      "cls": 0.003,
+      "speed_index_s": 0.7
+    },
+    "diagnostics_flagged": [
+      "Render-blocking requests — est savings 110 ms",
+      "Use efficient cache lifetimes — est savings 43 KiB (UNCHANGED; see analysis below)",
+      "Reduce unused CSS — est savings 12 KiB",
+      "Reduce unused JavaScript — est savings 63 KiB",
+      "Optimize DOM size",
+      "Avoid long main-thread tasks — 1 long task found"
+    ],
+    "a11y_flagged": ["Touch targets do not have sufficient size or spacing (Phase 3 design polish)"]
+  },
+  "pagespeed_mobile": {
+    "captured_at": "2026-06-07T13:38Z",
+    "lighthouse_version": "13.3.0",
+    "performance": 94,
+    "accessibility": 96,
+    "best_practices": 100,
+    "seo": 100,
+    "metrics": {
+      "fcp_s": 1.8,
+      "lcp_s": 2.4,
+      "tbt_ms": 0,
+      "cls": 0,
+      "speed_index_s": 4.4
+    },
+    "diagnostics_flagged": [
+      "Render-blocking requests — est savings 900 ms (mobile; skin/asset critical path)",
+      "Use efficient cache lifetimes — est savings 43 KiB (UNCHANGED; see analysis below)",
+      "Reduce unused JavaScript — est savings 61 KiB",
+      "Reduce unused CSS — est savings 12 KiB"
+    ]
+  }
+}
+```
+
+#### Pre/post comparison and analysis
+
+| Metric | Pre-2.5b (2026-06-06) | Post-2.5b (2026-06-07) | Δ |
+|---|---|---|---|
+| Desktop Performance | 99 | **100** | +1 |
+| Desktop FCP | 0.3s | 0.3s | — |
+| Desktop LCP | 0.3s | 0.4s | +0.1s (noise) |
+| **Desktop Speed Index** | 1.3s | **0.7s** | **−0.6s ✅** |
+| Desktop CLS | 0.003 | 0.003 | — |
+| Mobile Performance | 92 | **94** | +2 |
+| **Mobile FCP** | 2.0s | **1.8s** | **−0.2s ✅** |
+| Mobile LCP | 2.3s | 2.4s | +0.1s (noise) |
+| **Mobile Speed Index** | 5.7s | **4.4s** | **−1.3s ✅** |
+| Mobile CLS | 0 | 0 | — |
+
+**What 2.5b delivered:** the biggest visible win is **Speed Index**, which is the direct read on "how fast does visual content paint" — and it's a function of TTFB. Mobile −1.3s and desktop −0.6s confirm the edge cache is doing its job: visitors get HTML faster because it doesn't round-trip to the EC2 origin every time. Performance scores nudged up on both form factors.
+
+**What 2.5b did NOT change** — and why that's correct:
+- **LCP held flat at ~0.3-0.4s desktop / ~2.4s mobile.** Already at the practical floor for an HTTPS round-trip + initial paint; even a perfect cache can't beat speed-of-light. The +0.1s "regression" on both surfaces is measurement noise (single-run Lighthouse variance is typically ±100ms).
+- **"Use efficient cache lifetimes — 43 KiB" diagnostic remains flagged.** This Lighthouse diagnostic measures **browser-cache** `max-age` directives on sub-resources, NOT CDN edge-cache behavior. MW correctly emits `max-age=0` on HTML (we want browsers to revalidate so edits show up). The 43 KiB refers to a few static sub-resources (likely favicon variants + a small CSS/JS payload) that lack long browser-cache headers. This was misattributed in the pre-2.5b notes as "exactly what 2.5b addresses" — it's not. Separate optimization, deferred to Phase 3-ish design-polish work.
+- **"Render-blocking requests" still flagged** (mobile 900 ms, desktop 110 ms) — known skin/asset critical-path concern, Phase 3 design polish.
+
+**Field data (CrUX) still empty** — the "Discover what your real users are experiencing" panel says "No Data" because the site has near-zero real traffic. The Search Console URL re-crawl request submitted post-deploy will speed up CrUX gathering once visitors arrive.
+
 #### What the PageSpeed numbers tell us
 - **Desktop perf 99 / mobile 92** is already strong, before any 2.5b work. The bulk of the score comes from CloudFront serving static assets (cached) + Israeli viewers hitting TLV POP at ~10-30ms RTT.
 - **PageSpeed's #2 desktop diagnostic — "Use efficient cache lifetimes (est. savings 43 KiB)" — is exactly 2.5b's territory.** Google's own diagnostic is flagging the very gap we're about to close: HTML pages currently miss the edge cache because of `CachePolicy.CACHING_DISABLED` on the default behavior. Post-2.5b, this should disappear from the diagnostics list and the lab perf score may nudge up further.
