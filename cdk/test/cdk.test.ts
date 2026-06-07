@@ -1,10 +1,13 @@
 import * as cdk from 'aws-cdk-lib';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
 import { Template, Match } from 'aws-cdk-lib/assertions';
 import { NetworkStack } from '../lib/network-stack';
 import { DatabaseStack } from '../lib/database-stack';
 import { ComputeStack } from '../lib/compute-stack';
 import { BackupStack } from '../lib/backup-stack';
 import { Wiki7WafStack } from '../lib/wiki7-waf-stack';
+import { CloudFrontConstruct } from '../lib/cloudfront-stack';
 
 const TEST_ENV = { account: '111111111111', region: 'il-central-1' };
 
@@ -380,5 +383,137 @@ describe('Wiki7WafStack', () => {
     ]) {
       expect(synthJson).toContain(term);
     }
+  });
+});
+
+// =========================================================================================
+describe('CloudFrontConstruct — Wiki7DynamicHtml cache policy', () => {
+  // The cookie allowList is the regression-sensitive part of Phase 2.5b: a future refactor
+  // that "cleans up" the list could silently break either correctness (logged-in HTML leaking
+  // to anon) or cache hit ratio (adding wikidb_session would shatter anon cache to one entry
+  // per visitor). These tests lock the decisions in and document WHY each cookie is in or
+  // out of the cache key.
+  let template: Template;
+
+  beforeAll(() => {
+    const app = new cdk.App();
+    const stack = new cdk.Stack(app, 'TestCloudFrontStack', { env: TEST_ENV });
+    const network = new NetworkStack(stack, 'Network');
+    const database = new DatabaseStack(stack, 'Database', {
+      vpc: network.vpc,
+      databaseSecurityGroup: network.databaseSecurityGroup,
+      mediawikiSecurityGroup: network.mediawikiSecurityGroup,
+    });
+    const compute = new ComputeStack(stack, 'Compute', {
+      vpc: network.vpc,
+      dbInstance: database.dbInstance,
+      dbSecret: database.dbSecret,
+      mediawikiSecurityGroup: network.mediawikiSecurityGroup,
+      domainName: 'wiki7.co.il',
+    });
+    const hostedZone = route53.HostedZone.fromHostedZoneAttributes(stack, 'StubZone', {
+      hostedZoneId: 'Z0000000000000000000',
+      zoneName: 'wiki7.co.il',
+    });
+    const certificate = acm.Certificate.fromCertificateArn(
+      stack,
+      'StubCert',
+      'arn:aws:acm:us-east-1:111111111111:certificate/00000000-0000-0000-0000-000000000000',
+    );
+    new CloudFrontConstruct(stack, 'CloudFront', {
+      originElasticIp: compute.elasticIp,
+      hostedZone,
+      certificate,
+      domainName: 'wiki7.co.il',
+      mediawikiStorageBucket: compute.mediawikiStorageBucket,
+      wafWebAclArn:
+        'arn:aws:wafv2:us-east-1:111111111111:global/webacl/Wiki7/00000000-0000-0000-0000-000000000000',
+    });
+    template = Template.fromStack(stack);
+  });
+
+  // Locate the dynamic-HTML cache policy by its stable Name. Returns the CFN resource
+  // properties object so each test can assert against it cleanly.
+  function findDynamicHtmlPolicy(): {
+    Name: string;
+    ParametersInCacheKeyAndForwardedToOrigin: {
+      CookiesConfig: { CookieBehavior: string; Cookies: string[] };
+      HeadersConfig: { HeaderBehavior: string; Headers: string[] };
+      QueryStringsConfig: { QueryStringBehavior: string };
+      EnableAcceptEncodingGzip: boolean;
+      EnableAcceptEncodingBrotli: boolean;
+    };
+  } {
+    const policies = template.findResources('AWS::CloudFront::CachePolicy');
+    const match = Object.values(policies).find(p =>
+      (p as { Properties: { CachePolicyConfig: { Name?: string } } }).Properties.CachePolicyConfig?.Name
+        === 'Wiki7DynamicHtml',
+    );
+    expect(match).toBeDefined();
+    return (match as { Properties: { CachePolicyConfig: ReturnType<typeof findDynamicHtmlPolicy> } })
+      .Properties.CachePolicyConfig;
+  }
+
+  test('Wiki7DynamicHtml cache policy exists', () => {
+    template.hasResourceProperties('AWS::CloudFront::CachePolicy', {
+      CachePolicyConfig: Match.objectLike({ Name: 'Wiki7DynamicHtml' }),
+    });
+  });
+
+  test('cookie allowList contains exactly the three auth-bearing cookies', () => {
+    const cfg = findDynamicHtmlPolicy();
+    expect(cfg.ParametersInCacheKeyAndForwardedToOrigin.CookiesConfig.CookieBehavior).toBe('whitelist');
+    expect([...cfg.ParametersInCacheKeyAndForwardedToOrigin.CookiesConfig.Cookies].sort())
+      .toEqual(['sessionJwt', 'wikidbToken', 'wikidbUserID']);
+  });
+
+  test('cookie allowList does NOT include wikidb_session (would explode anon cache fragmentation)', () => {
+    // MW's CookieSessionProvider sets `<prefix>_session` on any persisted session — including
+    // anon notice dismissals, edit-page views, CSRF token issuance. If we keyed on it, every
+    // visitor with any session state would land on a unique cache entry — defeating the cache.
+    // Wikimedia's Varnish VCL excludes _session for the same reason.
+    const cfg = findDynamicHtmlPolicy();
+    expect(cfg.ParametersInCacheKeyAndForwardedToOrigin.CookiesConfig.Cookies).not.toContain('wikidb_session');
+  });
+
+  test('cookie allowList does NOT include wikidbUserName (retained post-logout as login hint, not auth)', () => {
+    // MW keeps UserName around after logout to pre-fill the login form on next visit
+    // (see CookieSessionProvider.php REL1_45); its presence does NOT indicate an active
+    // session. Keying on it would give every previously-logged-in visitor their own anon
+    // cache entry — same content as no-cookie anon, pure waste.
+    const cfg = findDynamicHtmlPolicy();
+    expect(cfg.ParametersInCacheKeyAndForwardedToOrigin.CookiesConfig.Cookies).not.toContain('wikidbUserName');
+  });
+
+  test('query string behavior = all (MW URLs vary on ?action=, ?oldid=, ?diff=, …)', () => {
+    const cfg = findDynamicHtmlPolicy();
+    expect(cfg.ParametersInCacheKeyAndForwardedToOrigin.QueryStringsConfig.QueryStringBehavior).toBe('all');
+  });
+
+  test('header allowList = Accept-Language only', () => {
+    const cfg = findDynamicHtmlPolicy();
+    expect(cfg.ParametersInCacheKeyAndForwardedToOrigin.HeadersConfig.HeaderBehavior).toBe('whitelist');
+    expect(cfg.ParametersInCacheKeyAndForwardedToOrigin.HeadersConfig.Headers).toEqual(['Accept-Language']);
+  });
+
+  test('brotli + gzip encoding enabled', () => {
+    const cfg = findDynamicHtmlPolicy();
+    expect(cfg.ParametersInCacheKeyAndForwardedToOrigin.EnableAcceptEncodingBrotli).toBe(true);
+    expect(cfg.ParametersInCacheKeyAndForwardedToOrigin.EnableAcceptEncodingGzip).toBe(true);
+  });
+
+  test('default behavior uses Wiki7DynamicHtml, NOT the managed CACHING_DISABLED', () => {
+    // CACHING_DISABLED's managed ID is 4135ea2d-6df8-44a3-9df3-4b5a84be39ad. Before Phase 2.5b
+    // the distribution was hard-wired to it, so $wgUseCdn / s-maxage emission was wasted at
+    // the edge. Guard against a regression that would silently restore that broken state.
+    // The synthesized CachePolicyId is a CFN `Ref` to the policy resource's logical ID,
+    // which CDK derives from the construct ID 'DynamicHtmlCachePolicy'.
+    const dists = template.findResources('AWS::CloudFront::Distribution');
+    const dist = Object.values(dists)[0] as {
+      Properties: { DistributionConfig: { DefaultCacheBehavior: { CachePolicyId: unknown } } };
+    };
+    const policyIdJson = JSON.stringify(dist.Properties.DistributionConfig.DefaultCacheBehavior.CachePolicyId);
+    expect(policyIdJson).not.toContain('4135ea2d-6df8-44a3-9df3-4b5a84be39ad');
+    expect(policyIdJson).toContain('DynamicHtmlCachePolicy');
   });
 });
