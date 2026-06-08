@@ -289,6 +289,45 @@ The old design was ECS Fargate + ALB + RDS + CloudFront + WAF ≈ **$65–95/mo*
 
 ---
 
+## 6b. Workspace policy *(decided 2026-06-08, post Phase 3a-content)*
+
+After 3a-content landed on prod, we reflected: with no audience until launch, *production* is functionally a deployed-staging environment + the eventual launch destination. Going forward the build splits **by what's being changed**, not by where it deploys.
+
+**Hybrid model:**
+
+| Work item | Where | Why |
+|---|---|---|
+| Spider correctness fixes (TM HTML changes, new fields) | **Local** then PR → master → prod auto-deploy | Pure pipeline code in `data/`; iterate fast |
+| Jinja templates (`data/wiki_import/templates/*.j2`) | **Local** then PR | Code that produces wikitext; iterate by re-running pipeline locally |
+| MediaWiki Template: pages (`data/wiki_import/mediawiki_templates/*.wikitext`) | **Local** then PR; bot brings to prod on next run | Tracked-in-repo wikitext; iterate via local docker + local pipeline |
+| Skin / CSS / JS (`docker/skins/Wiki7/`) | **Local** then PR | Tight iteration loop matters |
+| MediaWiki extensions added/upgraded (Dockerfile changes) | **Local** then PR | Local docker rebuild ~1min vs ~7-15min on prod |
+| `LocalSettings.php` changes | **Local** then PR | Same |
+| `Wiki7ReviewGate` extension iteration | **Local** then PR | Same |
+| CDK infra (IAM, RDS, observability, new stacks) | **Local synth + tests**, then PR | `cdk synth` + Jest + `cdk diff` catch most issues |
+| Bot data imports (run pipeline → drafts) | **Prod** | Real content; gate keeps it safe; reset if bad |
+| In-wiki content review (Hebrew, promotions via `Special:MovePage`) | **Prod** | Real content lives there |
+| Hand-curated articles (Did You Know, Fan Culture, kits, anthems, museum, records) | **Prod** (or `archive/wip-content` as draft material) | Real content |
+| Homepage TODO fills (current manager/captain, attributed quote) | **Prod** | These are wiki pages, not seed templates |
+| Per-page `{{#seo:}}` overrides on specific articles | **Prod** | Page-level wikitext in real articles |
+| `{{#seo:}}` embedding in Cargo templates | **Local** source, PR; bot brings to prod | Template code, not content |
+| Image uploads (logos, badges, kit photos) | **Prod** (`Special:Upload`) | Goes to real S3 from the start — no migration |
+| Operator ops (rotate secrets, debug a deploy) | **Prod** via SSM-exec / AWS console | Inherently a prod activity |
+| Phase 4 backup/recycle scripts (`recycle-wiki7.sh`, sitemap automation) | **Local source-of-truth** then PR | Tracked-in-repo scripts invoked against prod |
+
+**Why hybrid not local-first or prod-first:**
+- *Pure local* would force a fragile migration step at launch (22 dimensions of local-vs-prod divergence audited; three high-risk: WAF rules, image-S3-sync, env-conditional LocalSettings branches that only fire on prod).
+- *Pure prod* would pay 7-15min CI deploy windows on every CSS / extension / LocalSettings tweak — fine when iterating on content, painful when iterating on skin/code.
+- *Hybrid* gets fast iteration on the right things + tested-on-real-infra throughout, with the reset script + master-PR-discipline as the seams.
+
+**The reset script (`Wiki7ReviewGate:resetContent`):** the safety valve for the prod side. SSM-invoked maintenance script that wipes all Wiki7Bot-authored content (NS_DRAFT + bot-imported NS_TEMPLATE pages + any bot-authored NS_MAIN pages), clears Cargo data rows + Approved Revs approval rows + bot-generated Echo events. **Preserves** the docker-install seed homepage (`עמוד ראשי`) + its sub-templates, users + groups, secrets, extensions, skin, LocalSettings. Has `--dry-run` + `--confirm` + `--scope={all,drafts-only}` flags. See `docs/operational-bootstrap.md` §7 for the SSM invocation recipe (added in the PR that ships the script).
+
+**The launch story:** when ready to announce wiki7.co.il publicly, prod IS the v1 wiki — no migration ceremony. One final reset to clear iteration-state, final clean bot import + review pass, announce.
+
+**The one discipline this asks for:** when you do prod content work that depends on locally-changed template/skin/extension code, **wait for the deploy** before running the bot against prod. PR + CI deploy ~7-15min; prod's container restart picks up the new code; then the bot's content writes use the new shape. The bot itself reads its Jinja templates from local — that's fine — but prod-side rendering (Wiki7 skin, Wiki7ReviewGate hooks, etc.) only updates on deploy.
+
+---
+
 ## 7. Task bank — known issues by area
 
 The detailed infra fixes live in [`PLAN.md`](../PLAN.md) Stage 1 (still a valid checklist).
