@@ -220,7 +220,7 @@ $wgWiki7TelegramChatId = '293092334';
 # Default false so incremental flow always notifies. See ADR-0002 + the
 # "Single-deploy toggle" Phase 4 backlog item for the in-place override that
 # avoids the deploy cycle once the recycle-wiki7.sh helper script exists.
-$wgWiki7ReviewGateQuiet = true;  // Phase 3a-content: silence ~113-edit bulk import. Flip back to commented before normal operation resumes.
+# $wgWiki7ReviewGateQuiet = true;
 
 # CRITICAL: disable auto-approval. Without this, a reviewer making any edit to a page
 # with an existing approved revision would silently re-approve their edit instead of
