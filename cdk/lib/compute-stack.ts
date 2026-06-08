@@ -100,6 +100,28 @@ export class ComputeStack extends Construct {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // Wiki7TelegramBotSecret — Phase 3.5 review-gate Telegram dispatch credential.
+    //
+    // Telegram bot tokens are issued by @BotFather out-of-band and can't be auto-generated
+    // by CDK. The secret is created with an empty placeholder; the real token is populated
+    // post-deploy with `aws secretsmanager put-secret-value`. RETAIN so a future restack
+    // doesn't drop the token and require another BotFather rotation.
+    //
+    // Read by the EC2 instance role and threaded into the container env-file as
+    // WIKI7_TELEGRAM_BOT_TOKEN; the Wiki7ReviewGate extension's Telegram dispatcher reads
+    // it via PHP's getenv() and POSTs to api.telegram.org/bot<token>/sendMessage. When the
+    // token is empty (initial deploy, before the post-deploy put-secret-value), the
+    // dispatcher silently no-ops; Echo in-wiki notifications still fire.
+    //
+    // The chat_id (the Telegram user / group / channel to deliver messages to) is NOT
+    // in the secret — it's not sensitive — and lives in $wgWiki7TelegramChatId in
+    // docker/LocalSettings.php instead.
+    const telegramBotSecret = new secretsmanager.Secret(this, 'Wiki7TelegramBotSecret', {
+      secretStringValue: cdk.SecretValue.unsafePlainText(JSON.stringify({ botToken: '' })),
+      description: 'Telegram bot token used by Wiki7ReviewGate to dispatch review-pending notifications (Phase 3.5)',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
     // === S3 bucket for MediaWiki uploads (read by CloudFront via OAC) ==========================
     this.mediawikiStorageBucket = new s3.Bucket(this, 'Wiki7StorageBucket', {
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -214,6 +236,7 @@ export class ComputeStack extends Construct {
     mediawikiSecret.grantRead(instanceRole);
     secretKeySecret.grantRead(instanceRole);
     upgradeKeySecret.grantRead(instanceRole);
+    telegramBotSecret.grantRead(instanceRole);
     // Pull the container image from CDK's ECR repo.
     image.repository.grantPull(instanceRole);
     // Write container logs to CloudWatch.
@@ -252,6 +275,7 @@ export class ComputeStack extends Construct {
     const mwSecretArn = mediawikiSecret.secretArn;
     const secretKeyArn = secretKeySecret.secretArn;
     const upgradeKeyArn = upgradeKeySecret.secretArn;
+    const telegramBotArn = telegramBotSecret.secretArn;
     const imageUri = image.imageUri;
     const ecrRegistry = `${cdk.Stack.of(this).account}.dkr.ecr.${region}.amazonaws.com`;
     const bucketName = this.mediawikiStorageBucket.bucketName;
@@ -337,6 +361,7 @@ export class ComputeStack extends Construct {
       `MW_JSON=$(aws secretsmanager get-secret-value --region ${region} --secret-id ${mwSecretArn} --query SecretString --output text)`,
       `WG_SECRET_KEY_VAL=$(aws secretsmanager get-secret-value --region ${region} --secret-id ${secretKeyArn} --query SecretString --output text)`,
       `WG_UPGRADE_KEY_VAL=$(aws secretsmanager get-secret-value --region ${region} --secret-id ${upgradeKeyArn} --query SecretString --output text)`,
+      `TG_JSON=$(aws secretsmanager get-secret-value --region ${region} --secret-id ${telegramBotArn} --query SecretString --output text)`,
       `{`,
       `  printf 'MEDIAWIKI_DB_HOST=%s\\n' '${dbInstance.dbInstanceEndpointAddress}'`,
       `  printf 'MEDIAWIKI_DB_NAME=wikidb\\n'`,
@@ -345,6 +370,7 @@ export class ComputeStack extends Construct {
       `  printf 'MEDIAWIKI_ADMIN_PASSWORD=%s\\n' "$(echo "$MW_JSON" | jq -r .adminPassword)"`,
       `  printf 'WG_SECRET_KEY=%s\\n' "$WG_SECRET_KEY_VAL"`,
       `  printf 'WG_UPGRADE_KEY=%s\\n' "$WG_UPGRADE_KEY_VAL"`,
+      `  printf 'WIKI7_TELEGRAM_BOT_TOKEN=%s\\n' "$(echo "$TG_JSON" | jq -r .botToken)"`,
       `  printf 'WIKI_ENV=production\\n'`,
       `  printf 'S3_BUCKET_NAME=%s\\n' '${bucketName}'`,
       `  printf 'REDIS_HOST=redis\\n'`,

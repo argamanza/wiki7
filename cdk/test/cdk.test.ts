@@ -286,6 +286,31 @@ describe('ComputeStack', () => {
     });
   });
 
+  test('Wiki7Telegram secret retained + threaded into UserData env-file (Phase 3.5)', () => {
+    // The Telegram bot token is sensitive but the chat_id is not. The token
+    // lives in a retained Secret (placeholder at create time, populated
+    // post-deploy by `aws secretsmanager put-secret-value`); the chat_id is
+    // hardcoded in docker/LocalSettings.php. The container must receive the
+    // token via the env-file pattern (Phase 2.5d) — never inline `-e` flags.
+    template.hasResource('AWS::SecretsManager::Secret', {
+      Properties: Match.objectLike({
+        Description: Match.stringLikeRegexp('.*Telegram.*'),
+      }),
+      DeletionPolicy: 'Retain',
+    });
+    // Decoupling guard for the token's path into the container: UserData must
+    // contain the WIKI7_TELEGRAM_BOT_TOKEN env-var emission AND must reference
+    // the Telegram secret ARN (so the boot script can fetch the token value).
+    const instances = template.findResources('AWS::EC2::Instance');
+    const userDataB64 = JSON.stringify(Object.values(instances)[0]);
+    expect(userDataB64).toContain('WIKI7_TELEGRAM_BOT_TOKEN');
+    expect(userDataB64).toContain('TG_JSON');
+    // The bot token must NOT appear inline on the docker-run command line —
+    // that would leak it to /var/log/cloud-init-output.log + CloudWatch.
+    // Same Phase 2.5d Finding 2 guarantee applied to the new secret.
+    expect(userDataB64).toMatch(/--env-file/);
+  });
+
   test('Wiki7Bot secret retained, decoupled from compute (Phase 3a)', () => {
     // The bot credential lives next to the other MW secrets but is intentionally NOT granted
     // to the EC2 instance role and NOT threaded into UserData — the container never holds it.

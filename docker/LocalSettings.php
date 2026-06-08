@@ -200,6 +200,18 @@ wfLoadExtension( 'ApprovedRevs' );
 # matters — must come after ApprovedRevs + Echo + Lockdown have been loaded.
 wfLoadExtension( 'Wiki7ReviewGate' );
 
+# Telegram dispatch target — the chat / user / group id the bot posts review-
+# pending notifications to. Set here (not in a Secret) because chat ids aren't
+# sensitive. The bot token IS sensitive and comes from $wgWiki7TelegramBotSecret
+# via the WIKI7_TELEGRAM_BOT_TOKEN env var (threaded by CDK UserData per the
+# Phase 2.5d env-file pattern). When either is missing, the Telegram dispatcher
+# is a no-op; Echo in-wiki notifications still fire.
+#
+# 293092334 = the operator's private Telegram user_id (DM with @wikisheva_bot).
+# A future multi-reviewer setup would point this at a private group/channel id
+# instead (negative integer); see docs/phase-3b-backlog.md for the follow-up.
+$wgWiki7TelegramChatId = '293092334';
+
 # CRITICAL: disable auto-approval. Without this, a reviewer making any edit to a page
 # with an existing approved revision would silently re-approve their edit instead of
 # approving the bot's proposal deliberately. Same for files.
