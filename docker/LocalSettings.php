@@ -212,6 +212,16 @@ wfLoadExtension( 'Wiki7ReviewGate' );
 # instead (negative integer); see docs/phase-3b-backlog.md for the follow-up.
 $wgWiki7TelegramChatId = '293092334';
 
+# Bulk-import kill-switch for BOTH Echo + Telegram notifications. Flip to true,
+# commit + deploy (~7-8 min EC2 replacement), run the bulk pipeline, flip back
+# to false + redeploy. The gate's WRITE behavior (drafts hidden, updates held
+# back) is unaffected — this only silences the per-edit notification fan-out
+# so a 113-page bulk run doesn't fire 113 Telegram messages + Echo entries.
+# Default false so incremental flow always notifies. See ADR-0002 + the
+# "Single-deploy toggle" Phase 4 backlog item for the in-place override that
+# avoids the deploy cycle once the recycle-wiki7.sh helper script exists.
+# $wgWiki7ReviewGateQuiet = true;
+
 # CRITICAL: disable auto-approval. Without this, a reviewer making any edit to a page
 # with an existing approved revision would silently re-approve their edit instead of
 # approving the bot's proposal deliberately. Same for files.

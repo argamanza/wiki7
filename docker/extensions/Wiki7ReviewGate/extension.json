@@ -56,6 +56,11 @@
 			"description": "User groups whose page saves trigger a review-gate notification. The bot's account ('Wiki7Bot') is in the 'bot' group; any other group listed here will also produce notifications when its members save pages in NS_DRAFT or against an approved-revs-gated page.",
 			"value": ["bot"],
 			"public": false
+		},
+		"Wiki7ReviewGateQuiet": {
+			"description": "When true, suppress BOTH Echo in-wiki notifications AND Telegram dispatch from the review-gate. The bot's edits still create drafts / unapproved revisions exactly the same way — only the notifications are silenced. Intended for one-time bulk imports (e.g. Phase 3a-content's first 113-page run) where 113 Echo + 113 Telegram messages would be spammy. Toggle in LocalSettings.php + redeploy to flip; a single-deploy env-var override is a Phase 4 follow-up.",
+			"value": false,
+			"public": false
 		}
 	},
 	"DefaultUserOptions": {

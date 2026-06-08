@@ -122,6 +122,13 @@ class Hooks implements
 		if ( $editResult->isNullEdit() ) {
 			return;
 		}
+		// $wgWiki7ReviewGateQuiet — site-wide kill-switch for BOTH notification channels.
+		// The gate's actual write semantics (drafts hidden, updates held back from public)
+		// are unaffected; we only suppress the notification side-effects. Intended for
+		// one-time bulk imports where 100+ messages would be spammy.
+		if ( (bool)$this->config->get( 'Wiki7ReviewGateQuiet' ) ) {
+			return;
+		}
 		$notifyGroups = $this->config->get( 'Wiki7ReviewGateNotifyOnGroups' );
 		if ( !$this->userIsInAnyGroup( $user, $notifyGroups ) ) {
 			return;
