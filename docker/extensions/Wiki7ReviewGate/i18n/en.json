@@ -1,0 +1,13 @@
+{
+	"@metadata": {
+		"authors": ["Tzahi Argaman"]
+	},
+	"wiki7reviewgate-desc": "Bridges Wiki7Bot's draft + unapproved-update edits to Echo + Telegram notifications for the reviewer group; filters NS_DRAFT titles out of RecentChanges for non-reviewers.",
+	"echo-category-title-wiki7-bot-review-pending": "Bot review queue",
+	"echo-pref-tooltip-wiki7-bot-review-pending": "Notify me when Wiki7Bot writes a draft or proposes an update that needs my review.",
+	"notification-header-wiki7-bot-review-pending-draft": "$1 created draft: $2",
+	"notification-header-wiki7-bot-review-pending-update": "$1 proposed an update to $2 (awaiting approval)",
+	"notification-compact-header-wiki7-bot-review-pending-draft": "Draft created by $1",
+	"notification-compact-header-wiki7-bot-review-pending-update": "Update proposed by $1",
+	"notification-link-text-view-wiki7-bot-review-pending": "Review"
+}

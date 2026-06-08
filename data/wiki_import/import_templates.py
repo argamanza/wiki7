@@ -10,6 +10,8 @@ import jinja2
 import mwclient
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
+from wiki_import import review_gate
+
 logger = logging.getLogger(__name__)
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
@@ -156,6 +158,8 @@ def _load_jsonl(path: Path) -> list:
     reraise=True,
 )
 def _edit_page(site: mwclient.Site, title: str, content: str, summary: str) -> bool:
+    # See wiki_import.review_gate for the Phase 3.5 routing rules.
+    title = review_gate.route_title(site, title)
     page = site.pages[title]
     if page.exists:
         existing = page.text()

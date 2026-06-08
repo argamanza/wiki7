@@ -70,9 +70,22 @@ RUN git clone --depth 1 --branch "$DESCRIPTION2_BRANCH" https://github.com/wikim
 ARG WIKISEO_BRANCH=REL1_45
 RUN git clone --depth 1 --branch "$WIKISEO_BRANCH" https://github.com/wikimedia/mediawiki-extensions-WikiSEO.git extensions/WikiSEO
 
+# Phase 3.5 review-gate extensions (see docs/adr/0002-review-gate-architecture.md):
+#  - ApprovedRevs: holds the bot's UPDATE revisions back from public until a reviewer
+#    explicitly approves. Public continues to see the previously-approved revision.
+#  - Lockdown: gates read+edit on the custom Draft namespace (NS_DRAFT=3000) to the
+#    'reviewer' group only — bot writes new pages here, invisible to public.
+# Both pinned to REL1_45 (verified branches exist upstream 2026-06-08).
+# (Echo is already bundled with MediaWiki 1.45 core — loaded directly in LocalSettings.php.)
+ARG APPROVEDREVS_BRANCH=REL1_45
+RUN git clone --depth 1 --branch "$APPROVEDREVS_BRANCH" https://github.com/wikimedia/mediawiki-extensions-ApprovedRevs.git extensions/ApprovedRevs
+ARG LOCKDOWN_BRANCH=REL1_45
+RUN git clone --depth 1 --branch "$LOCKDOWN_BRANCH" https://github.com/wikimedia/mediawiki-extensions-Lockdown.git extensions/Lockdown
+
 # Copy extensions
 COPY extensions/Cargo/ /var/www/html/extensions/Cargo/
 COPY extensions/PageForms/ /var/www/html/extensions/PageForms/
+COPY extensions/Wiki7ReviewGate/ /var/www/html/extensions/Wiki7ReviewGate/
 
 # Copy skins
 COPY skins/Citizen/ /var/www/html/skins/Citizen/
