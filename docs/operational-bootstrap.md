@@ -85,7 +85,25 @@ curl -s 'https://wiki7.co.il/api.php?action=query&list=allpages&apnamespace=3000
 # (use the api.php login flow with Admin / $MEDIAWIKI_ADMIN_PASSWORD)
 ```
 
-## 5. ScraperAPI key (data pipeline only)
+## 5. Pipeline-side SSL trust (corporate-MITM networks only)
+
+If the operator's local network does TLS interception (corporate firewall / inspection proxy — e.g. CyberArk's `PaloSSL` MITM, Cisco Umbrella, Zscaler), Python's bundled `certifi` CA store won't trust the intercepted certificate chain even though curl + browsers will (those use the OS keychain, which is managed by IT and trusts the corporate root). Symptom when running `run_pipeline.py`:
+
+```
+SSLError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain
+```
+
+Fix — install `pip-system-certs` into the data env (auto-patches `requests` to use the OS keychain via a `.pth` hook, no code changes required):
+
+```bash
+cd <repo>/data && uv pip install pip-system-certs
+```
+
+The package is intentionally NOT in `pyproject.toml` — operators on clean (non-MITM) networks don't need it and committing the dep would be unnecessary baggage. If you skip the pipeline (e.g. read-only API access), no SSL fix is needed.
+
+To diagnose whether you're behind a MITM: `echo | openssl s_client -connect wiki7.co.il:443 -showcerts 2>/dev/null | grep 's:\|i:'` — if the root CA isn't a public one (DigiCert, ISRG, Let's Encrypt, AWS CA, etc.), you're being intercepted.
+
+## 6. ScraperAPI key (data pipeline only)
 
 If running the data pipeline locally, the bot needs a ScraperAPI key in env. The key is operator-supplied (free tier from <https://www.scraperapi.com/>) and lives in `~/.zshrc`:
 
