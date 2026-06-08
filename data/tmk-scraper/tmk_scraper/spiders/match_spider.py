@@ -40,6 +40,7 @@ class MatchSpider(scrapy.Spider):
         table_lineups = self.extract_from_simple_table(response)
 
         data = {
+            "season": self.season,
             **match,
             "report_scraped_from": response.url,
             "home_lineup": graphic_lineups.get("home") or table_lineups.get("home"),
@@ -119,26 +120,24 @@ class MatchSpider(scrapy.Spider):
             team_key = self.resolve_team_key(team_name, response)
             players = [
                 {
-                    "name_english": p.css(".formation-number-name_english a::text").get(default="").strip(),
+                    "name_english": p.css(".formation-number-name a::text").get(default="").strip(),
                     "number": p.css(".tm-shirt-number::text").get(default="").strip(),
                     "captain": bool(p.css(".kapitaenicon-formation")),
                 }
                 for p in box.css(".formation-player-container")
-                if p.css(".formation-number-name_english a::text")
+                if p.css(".formation-number-name a::text")
             ]
             if players:
                 result[team_key] = players
         return result
 
     def resolve_team_key(self, team_name, response):
-        match = response.meta["match_data"]
-        name = team_name.lower()
-        if name in match.get("home_team", "").lower():
-            return "home"
-        if name in match.get("away_team", "").lower():
-            return "away"
+        # Transfermarkt renders home-first on the match-report page (left column = home,
+        # right column = away). The fixture dict we ride along on doesn't carry the home/away
+        # team names (only venue=H/A + opponent), so we just track box order: first
+        # `aufstellung-unterueberschrift-mannschaft` we see is home, the second is away.
         if "home" not in response.meta:
-            response.meta["home"] = name
+            response.meta["home"] = team_name.lower()
             return "home"
         return "away"
 

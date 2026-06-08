@@ -32,6 +32,7 @@ class PlayerSeasonStats(BaseModel):
 class Coach(BaseModel):
     id: str  # Transfermarkt coach ID
     name: str
+    role: Optional[str] = None  # "Manager", "Assistant Manager", etc. (from /mitarbeiter/)
     tenure_start: Optional[str] = None
     tenure_end: Optional[str] = None
     matches: int = 0
