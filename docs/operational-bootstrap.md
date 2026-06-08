@@ -115,6 +115,63 @@ Used by `data/run_pipeline.py` to route requests through ScraperAPI (Transfermar
 
 ---
 
+## 7. Reset prod content (safety valve for the hybrid workspace policy)
+
+When iterating on prod gets messy (bad pipeline output, leftover drafts, want to start fresh), the `Wiki7ReviewGate:resetContent` maintenance script wipes Wiki7Bot-authored content. **Preserves** the docker-install seed homepage + sub-templates, users + groups, secrets, extensions, skin, LocalSettings (those aren't in the DB anyway).
+
+### What it deletes
+
+- All pages in NS_DRAFT (3000), regardless of author.
+- Pages in NS_MAIN + NS_TEMPLATE + NS_FILE whose **first revision** was authored by Wiki7Bot (preserves the seed homepage + sub-templates, which were created by the install user during docker-entrypoint's `import-pages.php` run).
+- All rows from every `cargo_*_data` table. Cargo schemas are recreated automatically on the next bot run via `#cargo_declare`.
+- All rows from `approved_revs` + `approved_revs_files`. Approval state is reset; future bot edits trigger the normal "held back" semantics from scratch.
+- All rows from `echo_event` + `echo_notification` where the event agent is Wiki7Bot.
+
+### Invocation
+
+Always run `--dry-run` first to see what would be touched:
+
+```bash
+INSTANCE_ID=$(aws ec2 describe-addresses --profile argamanza --region il-central-1 \
+  --filters "Name=public-ip,Values=16.164.90.60" \
+  --query 'Addresses[0].InstanceId' --output text)
+
+# DRY RUN — prints what would be deleted, no changes
+aws ssm send-command --profile argamanza --region il-central-1 \
+  --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
+  --parameters 'commands=["docker exec wiki7 php maintenance/run.php extensions/Wiki7ReviewGate/maintenance/resetContent --dry-run"]' \
+  --query 'Command.CommandId' --output text
+
+# Then fetch the output:
+aws ssm get-command-invocation --profile argamanza --region il-central-1 \
+  --command-id <CMD_ID_FROM_ABOVE> --instance-id "$INSTANCE_ID" \
+  --query StandardOutputContent --output text
+```
+
+Then for real:
+
+```bash
+# CONFIRM — actually deletes
+aws ssm send-command --profile argamanza --region il-central-1 \
+  --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
+  --parameters 'commands=["docker exec wiki7 php maintenance/run.php extensions/Wiki7ReviewGate/maintenance/resetContent --confirm"]'
+```
+
+### Scope options
+
+- `--scope=all` (default): everything listed above. Use when starting a fresh iteration cycle.
+- `--scope=drafts-only`: just wipes NS_DRAFT. Use when you want to re-run the bot but keep your reviewed mainspace content intact.
+
+### Safety
+
+- Refuses to run if **neither** `--dry-run` nor `--confirm` is passed.
+- Refuses to run if **both** are passed simultaneously.
+- Idempotent: re-running on an already-empty wiki is a no-op.
+
+See `docker/extensions/Wiki7ReviewGate/maintenance/resetContent.php` for the implementation. The hybrid workspace policy that motivated this script lives in `docs/revival-plan.md` §6b.
+
+---
+
 ## Related docs
 
 - **Secret rotation choreography** (rolling any env-file-threaded secret without breaking the running container): memory `[[wiki7-secret-rotation]]`.
