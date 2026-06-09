@@ -898,6 +898,172 @@ def import_attendance(
     return summary
 
 
+# Phase 3a R2: Derbies page driven by the bilanz spider's head_to_head.json.
+# Four major Israeli football rivalries. TM's "B. Jerusalem" / "M. Tel Aviv"
+# short forms appear in the data; we accept both the short and the canonical
+# long form as aliases when looking up each derby's row.
+_MAJOR_DERBIES = [
+    {
+        "display_name": "מכבי תל אביב",
+        "aliases": ["Maccabi Tel Aviv", "M. Tel Aviv"],
+    },
+    {
+        "display_name": "הפועל תל אביב",
+        "aliases": ["Hapoel Tel Aviv", "H. Tel Aviv"],
+    },
+    {
+        "display_name": "בית\"ר ירושלים",
+        "aliases": ["Beitar Jerusalem", "B. Jerusalem"],
+    },
+    {
+        "display_name": "מכבי חיפה",
+        "aliases": ["Maccabi Haifa", "M. Haifa"],
+    },
+]
+
+
+def import_derbies_page(
+    site=None,
+    head_to_head_path: Optional[Path] = None,
+    dry_run: bool = False,
+) -> dict:
+    """Import the Derbies page driven by `head_to_head.json` (bilanz spider).
+
+    Phase 3a R2: high-value derived page. Walks the 4 canonical Israeli
+    football rivalries, plus a "top opponents" tail of the highest-match-
+    count rows. The bilanz row may be absent if TM data for that opponent
+    is empty — the template handles that with a fallback note.
+    """
+    summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "errors": []}
+
+    path = head_to_head_path or DEFAULT_SCRAPER_OUTPUT_DIR / "head_to_head.json"
+    rows = _load_json(path)
+    if not rows:
+        logger.warning("No head_to_head data found at %s; skipping derbies page", path)
+        return summary
+
+    # Index by opponent name for derby lookups.
+    rows_by_name = {r["opponent"]: r for r in rows}
+
+    major_derbies = []
+    for derby in _MAJOR_DERBIES:
+        row = next(
+            (rows_by_name[alias] for alias in derby["aliases"] if alias in rows_by_name),
+            None,
+        )
+        major_derbies.append({**derby, "row": row})
+
+    # Tail: the other opponents sorted by match count descending. Exclude any
+    # alias of the major derbies so the bottom table doesn't duplicate them.
+    derby_aliases = {a for derby in _MAJOR_DERBIES for a in derby["aliases"]}
+    other_opponents = sorted(
+        (r for r in rows if r["opponent"] not in derby_aliases),
+        key=lambda r: r.get("matches", 0),
+        reverse=True,
+    )
+
+    content = _render_template(
+        "derbies.j2",
+        major_derbies=major_derbies,
+        other_opponents=other_opponents,
+    )
+    _import_single_page(site, "דרבים", content, dry_run, summary)
+
+    logger.info(
+        "Derbies page import: %d created, %d updated, %d skipped, %d failed",
+        summary["created"], summary["updated"], summary["skipped"], summary["failed"],
+    )
+    return summary
+
+
+# Phase 3a R2: European-campaign page derives from fixtures.json across all
+# seasons. These competition names match what TM serves in English. New
+# competitions joined here as TM gives them; the page falls back gracefully
+# when nothing matches.
+_EUROPEAN_COMPETITIONS = {
+    "UEFA Champions League",
+    "Champions League",
+    "Champions League qualifying",
+    "Champions League Qualifying",
+    "UEFA Champions League Qualifying",
+    "UEFA Europa League",
+    "Europa League",
+    "Europa League qualifying",
+    "Europa League Qualifying",
+    "UEFA Europa League Qualifying",
+    "UEFA Conference League",
+    "Conference League",
+    "UEFA Conference League Qualifying",
+    "Conference League qualifying",
+    "Conference League Qualifying",
+    "UEFA Europa Conference League",
+    "UEFA Cup",
+    "Cup Winners' Cup",
+    "Intertoto Cup",
+}
+
+
+def import_european_campaign_page(
+    site=None,
+    seasons: list = None,
+    dry_run: bool = False,
+) -> dict:
+    """Import the European campaign history page derived from fixtures.
+
+    Phase 3a R2: walks every season's fixtures.json, filters to European
+    competitions, groups by (season, competition). Renders one row per
+    (season, competition) on a sortable table + a sub-summary.
+    """
+    summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "errors": []}
+
+    if not seasons:
+        return summary
+
+    campaigns = []  # list of {season_display, competition, match_count}
+    competition_counts: dict[str, int] = {}
+
+    for season in sorted(seasons):
+        fixtures_path = DEFAULT_SCRAPER_OUTPUT_DIR / season / "fixtures.json"
+        if not fixtures_path.exists():
+            continue
+        fixtures = _load_json(fixtures_path)
+        # Group by competition name within this season.
+        per_comp: dict[str, list] = {}
+        for f in fixtures:
+            comp = (f.get("competition") or "").strip()
+            if comp in _EUROPEAN_COMPETITIONS:
+                per_comp.setdefault(comp, []).append(f)
+        for comp, comp_fixtures in per_comp.items():
+            campaigns.append({
+                "season": season,
+                "season_display": to_season_display(season),
+                "competition": comp,
+                "match_count": len(comp_fixtures),
+            })
+            competition_counts[comp] = competition_counts.get(comp, 0) + len(comp_fixtures)
+
+    total_seasons = len({c["season"] for c in campaigns})
+    total_matches = sum(c["match_count"] for c in campaigns)
+    competition_breakdown = dict(
+        sorted(competition_counts.items(), key=lambda kv: kv[1], reverse=True)
+    )
+
+    content = _render_template(
+        "european_campaign.j2",
+        campaigns=campaigns,
+        total_seasons=total_seasons,
+        total_matches=total_matches,
+        competition_breakdown=competition_breakdown,
+    )
+    _import_single_page(site, "היסטוריית קמפיינים אירופיים", content, dry_run, summary)
+
+    logger.info(
+        "European campaign page import: %d created, %d updated, %d skipped, %d failed",
+        summary["created"], summary["updated"], summary["skipped"], summary["failed"],
+    )
+    return summary
+
+
 def import_competition_pages(
     site=None,
     seasons: list = None,

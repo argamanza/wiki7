@@ -1,0 +1,51 @@
+== דרבים ==
+
+{# Phase 3a R2: rendered from the bilanz spider's head_to_head.json output.
+   The 4 major Israeli football rivalries get a focused section each; the
+   rest of the head-to-head data is summarised at the bottom for reference. #}
+
+''דרבים היסטוריים של [[הפועל באר שבע]] מול היריבות הגדולות שלה.''
+
+{% for derby in major_derbies %}
+=== מול {{ derby.display_name }} ===
+{% if derby.row %}
+{| class="wikitable"
+! נתון !! ערך
+|-
+| משחקים || {{ derby.row.matches }}
+|-
+| ניצחונות || {{ derby.row.wins }}
+|-
+| תיקואים || {{ derby.row.draws }}
+|-
+| הפסדים || {{ derby.row.losses }}
+|-
+| אחוז ניצחונות || {{ "%.1f"|format(derby.row.wins / derby.row.matches * 100) if derby.row.matches > 0 else '—' }}%
+{% if derby.row.avg_attendance %}
+|-
+| ממוצע צופים || {{ "{:,}".format(derby.row.avg_attendance) }}
+{% endif %}
+
+|}
+{% else %}
+''לא נמצא מידע על משחקים נגד {{ derby.display_name }} במאגר Transfermarkt.''
+{% endif %}
+
+{% endfor %}
+
+{% if other_opponents %}
+=== יריבות נוספות ===
+''אלה היריבות עם מספר המשחקים הגבוה ביותר, מלבד הדרבים הגדולים שמופיעים למעלה:''
+
+{| class="wikitable sortable"
+! יריבה !! משחקים !! ניצחונות !! תיקואים !! הפסדים !! % ניצחונות
+{% for r in other_opponents[:20] %}
+|-
+| [[{{ r.opponent }}]] || {{ r.matches }} || {{ r.wins }} || {{ r.draws }} || {{ r.losses }} || {{ "%.1f"|format(r.wins / r.matches * 100) if r.matches > 0 else '—' }}%
+{% endfor %}
+
+|}
+{% endif %}
+
+[[קטגוריה:דרבים]]
+[[קטגוריה:סטטיסטיקות]]

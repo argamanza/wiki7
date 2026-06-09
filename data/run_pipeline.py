@@ -431,6 +431,7 @@ def run_import(
         import_coaches_page, import_honours_page, import_stadium_page,
         import_records_page, import_season_overview, import_leaderboards,
         import_attendance, import_competition_pages,
+        import_derbies_page, import_european_campaign_page,
     )
 
     # Determine data directory (merged or single-season)
@@ -587,6 +588,24 @@ def run_import(
         )
     except FileNotFoundError as exc:
         logger.error("Competition pages import failed: %s", exc)
+        all_ok = False
+
+    # Phase 3a R2 new page types: Derbies (driven by bilanz spider) +
+    # European campaign history (derived from fixtures across seasons).
+    try:
+        logger.info("Importing derbies page...")
+        results["derbies"] = import_derbies_page(site=site, dry_run=dry_run)
+    except FileNotFoundError as exc:
+        logger.error("Derbies page import failed: %s", exc)
+        all_ok = False
+
+    try:
+        logger.info("Importing European campaign page...")
+        results["european_campaign"] = import_european_campaign_page(
+            site=site, seasons=seasons, dry_run=dry_run,
+        )
+    except FileNotFoundError as exc:
+        logger.error("European campaign page import failed: %s", exc)
         all_ok = False
 
     # Print summary
