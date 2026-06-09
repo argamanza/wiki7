@@ -82,7 +82,13 @@ def _has_useful_data(path: Path) -> bool:
         return False
 
 
-def _run_spider(spider_name: str, season: str, output_file: str, resume: bool = True) -> bool:
+def _run_spider(
+    spider_name: str,
+    season: str,
+    output_file: str,
+    resume: bool = True,
+    allow_empty: bool = False,
+) -> bool:
     """Run a Scrapy spider and return True on success.
 
     Phase 3a R2: when `resume=True` (default for multi-season runs), an
@@ -90,6 +96,13 @@ def _run_spider(spider_name: str, season: str, output_file: str, resume: bool = 
     spider call is skipped. Pass `resume=False` (--force-rescrape) to
     re-fetch even when output exists. The resume default makes long
     all-time runs restartable when they die mid-season.
+
+    Phase 3a R2: when `allow_empty=True` (default for multi-season runs),
+    a spider that returns `[]` is logged as a warning but does NOT abort
+    the run — this is the sparse-historical-season case. The downstream
+    season-overview rendering handles missing data by emitting a
+    placeholder banner. Single-season runs keep allow_empty=False so a
+    TM block on the latest season still surfaces as a hard error.
     """
     season_output_dir = SCRAPER_OUTPUT_DIR / season
     season_output_dir.mkdir(parents=True, exist_ok=True)
@@ -132,17 +145,25 @@ def _run_spider(spider_name: str, season: str, output_file: str, resume: bool = 
         logger.error("Spider '%s' produced no output at %s", spider_name, output_path)
         return False
 
-    # Check output file has actual data
-    # squad, player, and stats are critical — empty means Transfermarkt is blocking us.
+    # Check output file has actual data.
+    # squad, player, and stats are critical for the latest season — empty
+    # typically means Transfermarkt is blocking us. For historical sparse
+    # seasons (multi-season runs over the all-time corpus), empty is the
+    # legitimate "TM doesn't carry this era" case — `allow_empty=True`
+    # downgrades the error to a warning so the run continues.
     # fixtures and match may legitimately return [] (future/incomplete seasons).
     CRITICAL_SPIDERS = {"squad", "player", "stats"}
     with open(output_path, "r") as f:
         data = json.load(f)
     if not data:
-        if spider_name in CRITICAL_SPIDERS:
+        if spider_name in CRITICAL_SPIDERS and not allow_empty:
             logger.error("Spider '%s' returned empty results for season %s", spider_name, season)
             return False
-        logger.warning("Spider '%s' returned empty results for season %s (non-critical, continuing)", spider_name, season)
+        logger.warning(
+            "Spider '%s' returned empty results for season %s (continuing — %s)",
+            spider_name, season,
+            "sparse historical season" if allow_empty else "non-critical",
+        )
 
     logger.info("Spider '%s' completed -> %s", spider_name, output_path)
     return True
@@ -172,17 +193,28 @@ CLUB_SPIDERS = [
 ]
 
 
-def run_scrape(season: str, only: set[str] | None = None, resume: bool = True) -> bool:
+def run_scrape(
+    season: str,
+    only: set[str] | None = None,
+    resume: bool = True,
+    allow_empty: bool = False,
+) -> bool:
     """Run per-season spiders in the correct order for a single season.
 
     If *only* is given, run just those spiders (order is preserved).
     When *resume* is True, existing non-empty output files cause the
     matching spider to be skipped (the default for multi-season runs).
+    When *allow_empty* is True, empty results from critical spiders are
+    logged as warnings instead of aborting the season — required for
+    multi-season runs over sparse historical eras.
     """
     spiders = [(n, f) for n, f in ALL_SPIDERS if only is None or n in only]
 
     for spider_name, output_file in spiders:
-        if not _run_spider(spider_name, season, output_file, resume=resume):
+        if not _run_spider(
+            spider_name, season, output_file,
+            resume=resume, allow_empty=allow_empty,
+        ):
             logger.error("Pipeline aborted: spider '%s' failed for season %s", spider_name, season)
             return False
 
@@ -240,7 +272,13 @@ def run_club_scrape(only: set[str] | None = None, resume: bool = True) -> bool:
 
 
 def run_normalize(season: str) -> bool:
-    """Run the normalization pipeline for a single season."""
+    """Run the normalization pipeline for a single season.
+
+    Phase 3a R2: sparse seasons (where scrape produced no players.json
+    because the squad spider returned empty) get a warning + skip. The
+    downstream season-overview rendering handles the missing-data case
+    via its placeholder banner.
+    """
     logger.info("Running normalization pipeline for season %s...", season)
     try:
         from data_pipeline.normalize_enrich_players import main as normalize_main
@@ -248,16 +286,29 @@ def run_normalize(season: str) -> bool:
         scraper_season_dir = SCRAPER_OUTPUT_DIR / season
         pipeline_season_dir = PIPELINE_OUTPUT_DIR / season
 
+        # Phase 3a R2: sparse-season guard. If players.json doesn't exist or
+        # is empty (squad spider returned []), there's nothing to normalize —
+        # skip cleanly. import_season_overview will render a placeholder.
+        players_path = scraper_season_dir / "players.json"
+        if not _has_useful_data(players_path):
+            logger.info(
+                "Skipping normalize for season %s: no player data on disk "
+                "(sparse historical season — placeholder will render downstream).",
+                season,
+            )
+            pipeline_season_dir.mkdir(parents=True, exist_ok=True)
+            return True
+
         normalize_main(
-            raw_path=scraper_season_dir / "players.json",
+            raw_path=players_path,
             stats_path=scraper_season_dir / "stats.json",
             out_dir=pipeline_season_dir,
         )
         logger.info("Normalization completed for season %s", season)
         return True
     except FileNotFoundError as exc:
-        logger.error("Normalization failed for season %s: %s", season, exc)
-        return False
+        logger.warning("Normalization skipped for season %s (missing input): %s", season, exc)
+        return True
     except (KeyError, ValueError, TypeError) as exc:
         logger.error("Normalization failed with data error for season %s: %s", season, exc)
         return False
@@ -617,18 +668,23 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
     errors = []
 
     # Step 1: Scrape (per season + club-level). Resume by default; opt out
-    # with --force-rescrape for an explicit full re-fetch.
+    # with --force-rescrape for an explicit full re-fetch. allow_empty is
+    # automatically enabled for multi-season runs so sparse historical
+    # seasons (where TM legitimately has no squad/stats data) don't abort
+    # the whole pipeline — they fall through to placeholder season-overview
+    # pages downstream.
     resume = not force_rescrape
+    allow_empty = multi_season
     if not skip_scrape:
         logger.info("=" * 60)
         logger.info(
-            "STEP 1: SCRAPING (%d seasons, %s)",
-            len(season_list), "resume" if resume else "full re-fetch",
+            "STEP 1: SCRAPING (%d seasons, %s, empty-tolerant=%s)",
+            len(season_list), "resume" if resume else "full re-fetch", allow_empty,
         )
         logger.info("=" * 60)
         for s in season_list:
             logger.info("--- Scraping season %s ---", s)
-            if not run_scrape(s, only=spider_filter, resume=resume):
+            if not run_scrape(s, only=spider_filter, resume=resume, allow_empty=allow_empty):
                 errors.append(f"Scraping failed for season {s}")
                 logger.error("Scraping failed for season %s. Continuing with next...", s)
 

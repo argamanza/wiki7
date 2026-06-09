@@ -657,9 +657,18 @@ def import_season_overview(
     players_path: Optional[Path] = None,
     stats_path: Optional[Path] = None,
     fixtures_path: Optional[Path] = None,
+    standings_path: Optional[Path] = None,
     dry_run: bool = False,
 ) -> dict:
-    """Import a Season Overview page aggregating squad, stats, and fixtures data."""
+    """Import a Season Overview page aggregating squad, stats, fixtures, and
+    standings data.
+
+    Phase 3a R2: always emits a page even when no TM data exists for the
+    season — sparse historical seasons get a placeholder banner; partial
+    seasons get a "what's missing" footer. The wiki ends up with a complete
+    chronological index from 1949/50 onwards, with hand-curation prompts on
+    the empty / partial pages.
+    """
     summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "errors": []}
 
     resolved_players = players_path or DEFAULT_PLAYERS_PATH
@@ -701,8 +710,40 @@ def import_season_overview(
         comp = f.get("competition", "Unknown")
         fixtures_by_competition.setdefault(comp, []).append(f)
 
-    # Phase 3a R2: route via the shared helper so the slash format is owned
-    # in one place rather than re-implemented inline at every call site.
+    # Phase 3a R2: load the per-season standings row (from platzierungen
+    # spider). When present, gives us "Finished Nth, X points, M-W-D-L, GF:GA".
+    resolved_standings = standings_path or DEFAULT_SCRAPER_OUTPUT_DIR / "season_standings.json"
+    standings_all = _load_json(resolved_standings) if resolved_standings.exists() else []
+    standings = next(
+        (row for row in standings_all if row.get("season") == season),
+        None,
+    )
+
+    # Phase 3a R2: derive presence flags + missing-data notes for the
+    # template's graceful-degradation footer.
+    season_dir = DEFAULT_SCRAPER_OUTPUT_DIR / season
+    has_squad = (season_dir / "squad.json").exists() and _load_json(season_dir / "squad.json")
+    has_transfers = (season_dir / "transfers.json").exists() and _load_json(season_dir / "transfers.json")
+
+    missing_notes = []
+    if not standings:
+        missing_notes.append(
+            "Transfermarkt לא מספק מידע על מיקום בליגה לעונה זו "
+            "(`platzierungen` מתחיל בשנת 1986/87)."
+        )
+    if not season_stats:
+        missing_notes.append(
+            "Transfermarkt לא מספק סטטיסטיקות שחקנים לעונה זו "
+            "(`leistungsdaten` מתחיל בעיקר משנת 1985/86)."
+        )
+    if not has_squad:
+        missing_notes.append("Transfermarkt לא מספק רשימת סגל לעונה זו.")
+    if not fixtures:
+        missing_notes.append(
+            "Transfermarkt לא מספק לוח משחקים לעונה זו "
+            "(לוחות משחקים זמינים בעיקר משנת 1985/86)."
+        )
+
     season_display = to_season_display(season)
 
     content = _render_template(
@@ -719,6 +760,11 @@ def import_season_overview(
         top_appearances=top_appearances,
         top_assists=top_assists,
         fixtures_by_competition=fixtures_by_competition,
+        # Phase 3a R2 additions:
+        standings=standings,
+        has_squad_page=bool(has_squad),
+        has_transfers_page=bool(has_transfers),
+        missing_notes=missing_notes,
     )
     title = f"עונת {season_display}"
     _import_single_page(site, title, content, dry_run, summary)
