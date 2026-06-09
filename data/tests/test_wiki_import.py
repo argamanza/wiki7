@@ -92,7 +92,9 @@ class TestCargoTemplates:
         from wiki_import.import_templates import import_cargo_templates
 
         summary = import_cargo_templates(dry_run=True)
-        assert summary["created"] == 7  # Player, Transfer, MarketValue, Match, PlayerStats, Coach, Honour
+        # Phase 3a R2: Player, Transfer, MarketValue, Match, PlayerStats, Coach,
+        # Honour, SeasonStanding, HeadToHead.
+        assert summary["created"] == 9
         assert summary["failed"] == 0
 
     def test_cargo_template_content(self):

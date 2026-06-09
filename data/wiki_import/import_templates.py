@@ -52,6 +52,14 @@ CARGO_TABLES = {
             "current_jersey_number": "Integer",
             "homegrown": "Boolean",
             "retired": "Boolean",
+            # Phase 3a R2 additions — scraped from the TM player profile facts.
+            # All nullable for historical players whose profiles omit them.
+            "preferred_foot": "String",      # "right" / "left" / "both"
+            "height_cm": "Integer",          # height in centimetres
+            "contract_expires": "String",    # e.g. "30/06/2027"
+            "is_captain": "Boolean",         # current squad captain flag
+            "current_market_value": "String",  # latest entry of MV history
+            "other_positions": "List (,) of String",
         },
     },
     "Template:Cargo/Transfer": {
@@ -64,6 +72,9 @@ CARGO_TABLES = {
             "to_club": "String",
             "fee": "String",
             "loan": "Boolean",
+            # Phase 3a R2: TM club IDs for cross-linking once club pages exist.
+            "from_club_tm_id": "String",
+            "to_club_tm_id": "String",
         },
     },
     "Template:Cargo/MarketValue": {
@@ -88,6 +99,20 @@ CARGO_TABLES = {
             "system_of_play": "String",
             "attendance": "String",
             "season": "String",
+            # Phase 3a R2: match-detail additions.
+            "halftime_score": "String",      # "0:0" / "1:2"
+            "aet": "Boolean",                # extra time played
+            "stadium": "String",             # per-match stadium (away matches)
+            # Referee team. TM exposes only `referee` (main) inline in the
+            # match-report metadata; the other 5 fields are nullable forward-
+            # compat slots for hand-curation by reviewers + a future IFA
+            # scraper (filed as Phase 4 backlog).
+            "referee": "String",
+            "assistant_referee_1": "String",
+            "assistant_referee_2": "String",
+            "fourth_official": "String",
+            "var_referee": "String",         # populated 2022/23+ when hand-curated
+            "var_assistant": "String",       # populated 2022/23+ when hand-curated
         },
     },
     "Template:Cargo/PlayerStats": {
@@ -116,6 +141,10 @@ CARGO_TABLES = {
             "draws": "Integer",
             "losses": "Integer",
             "ppm": "String",
+            # Phase 3a R2: tenure context + trophies-won join.
+            "is_caretaker": "Boolean",
+            "tenure_seasons": "List (,) of String",
+            "hbs_trophies_won": "List (,) of String",
         },
     },
     "Template:Cargo/Honour": {
@@ -124,6 +153,37 @@ CARGO_TABLES = {
             "competition": "String",
             "achievement": "String",
             "seasons": "List (,) of String",
+        },
+    },
+    # Phase 3a R2: new tables.
+    "Template:Cargo/SeasonStanding": {
+        "table": "season_standings",
+        "fields": {
+            "season": "String",              # "2024" (start-year)
+            "competition": "String",         # e.g. "Ligat ha'Al"
+            "tier": "Integer",               # 1 = top flight, 2 = second tier
+            "final_position": "Integer",
+            "matches": "Integer",
+            "wins": "Integer",
+            "draws": "Integer",
+            "losses": "Integer",
+            "goals_for": "Integer",
+            "goals_against": "Integer",
+            "points": "Integer",
+        },
+    },
+    "Template:Cargo/HeadToHead": {
+        "table": "head_to_head",
+        "fields": {
+            "opponent": "String",
+            "opponent_tm_id": "String",
+            "matches": "Integer",
+            "wins": "Integer",
+            "draws": "Integer",
+            "losses": "Integer",
+            "goals_for": "Integer",
+            "goals_against": "Integer",
+            "avg_attendance": "Integer",
         },
     },
 }
