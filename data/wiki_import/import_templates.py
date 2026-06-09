@@ -413,7 +413,11 @@ def import_squad_page(
         if site is None:
             raise RuntimeError("site is required when dry_run=False")
 
-        page = site.pages[title]
+        # Phase 3a R2: route through the gate before probing existence so the
+        # report layer reflects Draft-namespace reality (see _import_single_page
+        # comment).
+        routed = review_gate.route_title(site, title)
+        page = site.pages[routed]
         if page.exists:
             existing = page.text()
             if _content_hash(existing.strip()) == _content_hash(content.strip()):
@@ -485,7 +489,9 @@ def import_transfer_page(
         if site is None:
             raise RuntimeError("site is required when dry_run=False")
 
-        page = site.pages[title]
+        # Phase 3a R2: route through the gate before probing existence.
+        routed = review_gate.route_title(site, title)
+        page = site.pages[routed]
         if page.exists:
             existing = page.text()
             if _content_hash(existing.strip()) == _content_hash(content.strip()):
@@ -519,7 +525,16 @@ def _load_json(path: Path) -> list:
 def _import_single_page(
     site, title: str, content: str, dry_run: bool, summary: dict
 ):
-    """Helper to import a single wiki page with dry-run support."""
+    """Helper to import a single wiki page with dry-run support.
+
+    Phase 3a R2: routes the title through the review gate BEFORE checking
+    `page.exists`. Without the routing, the existence probe hits mainspace
+    (which never has the draft) and the counts always report "created"
+    even when the existing Draft: page is unchanged. The downstream
+    `_edit_page` does its own content-hash check + correctly skips the
+    no-op write, so the wiki state stays right — but the report layer
+    here would silently miscount everything as a create.
+    """
     try:
         if dry_run:
             logger.info("[DRY RUN] Would create/update page: %s (%d chars)", title, len(content))
@@ -529,7 +544,8 @@ def _import_single_page(
         if site is None:
             raise RuntimeError("site is required when dry_run=False")
 
-        page = site.pages[title]
+        routed_title = review_gate.route_title(site, title)
+        page = site.pages[routed_title]
         if page.exists:
             existing = page.text()
             if _content_hash(existing.strip()) == _content_hash(content.strip()):

@@ -158,8 +158,8 @@ class TestAutoTranslateOrchestration:
         mock_client.messages.create.return_value = _make_fake_claude_response([
             {"en": "Centre-Back", "he": "בלם", "confidence": "high"},
         ])
-        monkeypatch.setattr(att, "anthropic", MagicMock(Anthropic=lambda: mock_client))
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setattr(att, "anthropic", MagicMock(Anthropic=lambda api_key=None: mock_client))
+        monkeypatch.setenv("WIKI7_ANTHROPIC_API_KEY", "test-key")
 
         summary = att.auto_translate(mapping_path=path)
         assert summary["positions"] == 1
@@ -200,8 +200,8 @@ class TestAutoTranslateOrchestration:
         mock_client.messages.create.side_effect = AssertionError(
             "auto-translate should not contact Claude when all entries are filled"
         )
-        monkeypatch.setattr(att, "anthropic", MagicMock(Anthropic=lambda: mock_client))
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setattr(att, "anthropic", MagicMock(Anthropic=lambda api_key=None: mock_client))
+        monkeypatch.setenv("WIKI7_ANTHROPIC_API_KEY", "test-key")
 
         summary = att.auto_translate(mapping_path=path)
         assert summary["positions"] == 0
@@ -227,8 +227,8 @@ class TestAutoTranslateOrchestration:
         mock_client.messages.create.return_value = _make_fake_claude_response([
             {"en": "Obscure Russian Player", "he": "פלוני אלמוני", "confidence": "low"},
         ])
-        monkeypatch.setattr(att, "anthropic", MagicMock(Anthropic=lambda: mock_client))
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        monkeypatch.setattr(att, "anthropic", MagicMock(Anthropic=lambda api_key=None: mock_client))
+        monkeypatch.setenv("WIKI7_ANTHROPIC_API_KEY", "test-key")
 
         att.auto_translate(mapping_path=path)
         reloaded = load_mapping(path)
@@ -236,9 +236,91 @@ class TestAutoTranslateOrchestration:
         assert entry["confidence"] == "low"
         assert entry["src"] == "auto-llm"
 
+    def test_wikipedia_first_then_claude_for_names(self, tmp_path, monkeypatch):
+        """Phase 3a R2: the `names` category gets a Wikipedia first-pass.
+        Anything Wikipedia resolves is stamped `src: wikipedia, confidence:
+        high`. The remaining unresolved names fall through to Claude."""
+        mapping = {
+            "positions": {},
+            "nationalities": {},
+            "clubs": {},
+            "competitions": {},
+            "names": {
+                "Lior Refaelov": "",
+                "Sagiv Jehezkel": "",
+                "Obscure Player": "",
+            },
+        }
+        path = _write_mapping(tmp_path, mapping)
+
+        from data_pipeline import wikipedia_lookup
+        monkeypatch.setattr(
+            wikipedia_lookup, "lookup_batch",
+            lambda names: {
+                "Lior Refaelov": "ליאור רפאלוב",
+                "Sagiv Jehezkel": "שגיב יחזקאל",
+                "Obscure Player": None,
+            },
+        )
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _make_fake_claude_response([
+            {"en": "Obscure Player", "he": "פלוני אלמוני", "confidence": "low"},
+        ])
+        monkeypatch.setattr(att, "anthropic", MagicMock(Anthropic=lambda api_key=None: mock_client))
+        monkeypatch.setenv("WIKI7_ANTHROPIC_API_KEY", "test-key")
+
+        att.auto_translate(mapping_path=path)
+        reloaded = load_mapping(path)
+
+        refaelov = reloaded["names"]["Lior Refaelov"]
+        assert refaelov["src"] == "wikipedia"
+        assert refaelov["confidence"] == "high"
+        assert refaelov["he"] == "ליאור רפאלוב"
+
+        jehezkel = reloaded["names"]["Sagiv Jehezkel"]
+        assert jehezkel["src"] == "wikipedia"
+        assert jehezkel["he"] == "שגיב יחזקאל"
+
+        obscure = reloaded["names"]["Obscure Player"]
+        assert obscure["src"] == "auto-llm"
+        assert obscure["he"] == "פלוני אלמוני"
+        assert obscure["confidence"] == "low"
+
+    def test_wikipedia_skipped_for_non_name_categories(self, tmp_path, monkeypatch):
+        """Positions / nationalities / clubs don't get Wikipedia lookups in v1.
+        They go straight to Claude."""
+        mapping = {
+            "positions": {"Centre-Back": ""},
+            "nationalities": {},
+            "clubs": {},
+            "competitions": {},
+            "names": {},
+        }
+        path = _write_mapping(tmp_path, mapping)
+
+        lookup_calls: list[list[str]] = []
+        from data_pipeline import wikipedia_lookup
+        monkeypatch.setattr(
+            wikipedia_lookup, "lookup_batch",
+            lambda names: (lookup_calls.append(list(names)), {n: None for n in names})[1],
+        )
+
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = _make_fake_claude_response([
+            {"en": "Centre-Back", "he": "בלם", "confidence": "high"},
+        ])
+        monkeypatch.setattr(att, "anthropic", MagicMock(Anthropic=lambda api_key=None: mock_client))
+        monkeypatch.setenv("WIKI7_ANTHROPIC_API_KEY", "test-key")
+
+        att.auto_translate(mapping_path=path)
+        assert lookup_calls == [], "Wikipedia should not be called for non-name categories"
+
     def test_falls_back_to_google_when_no_api_key(self, tmp_path, monkeypatch):
-        """When ANTHROPIC_API_KEY is unset, the helper picks the Google
-        backend and stamps `src: auto-google` on every fill."""
+        """When neither WIKI7_ANTHROPIC_API_KEY nor ANTHROPIC_API_KEY is set,
+        the helper picks the Google backend and stamps `src: auto-google` on
+        every fill."""
+        monkeypatch.delenv("WIKI7_ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         # Mock the Google translation path so the test stays offline.
         monkeypatch.setattr(

@@ -137,7 +137,10 @@ def import_matches(
             if site is None:
                 raise RuntimeError("site is required when dry_run=False")
 
-            page = site.pages[title]
+            # Phase 3a R2: route through the gate before probing existence so
+            # the report layer reflects Draft-namespace reality.
+            routed = review_gate.route_title(site, title)
+            page = site.pages[routed]
             if page.exists:
                 existing = page.text()
                 if _content_hash(existing.strip()) == _content_hash(content.strip()):

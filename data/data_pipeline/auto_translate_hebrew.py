@@ -252,13 +252,27 @@ def _build_system_prompt(category: str) -> str:
     )
 
 
+def _resolve_anthropic_api_key() -> str | None:
+    """Phase 3a R2: prefer a wiki7-specific env var so a developer's
+    `ANTHROPIC_API_KEY` (used for day-to-day Claude Code subscription work)
+    isn't accidentally drained by pipeline runs. Falls back to the standard
+    var when the wiki7-specific one isn't set, for backward compat with
+    earlier docs / CI configs.
+    """
+    return (
+        os.environ.get("WIKI7_ANTHROPIC_API_KEY")
+        or os.environ.get("ANTHROPIC_API_KEY")
+    )
+
+
 def _translate_batch_via_claude(category: str, items: list[str]) -> list[dict]:
     """Translate one batch via Anthropic API. Returns a list of dicts:
         [{"en": ..., "he": ..., "confidence": "high|low"}]
     Raises an exception on transport failure; caller decides whether to
     fall back to Google Translate / transliteration.
     """
-    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+    api_key = _resolve_anthropic_api_key()
+    client = anthropic.Anthropic(api_key=api_key)
 
     user_prompt = (
         f"Translate each of these {len(items)} {category} entries to Hebrew. "
@@ -347,14 +361,21 @@ def _translate_one_google(text: str, src: str = "en", dest: str = "iw") -> str:
 
 
 def _select_backend(use_google: bool) -> str:
-    """Pick the translation backend: 'claude' (default) or 'google' (fallback)."""
+    """Pick the translation backend: 'claude' (default) or 'google' (fallback).
+
+    Phase 3a R2: reads WIKI7_ANTHROPIC_API_KEY first (the operator's billable
+    pipeline-only key) and falls back to ANTHROPIC_API_KEY only if the wiki7-
+    specific one is unset. Day-to-day Claude Code subscription work that
+    only sets ANTHROPIC_API_KEY isn't drained by accident.
+    """
     if use_google:
         return "google"
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if _resolve_anthropic_api_key():
         return "claude"
     logger.warning(
-        "ANTHROPIC_API_KEY not set — falling back to Google Translate. "
-        "For the Phase 3a R2 quality target, export the key and re-run."
+        "Neither WIKI7_ANTHROPIC_API_KEY nor ANTHROPIC_API_KEY set — falling "
+        "back to Google Translate. For the Phase 3a R2 quality target, export "
+        "WIKI7_ANTHROPIC_API_KEY and re-run."
     )
     return "google"
 
@@ -388,7 +409,40 @@ def _fill_section(
     if dry_run:
         return len(empty_keys)
 
+    # Phase 3a R2: Wikipedia first-pass for the `names` category. For HBS
+    # players who have an English Wikipedia article with a Hebrew langlink,
+    # the langlinked title IS the canonical Hebrew name Israeli football
+    # media uses — better than any transliteration. Only the still-empty
+    # remainder goes to Claude / Google as fallback. Other categories
+    # (positions, nationalities, clubs, competitions) skip the Wikipedia
+    # pass for v1 — they're less prone to transliteration ambiguity and
+    # benefit less from the lookup.
     filled = 0
+    if category == "names":
+        from data_pipeline.wikipedia_lookup import lookup_batch
+        logger.info("  Wikipedia lookup pass: %d names...", len(empty_keys))
+        wikipedia_results = lookup_batch(empty_keys)
+        wp_filled_keys = set()
+        for key, he in wikipedia_results.items():
+            if he:
+                section[key] = {
+                    "he": he,
+                    "src": "wikipedia",
+                    "confidence": "high",
+                    "note": "",
+                }
+                wp_filled_keys.add(key)
+                filled += 1
+        # Anything Wikipedia didn't resolve falls through to the LLM /
+        # Google backend below.
+        empty_keys = [k for k in empty_keys if k not in wp_filled_keys]
+        logger.info(
+            "  Wikipedia resolved %d; %d remaining for %s fallback.",
+            len(wp_filled_keys), len(empty_keys), backend,
+        )
+        if not empty_keys:
+            return filled
+
     if backend == "claude":
         for chunk in _chunked(empty_keys, CLAUDE_BATCH_SIZE):
             try:
