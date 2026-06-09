@@ -29,11 +29,9 @@
 {| class="wikitable sortable"
 ! עונה !! הופעות !! שערים !! בישולים !! {{"{{"}}Tooltip|Y|כרטיסים צהובים{{"}}"}} !! {{"{{"}}Tooltip|2Y|כרטיס צהוב שני{{"}}"}} !! {{"{{"}}Tooltip|R|כרטיסים אדומים{{"}}"}} !! דקות
 {% for s in stats %}
-{% set season_int = s.season | int %}
-{% set next_year = (season_int + 1) | string %}
-{% set season_display = season_int ~ "/" ~ next_year[-2:] %}
+{% set row_season_display = s.season | season_display %}
 |-
-| [[עונת {{ season_display }}|{{ s.season }}]] || {{ s.appearances }} || {{ s.goals }} || {{ s.assists }} || {{ s.yellow_cards }} || {{ s.get('second_yellow_cards', 0) }} || {{ s.red_cards }} || {{ s.minutes_played }}
+| [[עונת {{ row_season_display }}|{{ row_season_display }}]] || {{ s.appearances }} || {{ s.goals }} || {{ s.assists }} || {{ s.yellow_cards }} || {{ s.get('second_yellow_cards', 0) }} || {{ s.red_cards }} || {{ s.minutes_played }}
 {% endfor %}
 
 |-

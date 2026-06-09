@@ -1,10 +1,10 @@
 == עונת {{ season_display }} ==
 
 === סגל ===
-''ראו: [[סגל {{ season }}]]''
+''ראו: [[סגל {{ season_display }}]]''
 
 === העברות ===
-''ראו: [[העברות {{ season }}]]''
+''ראו: [[העברות {{ season_display }}]]''
 
 {% if stats %}
 === סטטיסטיקות מפתח ===
@@ -68,11 +68,9 @@
 {% if fixtures_by_competition %}
 === תחרויות ===
 {% for comp, matches in fixtures_by_competition.items() %}
-{% set season_int = season | int %}
-{% set season_display_comp = season_int ~ "/" ~ (season_int + 1) | string %}
-* '''[[{{ comp }} {{ season_display_comp }}|{{ comp }}]]''': {{ matches | length }} משחקים
+* '''[[{{ comp }} {{ season_display }}|{{ comp }}]]''': {{ matches | length }} משחקים
 {% endfor %}
 {% endif %}
 
 [[קטגוריה:עונות]]
-[[קטגוריה:עונת {{ season }}]]
+[[קטגוריה:עונת {{ season_display }}]]

@@ -7,6 +7,7 @@ from data_pipeline.helpers import (
     parse_countries,
     is_homegrown,
     is_retired,
+    to_season_display,
 )
 
 
@@ -131,3 +132,36 @@ class TestIsRetired:
     def test_missing_transfers(self):
         player = {}
         assert is_retired(player) is False
+
+
+class TestToSeasonDisplay:
+    """Phase 3a R2: single helper that owns the bare-integer → slash format
+    conversion. Internal join-key stays bare; human-visible surfaces (page
+    titles, h1 headings, category names) go through this.
+    """
+
+    def test_modern_season(self):
+        assert to_season_display("2024") == "2024/25"
+        assert to_season_display(2024) == "2024/25"
+
+    def test_century_boundary_century(self):
+        assert to_season_display("1999") == "1999/00"
+        assert to_season_display("2000") == "2000/01"
+
+    def test_historical_season(self):
+        assert to_season_display("1975") == "1975/76"
+        assert to_season_display("1949") == "1949/50"
+
+    def test_passthrough_when_already_slash(self):
+        # Defensive: if a caller has already converted, don't double-convert.
+        assert to_season_display("2024/25") == "2024/25"
+
+    def test_empty_and_none(self):
+        assert to_season_display("") == ""
+        assert to_season_display(None) == ""
+
+    def test_garbage_input_passes_through(self):
+        """Malformed input passes through unchanged rather than crashing —
+        keeps the helper safe to use at every render site without try/except.
+        """
+        assert to_season_display("not-a-year") == "not-a-year"

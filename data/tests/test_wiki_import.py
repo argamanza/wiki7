@@ -134,6 +134,93 @@ class TestTransferPage:
         assert summary["failed"] == 0
 
 
+class TestSeasonDisplayIntegration:
+    """Phase 3a R2: page titles + h1 headings + categories should all render
+    in slash form (YYYY/YY), even though the data files / Cargo column / spider
+    CLI all keep the bare integer start-year as the join key.
+
+    These tests pin the human-visible surface so a future inline format swap
+    can't silently revert one site without the others noticing.
+    """
+
+    def test_squad_page_renders_slash_format(self, tmp_path):
+        from wiki_import.import_templates import _render_template
+        # Minimal Jinja inputs: empty players list per group.
+        content = _render_template(
+            "squad_table.j2",
+            season="2024",
+            season_display="2024/25",
+            players=[],
+            players_by_position={"GK": [], "DF": [], "MF": [], "FW": [], "OTHER": []},
+        )
+        assert "== סגל 2024/25 ==" in content
+        assert "[[קטגוריה:עונת 2024/25]]" in content
+        # The bare integer must NOT appear as a season label anywhere.
+        assert "== סגל 2024 ==" not in content
+        assert "[[קטגוריה:עונת 2024]]" not in content
+
+    def test_transfer_page_renders_slash_format(self):
+        from wiki_import.import_templates import _render_template
+        content = _render_template(
+            "transfer_table.j2",
+            season="2024",
+            season_display="2024/25",
+            incoming=[],
+            outgoing=[],
+        )
+        assert "== העברות 2024/25 ==" in content
+        assert "[[קטגוריה:עונת 2024/25]]" in content
+
+    def test_season_overview_cross_links_use_slash_format(self):
+        from wiki_import.import_templates import _render_template
+        content = _render_template(
+            "season_overview.j2",
+            season="2024",
+            season_display="2024/25",
+            stats=[],
+            total_appearances=0, total_goals=0, total_assists=0,
+            total_yellows=0, total_reds=0,
+            top_scorers=[], top_appearances=[], top_assists=[],
+            fixtures_by_competition={},
+        )
+        # The cross-links to the squad + transfers + competition pages must
+        # also be in slash form so they actually resolve to the renamed
+        # page titles.
+        assert "[[סגל 2024/25]]" in content
+        assert "[[העברות 2024/25]]" in content
+        assert "[[קטגוריה:עונת 2024/25]]" in content
+
+    def test_player_page_stats_table_uses_slash_format(self):
+        """The per-row season label on the player page's stats table goes
+        through the `season_display` Jinja filter so multi-season tables
+        render every row in slash form.
+        """
+        from wiki_import.import_players import _render_template
+        content = _render_template(
+            "player_page.j2",
+            player={
+                "name_english": "Test", "name_hebrew": None,
+                "id": "1", "birth_date": None, "birth_place": None,
+                "nationality": None, "main_position": None,
+                "current_jersey_number": None, "current_squad": False,
+                "homegrown": False, "retired": False,
+            },
+            transfers=[],
+            market_values=[],
+            stats=[
+                {"season": "2015", "appearances": 30, "goals": 8, "assists": 3,
+                 "yellow_cards": 2, "second_yellow_cards": 0, "red_cards": 0,
+                 "minutes_played": 2700},
+                {"season": "2024", "appearances": 25, "goals": 5, "assists": 4,
+                 "yellow_cards": 4, "second_yellow_cards": 1, "red_cards": 0,
+                 "minutes_played": 2100},
+            ],
+        )
+        # Both seasons get slash-form rendering in the row label.
+        assert "[[עונת 2015/16|2015/16]]" in content
+        assert "[[עונת 2024/25|2024/25]]" in content
+
+
 class TestMediaWikiTemplates:
     def test_all_template_files_exist(self):
         from wiki_import.import_templates import MEDIAWIKI_TEMPLATES, MEDIAWIKI_TEMPLATE_DIR

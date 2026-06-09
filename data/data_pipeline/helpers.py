@@ -124,3 +124,34 @@ def is_retired(player: dict) -> bool:
         if "retired" in to_club:
             return True
     return False
+
+
+def to_season_display(season: str | int) -> str:
+    """Convert a bare-integer start-year season ("2024" or 2024) to TM's
+    human-readable display format ("2024/25").
+
+    Phase 3a R2: the pipeline's internal join key is the bare integer
+    start-year (matches the spider's --season arg, TM's saison_id URL
+    param, the filesystem dir layout, and the Cargo `season` column).
+    Human-visible surfaces — page titles, h1 headings, category names,
+    infobox-rendered season strings — normalise via this helper to the
+    slash format. Single helper means all the page-title strings emit
+    the same shape; single integer-start-year join key means all the
+    data-layer code stays simple.
+
+    Tolerates either str or int input. Returns the original string
+    unchanged when conversion isn't possible (defensive: a season
+    label that was already in slash form, or a malformed value).
+    """
+    if season is None:
+        return ""
+    s = str(season).strip()
+    if not s:
+        return ""
+    # Already in slash form? Pass through.
+    if "/" in s:
+        return s
+    if not s.isdigit():
+        return s
+    start = int(s)
+    return f"{start}/{str(start + 1)[-2:]}"

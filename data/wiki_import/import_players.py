@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Optional
 
 import jinja2
+
+from data_pipeline.helpers import to_season_display
 import mwclient
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
@@ -43,6 +45,10 @@ def _render_template(template_name: str, **kwargs) -> str:
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    # Phase 3a R2: same `season_display` filter the import_templates renderer
+    # exposes. Player pages render per-row season labels in the stats table
+    # via `{{ s.season | season_display }}`.
+    env.filters["season_display"] = to_season_display
     template = env.get_template(template_name)
     return template.render(**kwargs)
 

@@ -10,6 +10,7 @@ import jinja2
 import mwclient
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
+from data_pipeline.helpers import to_season_display
 from wiki_import import review_gate
 
 logger = logging.getLogger(__name__)
@@ -200,6 +201,11 @@ def _render_template(template_name: str, **kwargs) -> str:
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    # Phase 3a R2: expose to_season_display as a filter so per-row template
+    # contexts (e.g. multi-season stats tables on player pages) can convert
+    # each row's bare-integer season to the slash display without inlining
+    # the format math. Usage: `{{ s.season | season_display }}`.
+    env.filters["season_display"] = to_season_display
     template = env.get_template(template_name)
     return template.render(**kwargs)
 
@@ -383,8 +389,18 @@ def import_squad_page(
             p["stats"] = None
 
     players_by_position = _group_players_by_position(players)
-    content = _render_template("squad_table.j2", season=season, players=players, players_by_position=players_by_position)
-    title = f"סגל {season}"
+    # Phase 3a R2: pass both `season` (bare integer join key, used in cargo
+    # store calls within the template) and `season_display` (slash form, used
+    # for the rendered h2 + category text). Internal join key stays bare.
+    season_display = to_season_display(season)
+    content = _render_template(
+        "squad_table.j2",
+        season=season,
+        season_display=season_display,
+        players=players,
+        players_by_position=players_by_position,
+    )
+    title = f"סגל {season_display}"
 
     summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "errors": []}
 
@@ -446,13 +462,17 @@ def import_transfer_page(
         elif any(kw in from_club for kw in HBS_KEYWORDS):
             outgoing.append(t)
 
+    # Phase 3a R2: pass both bare `season` (join key) and `season_display`
+    # (slash form, rendered in the h2 + category).
+    season_display = to_season_display(season)
     content = _render_template(
         "transfer_table.j2",
         season=season,
+        season_display=season_display,
         incoming=incoming,
         outgoing=outgoing,
     )
-    title = f"העברות {season}"
+    title = f"העברות {season_display}"
 
     summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "errors": []}
 
@@ -681,8 +701,9 @@ def import_season_overview(
         comp = f.get("competition", "Unknown")
         fixtures_by_competition.setdefault(comp, []).append(f)
 
-    season_int = int(season)
-    season_display = f"{season_int}/{str(season_int + 1)[-2:]}"
+    # Phase 3a R2: route via the shared helper so the slash format is owned
+    # in one place rather than re-implemented inline at every call site.
+    season_display = to_season_display(season)
 
     content = _render_template(
         "season_overview.j2",
@@ -808,9 +829,8 @@ def import_attendance(
                     attendances.append(int(cleaned))
 
         if attendances:
-            season_int = int(season)
             season_stats.append({
-                "season": f"{season_int}/{str(season_int + 1)[-2:]}",
+                "season": to_season_display(season),
                 "total_matches": len(attendances),
                 "total_attendance": sum(attendances),
                 "average": sum(attendances) // len(attendances),
@@ -855,8 +875,7 @@ def import_competition_pages(
             comp = f.get("competition", "Unknown")
             by_competition.setdefault(comp, []).append(f)
 
-        season_int = int(season)
-        season_display = f"{season_int}/{str(season_int + 1)[-2:]}"
+        season_display = to_season_display(season)
 
         for comp, comp_fixtures in by_competition.items():
             if not comp or comp == "Unknown":
