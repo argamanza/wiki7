@@ -117,7 +117,8 @@ Each row classifies fields as **TM publishes** (✅), **TM doesn't publish for t
 | Cards (yellow, 2nd-yellow, red) | ✅ | ✅ | — | Match spider `extract_cards()`. |
 | Formation (e.g., "4-2-3-1") | ✅ | ⚠️ on fixture row as "system_of_play" | — | Cosmetic; already passed through. |
 | Manager (both teams) | ✅ in match report lineups box | ✅ via table fallback `manager` row | — | Verified working. |
-| Referee + assistants | ✅ in match report | ❌ | **PR B implement** | Big polish item; ~5 LOC CSS selector. |
+| Referee team — main + 2 assistants + 4th official | ✅ in match report (post-1985 the box reliably carries main; assistants + 4th vary by era) | ❌ | **PR B implement** | One CSS selector pass over the match-report referee box yields all four. Inspirational wikis (MaccabiPedia, WikiPoel/red-fans) record the full team. Both render gracefully when a slot is empty for older matches. |
+| VAR referee + VAR assistant | ✅ in match report from 2022/23 (VAR introduction in Israeli Premier League) onwards | ❌ | **PR B implement** | Same selector pass picks up VAR slots when present; nullable for pre-2022/23 matches. |
 | Stadium (per match) | ✅ in match report | ❌ | **PR B implement** | Useful for away matches; ties to "stadium history" linking. |
 | Match events timeline (unified) | ⚠️ TM splits goals/cards/subs into separate boxes | ⚠️ pipeline emits per-event-type lists | — | Current Jinja template renders three separate tables. Optionally unify on render-time. **Defer (Phase 3b — cosmetic).** |
 | Post-match TM rating per player | ✅ for recent matches; sparse pre-2010 | ❌ | **skip** | Subjective rating; not core wiki data. |
@@ -313,9 +314,26 @@ The work split: PR B keeps existing Python aggregation (no rework), adds `{{#car
 ```
 
 **Pipeline change:**
-- Auto-translate switches from Google Translate to Claude API. Claude is materially better at Hebrew transliteration of foreign names (Eastern European, African, South American — the historical HBS roster has all three). Cost: ~$0.50 for an all-time first pass with prompt caching; negligible after.
+- Auto-translate switches from Google Translate to Claude. Claude is materially better at Hebrew transliteration of foreign names (Eastern European, African, South American — the historical HBS roster has all three). Cost: ~$0.50 for an all-time first pass with prompt caching; negligible afterwards.
 - Output the new fields. Confidence is `high` for known patterns (Israeli names matching the all-Hebrew detector), `low` for everything else. Existing entries with `src: manual` are preserved unchanged.
 - Reviewer sees a flagged-only filtered view via a new `--review-flagged-only` flag on the `auto_translate` step.
+
+**API choice — Anthropic direct (default), Bedrock as a Phase 4 escape hatch.**
+
+Per-token pricing for Claude is **identical** on Anthropic direct vs Bedrock (verified 2026-06-09: Sonnet 4.6 is $3/$15 per million tokens on both; prompt caching identical; batch discount identical at 50%). The decision reduces to setup ergonomics + model freshness:
+
+| | Anthropic direct (PR B choice) | Bedrock (deferred) |
+|---|---|---|
+| Setup | one env var `ANTHROPIC_API_KEY` | IAM role + cross-region inference profile + boto3 client |
+| New-model lag | day-0 | 1-4 weeks behind Anthropic |
+| Cross-region surcharge from `il-central-1` | n/a | ~10% (Bedrock routes through EU/US) |
+| Prompt caching | native, first-class SDK support | available, same pricing |
+| Account-of-record | new Anthropic billing line | folds into existing AWS bill |
+| Best fit for | local-machine + CI translation runs | in-VPC services (Lambda, ECS) |
+
+Rationale for direct: the pipeline runs on a developer machine (or CI), not in-VPC, so Bedrock's "no new account / native IAM" advantage doesn't apply. New-model day-0 access matters for Hebrew transliteration quality, which is exactly the kind of edge-case work where the freshest model usually wins. ~10% cross-region surcharge is small but non-zero, with no offsetting benefit here. Setup is materially simpler.
+
+**Escape hatch is cheap:** if translation ever gets automated as a Lambda (Phase 4 backlog item), switching to Bedrock is a ~10-line change in `auto_translate_hebrew.py` (swap `anthropic.Anthropic()` for `boto3.client('bedrock-runtime')`). Defer the switch until automation actually motivates it. Filed as a Phase 4 backlog entry.
 
 **Backward compat:** PR B's `apply_hebrew_mapping.py` reads both flat (`name: he`) and nested (`name: {he: ...}`) shapes during the transition; emits the nested shape going forward. Existing 2024/25 file is migrated automatically on first run.
 
@@ -356,6 +374,14 @@ Estimated all-time consumption (post-dedup):
 
 **Cost note** to surface in PR B's prod-push report: actual credits consumed + remaining balance + an estimate of monthly-incremental ongoing cost so the operator can decide whether to keep Hobby or revert to free.
 
+### 5.6 Domain selection — `.com` + ScraperAPI `country_code=us`
+
+Audited 2026-06-09 because PR A's own probing went through `.us` (Claude Code's WebFetch tool refuses `.com` for unrelated reasons) and the resemblance raised the question of whether the pipeline was on the right one.
+
+**Both `transfermarkt.com` and `transfermarkt.us` hit the same TM database.** Localization (chrome strings, date formatting, "Squad" vs "Plantilla" labels) is render-time only; the underlying data, IDs, and CSS structure are identical. The pipeline's spiders all use `transfermarkt.com` URLs, routed through ScraperAPI with `country_code=us`. That combination is the right one — and PR B should leave it alone — for one specific reason: `country_code=us` locks the rendering to English regardless of which TM TLD answers, and the spiders' CSS selectors + header-alias detection (`HEADER_ALIASES = {"appearances": "appearances", ...}` in `stats_spider.py`) depend on English column titles. Switching to `.us` for cosmetic consistency with this doc's appendices would be a no-op functionally; switching the ScraperAPI `country_code` would silently break the stats spider.
+
+**PR B action:** document this choice in `data/README.md` so a future operator doesn't accidentally swap one or the other. No code change.
+
 ## 6. Curated subset — what makes it into Phase 3a R2
 
 Summary of recommendations from §3, in priority order for PR B work:
@@ -363,7 +389,7 @@ Summary of recommendations from §3, in priority order for PR B work:
 ### Must-have (PR B implementation gate)
 
 **Spider/extractor closures:**
-- Match report: referee, halftime score, AET indicator, stadium per match.
+- Match report: **full referee team** (main referee + 2 assistant referees + 4th official + VAR referee + VAR assistant; VAR slots nullable pre-2022/23), halftime score, AET indicator, stadium per match.
 - Player profile: preferred foot, height, contract expiry, captain flag, current market value as its own field.
 - Per-season manager extraction from `startseite/verein/2976/saison_id/<yr>` (constructs the historical-coach list).
 - New `platzierungen` spider: per-season league position, points, W/D/L, GF/GA.
@@ -402,7 +428,6 @@ Summary of recommendations from §3, in priority order for PR B work:
 | Coach tactical preference | Subjective + flaky. |
 | Post-match TM rating | Subjective. |
 | Weather | TM doesn't publish. |
-| Match referee assistants | Decided 2026-06-09 to skip: lead referee captures the operationally-meaningful authority on the match; the linesmen are bookkeeping for a *fan* wiki and would bulk every match infobox + Cargo schema for marginal added value. **Future re-include path** if we change our mind: TM exposes them as additional rows in the match-report's "referee box" (typically labeled "Assistant referee 1", "Assistant referee 2", "Fourth official"); add 3 new fields to `Template:Cargo/Match` (`assistant_referee_1`, `assistant_referee_2`, `fourth_official` — all `String`, all nullable for older matches), thread through `extract_match_officials()` in `match_spider.py` (~10 LOC CSS selector), and update `Match infobox.wikitext` to render when present. ~30 LOC end-to-end; no schema migration concerns because the fields are nullable. |
 | TM API for Europa campaigns | `europapokalspiele/verein/2976` 404s; use fixture derivation. |
 
 ### Defer to Phase 3b (re-curation phase)
@@ -431,7 +456,7 @@ All 8 open questions PR A surfaced were resolved before any PR B code was writte
 
 3. **Cross-season aggregates — RESOLVED: pipeline-written + Cargo rows for ad-hoc queries.** Pipeline keeps producing the well-known aggregate pages (top scorers, season overview, leaderboards) via Python aggregation — works today, no rework. *Additionally*, every new template (`Season infobox`, `HeadToHead row`, etc.) transcludes the matching Cargo declaration template so the data lands in queryable Cargo tables. Concrete payoff: hand-curated 3b pages (Vasermil stadium history, Did You Know, Fan Culture) can embed `{{#cargo_query}}` calls without any pipeline change. Cost: ~5 lines per new template.
 
-4. **Translation strategy — RESOLVED: Claude API with nested `{he, src, confidence}` shape, backward-compat reader.** Switch `auto_translate_hebrew.py` from Google Translate to Claude API. Output shape becomes nested per entry (manual entries preserved with `src: manual`; auto entries flagged `src: auto-llm` with `confidence: high|low`). `apply_hebrew_mapping.py` reads both shapes during transition; emits nested going forward. Existing 2024/25 file is migrated automatically on first run. ~$0.50 first-pass cost for the all-time corpus with prompt caching; negligible afterwards. Reviewer sees a flagged-only filtered view via new `--review-flagged-only` flag.
+4. **Translation strategy — RESOLVED: Claude (Anthropic API direct, NOT Bedrock for v1) with nested `{he, src, confidence}` shape, backward-compat reader.** Switch `auto_translate_hebrew.py` from Google Translate to Claude. API choice researched 2026-06-09: per-token pricing is identical on Anthropic direct vs Bedrock, so the decision is setup ergonomics + model freshness — Anthropic direct wins on both for a pipeline that runs on developer machines / CI rather than in-VPC. ~10% cross-region surcharge on Bedrock from `il-central-1`, plus 1-4 week new-model lag, vs zero on direct. Bedrock filed as a Phase 4 backlog item for if/when translation gets automated as a Lambda (then IAM-native + AWS-bill-consolidated would actually win). Full trade-off in §5.3. Output shape becomes nested per entry (manual entries preserved with `src: manual`; auto entries flagged `src: auto-llm` with `confidence: high|low`). `apply_hebrew_mapping.py` reads both shapes during transition; emits nested going forward. ~$0.50 first-pass cost for the all-time corpus with prompt caching; negligible afterwards.
 
 5. **Reviewer-queue scaling — RESOLVED: detailed proposal in Phase 3b backlog; PR B's prod-push report invokes it.** PR B does not build the tooling, but the operator confirmed (2026-06-09) they want the best final solution invested in upfront. The proposal lands in `docs/phase-3b-backlog.md` with this level of detail so 3b implementation is unambiguous:
 
@@ -447,7 +472,7 @@ All 8 open questions PR A surfaced were resolved before any PR B code was writte
 
 6. **ScraperAPI strategy — RESOLVED: Hobby plan ($49/mo, 100k credits) for the v1 all-time crawl; no decade-staging.** Operator commits one month of the paid tier; reverts to free after v1 lands. Estimated ~6,200 credits for the full crawl (~6% of monthly headroom) leaves generous slack for re-crawls after spider fixes. Full all-time prod run goes end-to-end; the local multi-season test (1985/86 + 2000/01 + 2024/25 + 1965/66-as-empty-placeholder fixture) is the trial slice. Cost reporting in the prod-push report includes the monthly-incremental ongoing estimate so the operator can decide whether to keep Hobby or revert to free for in-season work.
 
-7. **Skip list — RESOLVED: hold the line, with referee-assistants future-re-include path documented.** Every item in §6's "Skip" table stays out of scope. The "Match referee assistants" row gets an expanded note (in-table) describing exactly how to add the field if a future operator changes their mind: add 3 nullable String fields to `Template:Cargo/Match`, ~10 LOC CSS-selector add in `match_spider.py`, update `Match infobox.wikitext` to render when present. Nullable means no schema migration concerns. ~30 LOC end-to-end. Recorded for traceability.
+7. **Skip list — RESOLVED with referee-team REVERSAL into PR B scope.** Operator reviewed two inspirational Israeli football wikis (MaccabiPedia, WikiPoel/red-fans) on 2026-06-09 and confirmed both record the full referee team; flipped the original SKIP decision. The full team is **5-6 fields per match** (main referee + 2 assistant referees + 4th official + VAR referee + VAR assistant). VAR was introduced in the Israeli Premier League in 2022/23, so VAR slots are populated 2022/23+ and nullable for everything older. All other Skip-list items stand. The referee row in §3.2 + the Cargo schema in Appendix A reflect the 6-field shape.
 
 8. **3b defer list — RESOLVED: move "Coach trophies won (with HBS)" into PR B; keep rest deferred.** The trophy join is ~10 LOC (honours.json × per-season manager extraction, computed at import time) and substantially improves coach pages ("won 2 league titles + 1 cup as HBS manager" reads as the *point* of a coach page). Cost-to-value is too good to defer. Everything else in the defer list stays in 3b for stated reasons.
 
@@ -467,10 +492,15 @@ Net-new fields on existing tables:
 +  other_positions = List (,) of String
 
  Template:Cargo/Match
-+  halftime_score = String
-+  aet            = Boolean
-+  referee        = String
-+  stadium        = String
++  halftime_score        = String
++  aet                   = Boolean
++  stadium               = String
++  referee               = String   # main referee (populated since 1985/86)
++  assistant_referee_1   = String   # linesman 1 (populated since 1985/86; sometimes empty for older)
++  assistant_referee_2   = String   # linesman 2 (populated since 1985/86; sometimes empty for older)
++  fourth_official       = String   # 4th referee (populated since ~2000s)
++  var_referee           = String   # VAR referee (populated 2022/23+ Israeli Premier League)
++  var_assistant         = String   # VAR assistant (populated 2022/23+)
 
  Template:Cargo/Transfer
 +  from_club_tm_id = String   # for future cross-linking
