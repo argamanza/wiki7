@@ -16,6 +16,25 @@ Usage:
     python run_pipeline.py --seasons 2021-2025 --review-mappings     # Phase 1: stop after auto-translate
     # Edit data_pipeline/output/merged/mappings.he.yaml              # Phase 2: review & fix
     python run_pipeline.py --seasons 2021-2025 --skip-scrape --skip-normalize --skip-merge  # Phase 3: apply & import
+
+Phase 3a R2 — idempotency + resume across seasons:
+
+    # An all-time run (1949 -> current). If this dies mid-season — network
+    # hiccup, ScraperAPI rate-limit, anything — restart with the SAME command.
+    # Spiders whose output already exists on disk are skipped (resume default),
+    # so the second run picks up where the first stopped without re-spending
+    # credits or hitting TM.
+    python run_pipeline.py --seasons 1949-2025
+
+    # Force a full re-scrape when TM's HTML structure has changed or you want
+    # fresh data (e.g. after a known spider fix that affects already-scraped
+    # seasons).
+    python run_pipeline.py --seasons 1949-2025 --force-rescrape
+
+    # The wiki import step is idempotent regardless of resume — every page
+    # write does a content-hash compare against the live page text and skips
+    # no-op edits. So re-running import after a partial failure is safe and
+    # cheap; the bot makes zero edits for unchanged pages.
 """
 
 import json
@@ -48,11 +67,37 @@ def parse_seasons(seasons_arg: str) -> list[str]:
     return [s.strip() for s in seasons_arg.split(",")]
 
 
-def _run_spider(spider_name: str, season: str, output_file: str) -> bool:
-    """Run a Scrapy spider and return True on success."""
+def _has_useful_data(path: Path) -> bool:
+    """A scraper output file is "useful" if it contains a non-empty JSON
+    list (i.e. at least one record). Empty / `[]` / missing files mean we
+    need to re-scrape.
+    """
+    if not path.exists():
+        return False
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        return bool(data)
+    except (json.JSONDecodeError, OSError):
+        return False
+
+
+def _run_spider(spider_name: str, season: str, output_file: str, resume: bool = True) -> bool:
+    """Run a Scrapy spider and return True on success.
+
+    Phase 3a R2: when `resume=True` (default for multi-season runs), an
+    existing non-empty output file is treated as already-done and the
+    spider call is skipped. Pass `resume=False` (--force-rescrape) to
+    re-fetch even when output exists. The resume default makes long
+    all-time runs restartable when they die mid-season.
+    """
     season_output_dir = SCRAPER_OUTPUT_DIR / season
     season_output_dir.mkdir(parents=True, exist_ok=True)
     output_path = season_output_dir / output_file
+
+    if resume and _has_useful_data(output_path):
+        logger.info("Resume: skipping %s for season %s (existing output)", spider_name, season)
+        return True
 
     if output_path.exists():
         output_path.unlink()
@@ -127,15 +172,17 @@ CLUB_SPIDERS = [
 ]
 
 
-def run_scrape(season: str, only: set[str] | None = None) -> bool:
+def run_scrape(season: str, only: set[str] | None = None, resume: bool = True) -> bool:
     """Run per-season spiders in the correct order for a single season.
 
     If *only* is given, run just those spiders (order is preserved).
+    When *resume* is True, existing non-empty output files cause the
+    matching spider to be skipped (the default for multi-season runs).
     """
     spiders = [(n, f) for n, f in ALL_SPIDERS if only is None or n in only]
 
     for spider_name, output_file in spiders:
-        if not _run_spider(spider_name, season, output_file):
+        if not _run_spider(spider_name, season, output_file, resume=resume):
             logger.error("Pipeline aborted: spider '%s' failed for season %s", spider_name, season)
             return False
 
@@ -143,10 +190,11 @@ def run_scrape(season: str, only: set[str] | None = None) -> bool:
     return True
 
 
-def run_club_scrape(only: set[str] | None = None) -> bool:
+def run_club_scrape(only: set[str] | None = None, resume: bool = True) -> bool:
     """Run club-level spiders (not per-season).
 
     These are run once and output to the base scraper output directory.
+    Resume default applies the same skip-when-output-exists rule.
     """
     spiders = [(n, f) for n, f in CLUB_SPIDERS if only is None or n in only]
 
@@ -155,6 +203,9 @@ def run_club_scrape(only: set[str] | None = None) -> bool:
 
     for spider_name, output_file in spiders:
         output_path = SCRAPER_OUTPUT_DIR / output_file
+        if resume and _has_useful_data(output_path):
+            logger.info("Resume: skipping club spider '%s' (existing output)", spider_name)
+            continue
         if output_path.exists():
             output_path.unlink()
             logger.info("Removed stale output: %s", output_path)
@@ -524,8 +575,14 @@ def run_import(
 @click.option("--skip-hebrew", is_flag=True, help="Skip the Hebrew enrichment step")
 @click.option("--review-mappings", is_flag=True, help="Stop after generating Hebrew mappings for manual review")
 @click.option("--wiki-url", envvar="WIKI_URL", default=None, help="MediaWiki site URL (or set WIKI_URL env var)")
+@click.option(
+    "--force-rescrape", is_flag=True,
+    help="Phase 3a R2: re-fetch every spider output even when a non-empty file "
+         "already exists. Default (resume) skips spiders whose output is already "
+         "on disk — makes long all-time runs restartable after a partial failure.",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable debug logging")
-def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_merge, skip_import, skip_hebrew, review_mappings, wiki_url, verbose):
+def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_merge, skip_import, skip_hebrew, review_mappings, wiki_url, force_rescrape, verbose):
     """Wiki7 data pipeline: scrape -> normalize -> merge -> Hebrew enrich -> import."""
     log_level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
@@ -559,14 +616,19 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
     )
     errors = []
 
-    # Step 1: Scrape (per season + club-level)
+    # Step 1: Scrape (per season + club-level). Resume by default; opt out
+    # with --force-rescrape for an explicit full re-fetch.
+    resume = not force_rescrape
     if not skip_scrape:
         logger.info("=" * 60)
-        logger.info("STEP 1: SCRAPING (%d seasons)", len(season_list))
+        logger.info(
+            "STEP 1: SCRAPING (%d seasons, %s)",
+            len(season_list), "resume" if resume else "full re-fetch",
+        )
         logger.info("=" * 60)
         for s in season_list:
             logger.info("--- Scraping season %s ---", s)
-            if not run_scrape(s, only=spider_filter):
+            if not run_scrape(s, only=spider_filter, resume=resume):
                 errors.append(f"Scraping failed for season {s}")
                 logger.error("Scraping failed for season %s. Continuing with next...", s)
 
@@ -577,7 +639,7 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
             club_filter = club_filter & club_names
         if club_filter is None or club_filter:
             logger.info("--- Scraping club-level data ---")
-            if not run_club_scrape(only=club_filter):
+            if not run_club_scrape(only=club_filter, resume=resume):
                 errors.append("Club-level scraping failed")
                 logger.error("Club-level scraping failed")
 
