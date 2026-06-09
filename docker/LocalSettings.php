@@ -184,11 +184,16 @@ $wgRemoveGroups['sysop'][]    = 'reviewer';
 $wgRemoveGroups['reviewer'][] = 'reviewer';
 
 wfLoadExtension( 'Lockdown' );
-$wgNamespacePermissionLockdown[NS_DRAFT]['read']      = ['reviewer'];
+# Phase 3a R2 update: bot needs READ on NS_DRAFT so the pipeline's content-hash
+# idempotency check (page.text() compare before page.save()) works on re-runs.
+# Without read, the bot can only blindly write, and every re-run produces a new
+# revision instead of recognising the page is unchanged. Public still can't
+# read drafts — the bot is a specific named account, not anon.
+$wgNamespacePermissionLockdown[NS_DRAFT]['read']      = ['reviewer', 'bot'];
 $wgNamespacePermissionLockdown[NS_DRAFT]['edit']      = ['reviewer', 'bot'];
 $wgNamespacePermissionLockdown[NS_DRAFT]['create']    = ['reviewer', 'bot'];
 $wgNamespacePermissionLockdown[NS_DRAFT]['move']      = ['reviewer'];
-$wgNamespacePermissionLockdown[NS_DRAFT_TALK]['read'] = ['reviewer'];
+$wgNamespacePermissionLockdown[NS_DRAFT_TALK]['read'] = ['reviewer', 'bot'];
 $wgNamespacePermissionLockdown[NS_DRAFT_TALK]['edit'] = ['reviewer', 'bot'];
 
 wfLoadExtension( 'ApprovedRevs' );

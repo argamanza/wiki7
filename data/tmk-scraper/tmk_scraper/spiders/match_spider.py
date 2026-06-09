@@ -39,6 +39,8 @@ class MatchSpider(scrapy.Spider):
         graphic_lineups = self.extract_from_graphic_field(response)
         table_lineups = self.extract_from_simple_table(response)
         goals = self.extract_goals(response)
+        penalties = self.extract_penalties(response)
+        halbzeit_text = self.extract_halbzeit_text(response)
 
         data = {
             "season": self.season,
@@ -53,22 +55,28 @@ class MatchSpider(scrapy.Spider):
             # Phase 3a R2 additions: match-detail fields surfaced inline in the
             # match-report metadata box (`.sb-zusatzinfos`) or derived from the
             # score / goal markers.
-            "halftime_score": self.extract_halftime_score(response),
+            "halftime_score": self.parse_halftime_from_halbzeit(halbzeit_text),
             "stadium": self.extract_stadium(response),
             "referee": self.extract_referee(response),
         }
 
-        penalties = self.extract_penalties(response)
         if penalties:
             data["penalties"] = penalties
 
-        # AET is True if penalties were taken OR any goal was scored after the
-        # 90th minute. TM doesn't expose an explicit AET marker on the English-
-        # localised match-report layout, so this heuristic covers both cases:
-        # straight extra-time without penalties (late winner in stoppage-AET
-        # rather than 90+) and the penalties path.
-        data["aet"] = bool(penalties) or any(
-            (g.get("minute") or 0) > 90 for g in goals
+        # Knockout football progression: a draw after 90' (+ stoppage time)
+        # goes to **extra time** (2x15min). A draw after 120' goes to
+        # **penalties**. So the AET signal is: TM's explicit "AET" / "n.V."
+        # marker in .sb-halbzeit (strongest), OR penalties exist (you can't
+        # reach a shootout without playing ET first), OR any goal scored
+        # after minute 90 (the "scored in ET" path TM marks with minutes
+        # 91-120). The pre-R2 implementation relied only on the third
+        # signal which misses the explicit marker case and would have
+        # ignored the marker for halftime extraction too. See
+        # docs/research/0002-transfermarkt-data-surface.md §3.2.
+        data["aet"] = (
+            self.is_aet_marker(halbzeit_text)
+            or bool(penalties)
+            or any((g.get("minute") or 0) > 90 for g in goals)
         )
 
         # Phase 3a R2 referee-team placeholder fields. TM only exposes the main
@@ -84,24 +92,62 @@ class MatchSpider(scrapy.Spider):
 
         yield data
 
-    @staticmethod
-    def extract_halftime_score(response) -> str | None:
-        """Return the halftime score string ("0:1") or None if absent.
+    # TM markers that indicate the match did NOT end at 90' — for those, the
+    # `.sb-halbzeit` slot carries the marker instead of the halftime score.
+    # English-localised: "AET" (after extra time), "AP" (after penalties).
+    # German-localised (in case ScraperAPI ever serves us through DE): "n.V."
+    # (nach Verlängerung), "i.E." (im Elfmeterschiessen). Case-insensitive
+    # because TM has been observed serving both "AET" and "aet" on different
+    # match shapes.
+    _AET_MARKERS = frozenset({"AET", "AP", "N.V.", "I.E."})
 
-        Surfaced on TM's match-report inside `.sb-endstand > .sb-halbzeit` as
-        `(0:<span>1</span>)`. TM duplicates the scoreboard markup on the page
-        (once in the main header, once in a compact summary box), so we take
-        the first occurrence only.
+    @staticmethod
+    def extract_halbzeit_text(response) -> str | None:
+        """Return the raw text content of the FIRST `.sb-endstand .sb-halbzeit`
+        slot, or None if absent. TM duplicates the scoreboard markup on the
+        page (once in the main header, once in a compact summary box), so we
+        take only the first occurrence.
+
+        For regulation matches this looks like "(0:1)" — parentheses around
+        the halftime score. For AET / penalty-shootout matches this looks
+        like "AET" or "AP" (the halftime slot is repurposed to flag that the
+        match didn't end at 90').
         """
         first = response.css(".sb-endstand .sb-halbzeit").get()
         if not first:
             return None
-        # Strip the inner HTML tags out via selector text traversal on the
-        # captured fragment.
         from scrapy.selector import Selector
         text = "".join(Selector(text=first).css("::text").getall())
-        cleaned = text.replace("(", "").replace(")", "").strip()
-        return cleaned or None
+        return text.strip() or None
+
+    @classmethod
+    def parse_halftime_from_halbzeit(cls, halbzeit_text: str | None) -> str | None:
+        """If `halbzeit_text` is a halftime score, return it as "0:1". If it
+        carries an AET / penalties marker instead, return None — that match
+        doesn't expose its halftime score on TM's English-localised view.
+        """
+        if not halbzeit_text:
+            return None
+        if cls.is_aet_marker(halbzeit_text):
+            return None
+        cleaned = halbzeit_text.replace("(", "").replace(")", "").strip()
+        # Sanity check: a real halftime score matches digits-colon-digits. If
+        # TM puts anything else here (a future format change), bail to None
+        # rather than emit garbage.
+        if not cleaned or ":" not in cleaned:
+            return None
+        left, _, right = cleaned.partition(":")
+        if not (left.strip().isdigit() and right.strip().isdigit()):
+            return None
+        return cleaned
+
+    @classmethod
+    def is_aet_marker(cls, halbzeit_text: str | None) -> bool:
+        """True when the halbzeit slot carries TM's AET / penalties marker
+        (the match went past 90 minutes). Case-insensitive."""
+        if not halbzeit_text:
+            return False
+        return halbzeit_text.upper().strip() in cls._AET_MARKERS
 
     @staticmethod
     def extract_stadium(response) -> str | None:

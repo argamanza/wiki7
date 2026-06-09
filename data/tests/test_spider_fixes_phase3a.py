@@ -81,9 +81,12 @@ class TestMatchSpiderR2Additions:
         self.spider = MatchSpider(season="2024")
 
     def test_extract_halftime_score(self):
+        """Legacy: covered fully by the regulation-vs-AET tests below. Kept
+        as a smoke that the parse helpers compose into a real score for the
+        2024 fixture."""
         response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
-        # Fixture is HBS 3:1 H. Jerusalem with HT 0:1.
-        assert self.spider.extract_halftime_score(response) == "0:1"
+        text = self.spider.extract_halbzeit_text(response)
+        assert self.spider.parse_halftime_from_halbzeit(text) == "0:1"
 
     def test_extract_stadium(self):
         response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
@@ -108,6 +111,66 @@ class TestMatchSpiderR2Additions:
         record = next(iter(self.spider.parse_match_report(response)))
         # 3:1 in regulation with no late winner past minute 90.
         assert record["aet"] is False
+
+    def test_extract_halftime_score_regulation_match(self):
+        """Regulation match has the halftime score in parens — e.g. (0:1)
+        for the HBS 3:1 H. Jerusalem fixture (Sep 2024 IPL game)."""
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        text = self.spider.extract_halbzeit_text(response)
+        assert text == "(0:1)"
+        assert self.spider.parse_halftime_from_halbzeit(text) == "0:1"
+        assert self.spider.is_aet_marker(text) is False
+
+    def test_extract_halftime_score_aet_match(self):
+        """Knockout match that went to extra time: TM replaces the
+        halftime-score slot with the literal "AET" marker. We must NOT
+        treat that string as the halftime score.
+
+        Fixture: HBS 3:2 Maccabi Netanya, Gvia haMedina (Israeli State Cup)
+        2023/24 — drawn at 90', HBS scored in extra time. TM serves
+        '3:2' final + 'AET' in the halbzeit slot.
+        """
+        response = _fake_response(FIXTURES_DIR / "match_report_aet_sample.html")
+        text = self.spider.extract_halbzeit_text(response)
+        assert text == "AET"
+        # Halftime score is unknown for AET matches in TM's English layout.
+        assert self.spider.parse_halftime_from_halbzeit(text) is None
+        # AET marker drives the AET flag straight to True.
+        assert self.spider.is_aet_marker(text) is True
+
+    def test_parse_match_report_aet_flag(self):
+        """End-to-end through parse_match_report: the AET fixture must yield
+        aet=True via the explicit marker, halftime_score=None, and the
+        regulation fixture must yield aet=False with a real halftime score.
+        """
+        # AET fixture
+        response = _fake_response(FIXTURES_DIR / "match_report_aet_sample.html")
+        response.request.meta["match_data"] = {"competition": "Gvia haMedina"}
+        record = next(iter(self.spider.parse_match_report(response)))
+        assert record["aet"] is True
+        assert record["halftime_score"] is None
+
+        # Regulation fixture — fresh spider instance because resolve_team_key
+        # caches "home" on response.meta which mutates state across calls.
+        spider = MatchSpider(season="2024")
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        response.request.meta["match_data"] = {"competition": "Ligat ha'Al"}
+        record = next(iter(spider.parse_match_report(response)))
+        assert record["aet"] is False
+        assert record["halftime_score"] == "0:1"
+
+    def test_aet_marker_is_case_insensitive(self):
+        assert MatchSpider.is_aet_marker("AET") is True
+        assert MatchSpider.is_aet_marker("aet") is True
+        assert MatchSpider.is_aet_marker(" AET ") is True
+        # German variants for forward-compat (in case ScraperAPI ever serves DE).
+        assert MatchSpider.is_aet_marker("n.V.") is True
+        assert MatchSpider.is_aet_marker("AP") is True
+        # Real halftime scores must NOT trigger the marker.
+        assert MatchSpider.is_aet_marker("(0:1)") is False
+        assert MatchSpider.is_aet_marker("1:1") is False
+        assert MatchSpider.is_aet_marker(None) is False
+        assert MatchSpider.is_aet_marker("") is False
 
     def test_referee_team_placeholder_fields_default_none(self):
         """TM doesn't expose assistants / 4th official / VAR in the match-

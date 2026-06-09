@@ -155,7 +155,7 @@ Each row classifies fields as **TM publishes** (✅), **TM doesn't publish for t
 | Weather | ❌ TM doesn't publish | n/a | — | Skip. |
 | Result (final score) | ✅ | ✅ | — | Fixtures col. 9. |
 | Halftime score | ✅ in match report | ❌ | **PR B implement** | Match report parses goals but doesn't separately store HT. Cheap extraction. |
-| AET indicator (extra time) | ✅ in match report | ⚠️ derived from "(penalties)" suffix | **PR B implement** | Match spider already detects penalty shootouts; should also detect AET. |
+| AET indicator (extra time) | ✅ in match report — TM marks AET matches by replacing the halftime-score slot with the literal text `AET` (or `AP` for after-penalties; `n.V.` in German locales) | ✅ implemented in PR B | **PR B implement** | Three-signal detection: explicit `AET`/`AP` marker (strongest), penalties exist (you can't reach a shootout without playing ET first per football rules — 90' draw → 30' ET → if still tied → pens), or any goal scored at minute > 90. The pre-R2 implementation relied only on the third signal and corrupted halftime-score data for AET matches (returned the literal "AET" string as the halftime). |
 | Penalty shootout | ✅ | ✅ | — | Match spider `extract_penalties()`. |
 | Scorers with assists + minutes | ✅ | ✅ | — | Match spider `extract_goals()`. |
 | Lineups (starting XI + bench) | ✅ post-1985 | ✅ post-PR #50 (graphic + table fallback) | — | But: bench players aren't separately tracked from starters in the current extractor — confirm. |
