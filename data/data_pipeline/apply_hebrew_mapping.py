@@ -17,6 +17,30 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+
+def _value(entry) -> str:
+    """Resolve a mapping entry to its Hebrew string regardless of shape.
+
+    Phase 3a R2 introduced the nested entry shape (`{he, src, confidence, note}`).
+    The legacy flat shape (`Centre-Back: בלם`) still appears in files written
+    before the migration. This helper accepts either and returns the Hebrew
+    value, so every call-site below can stay shape-agnostic during the
+    transition. `auto_translate_hebrew.py` rewrites all entries to nested on
+    first load — after that the flat path is just safety.
+    """
+    if entry is None:
+        return ""
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict):
+        return entry.get("he", "") or ""
+    return ""
+
+
+def _lookup(section: dict, key: str) -> str:
+    """Lookup a key in a category section, returning the Hebrew string."""
+    return _value(section.get(key))
+
 DEFAULT_MERGED_DIR = Path(__file__).resolve().parent / "output" / "merged"
 DEFAULT_INPUT = DEFAULT_MERGED_DIR / "players.jsonl"
 DEFAULT_OUTPUT = DEFAULT_MERGED_DIR / "players.he.jsonl"
@@ -34,18 +58,17 @@ def apply_hebrew(player: dict, mapping: dict) -> dict:
     names_map = mapping.get("names", {})
 
     if player.get("main_position"):
-        translated = pos_map.get(player["main_position"])
+        translated = _lookup(pos_map, player["main_position"])
         if translated:
             player["main_position"] = translated
 
     if player.get("nationality"):
         player["nationality"] = [
-            nationality_map.get(n, n) if nationality_map.get(n) else n
-            for n in player["nationality"]
+            _lookup(nationality_map, n) or n for n in player["nationality"]
         ]
 
     if not player.get("name_hebrew"):
-        translated_name = names_map.get(player["name_english"])
+        translated_name = _lookup(names_map, player["name_english"])
         if translated_name:
             player["name_hebrew"] = translated_name
 
@@ -56,7 +79,7 @@ def _translate_club(club_name: str, club_map: dict) -> str:
     """Translate a club name using the mapping, falling back to original."""
     if not club_name:
         return club_name
-    return club_map.get(club_name) or club_name
+    return _lookup(club_map, club_name) or club_name
 
 
 def apply_hebrew_transfers(transfers_input: Path, transfers_output: Path, mapping: dict):
@@ -97,8 +120,15 @@ def apply_hebrew_market_values(mv_input: Path, mv_output: Path, mapping: dict):
 
 
 def _build_name_lookup(mapping: dict, players_he_path: Path | None = None) -> dict:
-    """Build a combined English->Hebrew name lookup from the mapping and enriched player data."""
-    lookup = dict(mapping.get("names", {}))
+    """Build a combined English->Hebrew name lookup from the mapping and enriched player data.
+
+    Phase 3a R2: collapses both flat and nested mapping shapes into a single
+    flat `{en: he}` dict for the per-name fast-path used by match-event
+    translation. Empty Hebrew values are dropped so lookups fall through to
+    the original name unchanged.
+    """
+    raw_names = mapping.get("names", {})
+    lookup = {key: _value(entry) for key, entry in raw_names.items()}
     if players_he_path and players_he_path.exists():
         with open(players_he_path, "r", encoding="utf-8") as f:
             for line in f:
@@ -118,11 +148,17 @@ def _translate_name(name: str, name_lookup: dict) -> str:
 
 
 def _translate_match(match: dict, club_map: dict, comp_map: dict, name_lookup: dict) -> dict:
-    """Apply Hebrew translations to all fields of a single match."""
+    """Apply Hebrew translations to all fields of a single match.
+
+    Phase 3a R2: club/competition lookups route through `_lookup()` so both
+    legacy flat and current nested mapping shapes resolve to the Hebrew
+    value. The `name_lookup` dict has already been flattened upstream by
+    `_build_name_lookup()`, so per-name lookups stay direct.
+    """
     if match.get("opponent"):
-        match["opponent"] = club_map.get(match["opponent"]) or match["opponent"]
+        match["opponent"] = _lookup(club_map, match["opponent"]) or match["opponent"]
     if match.get("competition"):
-        match["competition"] = comp_map.get(match["competition"]) or match["competition"]
+        match["competition"] = _lookup(comp_map, match["competition"]) or match["competition"]
 
     for goal in match.get("goals", []):
         if goal.get("scorer"):
@@ -130,7 +166,7 @@ def _translate_match(match: dict, club_map: dict, comp_map: dict, name_lookup: d
         if goal.get("assist"):
             goal["assist"] = _translate_name(goal["assist"], name_lookup)
         if goal.get("team"):
-            goal["team"] = club_map.get(goal["team"]) or goal["team"]
+            goal["team"] = _lookup(club_map, goal["team"]) or goal["team"]
 
     for sub in match.get("substitutions", []):
         if sub.get("player_in"):
@@ -138,21 +174,21 @@ def _translate_match(match: dict, club_map: dict, comp_map: dict, name_lookup: d
         if sub.get("player_out"):
             sub["player_out"] = _translate_name(sub["player_out"], name_lookup)
         if sub.get("team"):
-            sub["team"] = club_map.get(sub["team"]) or sub["team"]
+            sub["team"] = _lookup(club_map, sub["team"]) or sub["team"]
 
     for card in match.get("cards", []):
         if card.get("player"):
             card["player"] = _translate_name(card["player"], name_lookup)
         if card.get("team"):
-            card["team"] = club_map.get(card["team"]) or card["team"]
+            card["team"] = _lookup(club_map, card["team"]) or card["team"]
 
     for pen in match.get("penalties", []):
         if pen.get("player"):
             pen["player"] = _translate_name(pen["player"], name_lookup)
         if pen.get("club"):
-            pen["club"] = club_map.get(pen["club"]) or pen["club"]
+            pen["club"] = _lookup(club_map, pen["club"]) or pen["club"]
         if pen.get("team"):
-            pen["team"] = club_map.get(pen["team"]) or pen["team"]
+            pen["team"] = _lookup(club_map, pen["team"]) or pen["team"]
 
     for side in ("home_lineup", "away_lineup"):
         lineup = match.get(side)

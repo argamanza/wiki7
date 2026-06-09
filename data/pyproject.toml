@@ -17,6 +17,11 @@ dependencies = [
     "tenacity>=9.0.0",
     "click>=8.1.0",
     "deep-translator>=1.11.0",
+    # Phase 3a R2: switched primary auto-translate backend from Google Translate
+    # to the Anthropic API for Claude. deep-translator stays in the dep list as
+    # the fallback when ANTHROPIC_API_KEY is unset (e.g. on a fresh-machine
+    # smoke test) and for the phonetic transliteration code path.
+    "anthropic>=0.40.0",
 ]
 
 [dependency-groups]
