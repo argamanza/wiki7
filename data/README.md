@@ -62,8 +62,10 @@ The spiders hit `transfermarkt.com` URLs routed through ScraperAPI with `country
 cd data
 uv sync                                      # install deps (incl. anthropic SDK)
 export SCRAPERAPI_KEY=<your key>             # see docs/operational-bootstrap.md §6
-export ANTHROPIC_API_KEY=<your key>          # for the Claude translation backend (PR B step 6)
+export WIKI7_ANTHROPIC_API_KEY=<your key>    # for the Claude translation backend (PR B step 6)
 ```
+
+**About the API key env var name:** the pipeline reads `WIKI7_ANTHROPIC_API_KEY` first, falling back to `ANTHROPIC_API_KEY` only when the wiki7-specific one isn't set. This isolation matters because Anthropic moves Agent SDK / non-interactive `claude -p` to a separate per-user credit pool on **2026-06-15** — using a wiki7-specific env var keeps day-to-day Claude Code subscription work (which reads `ANTHROPIC_API_KEY`) from being drained by pipeline runs and vice-versa.
 
 ### Single season (the original 3a flow)
 
@@ -153,9 +155,11 @@ Centre-Back:
 The reader (`apply_hebrew_mapping.py`) is shape-agnostic — both layouts coexist legally during the transition. The auto-fill migrates flat → nested on first load (marking pre-existing entries `src: manual, confidence: high` since they were human-curated before R2).
 
 Backend selection:
-- `ANTHROPIC_API_KEY` set → Claude (primary).
-- Key unset → Google Translate (fallback, with a warning).
+- `WIKI7_ANTHROPIC_API_KEY` (or `ANTHROPIC_API_KEY`) set → Claude (primary).
+- Both unset → Google Translate (fallback, with a warning).
 - `--use-google` flag → force the Google path even with the key set.
+
+**Name-specific first pass via Hebrew Wikipedia.** For the `names` category, the pipeline tries English Wikipedia's `langlinks` API first — if a player has an English Wikipedia article with a Hebrew langlink, that Hebrew title IS the canonical form Israeli football media uses (no transliteration needed). Resolved names land with `src: wikipedia, confidence: high`. Unresolved names (no English article, or no Hebrew langlink) fall through to the Claude → Google chain. Empirical coverage on real HBS players: high — even academy promotions and lesser-known foreign signings tend to have Hebrew Wikipedia articles. Other categories (positions, nationalities, clubs, competitions) skip Wikipedia and go straight to Claude.
 
 ## Output dir layout (after a multi-season run)
 
