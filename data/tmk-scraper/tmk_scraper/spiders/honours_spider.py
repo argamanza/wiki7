@@ -16,50 +16,51 @@ class HonoursSpider(scrapy.Spider):
             f"{self.base_url}/hapoel-beer-sheva/erfolge/verein/2976"
         ]
 
+    # Phase 3a R2 fix: the erfolge page no longer uses table.items rows for
+    # each trophy. Each trophy is a pair of:
+    #   div.erfolg_bild_box   — contains the trophy <img title="Israeli Champion">
+    #   div.erfolg_infotext_box — contains comma-separated seasons ("25/26, 17/18, ...")
+    # The pair sits inside a wrapper div which TM keys by row index. We walk
+    # the bild_box → next infotext_box pairs and yield one entry per trophy.
+
     def parse(self, response: scrapy.http.Response, **kwargs):
         count = 0
 
-        # Honours are listed in success boxes / tables
-        # Each achievement has a header (competition) and detail rows (seasons)
-        for box in response.css("div.box"):
-            header = box.css("div.table-header::text, h2::text").get("")
-            if not header.strip():
+        bild_boxes = response.css("div.erfolg_bild_box")
+        info_boxes = response.css("div.erfolg_infotext_box")
+
+        # Pair them up by document order. The two CSS selectors return lists
+        # in DOM order; for a well-formed page they line up 1-to-1.
+        for bild, info in zip(bild_boxes, info_boxes):
+            img = bild.css("img")
+            competition = (
+                img.attrib.get("title", "")
+                or img.attrib.get("alt", "")
+            ).strip()
+            if not competition:
                 continue
 
-            competition = header.strip()
+            # The seasons cell is one logical run of text fragments separated
+            # by ",&nbsp;" but TM emits each season + the comma as separate
+            # text nodes wrapped in tons of whitespace. Flatten to one string
+            # via xpath string(), then split on commas. Each "25/26" or
+            # "75/76" piece survives.
+            flat = info.xpath("string()").get("") or ""
+            flat = flat.replace("\xa0", " ")
+            seasons = [
+                piece.strip()
+                for piece in flat.split(",")
+                if piece.strip()
+            ]
 
-            # Look for achievement entries within the box
-            for row in box.css("table.items tr, div.erfolg_infobox_wrapper"):
-                # Try to extract achievement type and seasons
-                achievement = row.css("td.hauptlink a::text, div.erfolg_titel::text").get("")
-                if not achievement:
-                    achievement = row.css("td.hauptlink::text").get("")
-                achievement = achievement.strip()
-                if not achievement:
-                    continue
+            if not seasons:
+                continue
 
-                seasons = row.css("td.zentriert::text, div.erfolg_saison::text").getall()
-                seasons = [s.strip() for s in seasons if s.strip()]
-
-                if seasons:
-                    count += 1
-                    yield {
-                        "competition": competition,
-                        "achievement": achievement,
-                        "seasons": seasons,
-                    }
-
-        # Fallback: parse from success-data badges in the header
-        if count == 0:
-            for badge in response.css("a.data-header__success-data"):
-                title = badge.attrib.get("title", "").strip()
-                number = badge.css("span.data-header__success-number::text").get("").strip()
-                if title:
-                    count += 1
-                    yield {
-                        "competition": title,
-                        "achievement": "Winner",
-                        "seasons": [f"{number}x"] if number else [],
-                    }
+            count += 1
+            yield {
+                "competition": competition,
+                "achievement": "Winner",
+                "seasons": seasons,
+            }
 
         self.logger.info("Scraped %d honour entries", count)

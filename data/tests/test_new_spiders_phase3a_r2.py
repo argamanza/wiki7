@@ -8,6 +8,7 @@ from pathlib import Path
 from scrapy.http import HtmlResponse, Request
 
 from tmk_scraper.spiders.bilanz_spider import BilanzSpider
+from tmk_scraper.spiders.honours_spider import HonoursSpider
 from tmk_scraper.spiders.platzierungen_spider import PlatzierungenSpider
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -130,3 +131,61 @@ class TestBilanzSpider:
             if r["avg_attendance"] is not None:
                 assert isinstance(r["avg_attendance"], int)
                 assert r["avg_attendance"] > 0
+
+
+class TestHonoursSpiderR2Rewrite:
+    """Phase 3a R2 honours spider rewrite. The pre-R2 selectors targeted
+    `table.items tr` rows which TM's erfolge page no longer uses. After the
+    rewrite, trophies pair `div.erfolg_bild_box` (img title=competition) with
+    the adjacent `div.erfolg_infotext_box` (comma-separated seasons).
+
+    Empirically verified against the 2026-06-09 fixture: 6 league titles,
+    4 cups, 5 super cups for HBS — matching the PR A inventory honours
+    list.
+    """
+
+    def setup_method(self):
+        self.spider = HonoursSpider()
+        self.response = _fake_response(FIXTURES_DIR / "erfolge_sample.html")
+        self.rows = list(self.spider.parse(self.response))
+
+    def test_israeli_championships(self):
+        champ = next(r for r in self.rows if r["competition"] == "Israeli Champion")
+        # 6 titles per PR A inventory.
+        assert len(champ["seasons"]) == 6
+        # The slash-form labels survive.
+        for s in champ["seasons"]:
+            assert "/" in s
+        # Spot-check known title years (in TM's 2-digit form).
+        assert "25/26" in champ["seasons"]
+        assert "17/18" in champ["seasons"]
+        assert "75/76" in champ["seasons"]
+
+    def test_israeli_cup_count(self):
+        cup = next(
+            r for r in self.rows
+            if r["competition"].lower().startswith("israeli cup")
+        )
+        # 4 cups per PR A inventory.
+        assert len(cup["seasons"]) == 4
+        assert "96/97" in cup["seasons"]
+
+    def test_super_cup_count(self):
+        super_cup = next(
+            r for r in self.rows
+            if "super cup" in r["competition"].lower()
+        )
+        # 5 super cups per PR A inventory.
+        assert len(super_cup["seasons"]) == 5
+
+    def test_no_count_string_artifacts(self):
+        """The pre-R2 fallback path yielded fake seasons like "5x" derived
+        from the success-badge count. After the rewrite, every season must
+        look like a real YY/YY label."""
+        for r in self.rows:
+            for s in r["seasons"]:
+                # YY/YY format — 5 chars including the slash, all digits + /.
+                assert "/" in s, f"non-slash season label in {r['competition']}: {s!r}"
+                left, right = s.split("/", 1)
+                assert left.isdigit(), f"non-numeric YY in {s!r}"
+                assert right.isdigit(), f"non-numeric YY in {s!r}"
