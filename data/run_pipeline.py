@@ -119,6 +119,11 @@ CLUB_SPIDERS = [
     ("honours", "honours.json"),
     ("stadium", "stadium.json"),
     ("records", "records.json"),
+    # Phase 3a R2 additions: aggregate club-level data that doesn't change per
+    # season. Both spiders ignore the season arg and emit one rows-set per
+    # request, covering all seasons TM has data for.
+    ("platzierungen", "season_standings.json"),
+    ("bilanz", "head_to_head.json"),
 ]
 
 
@@ -575,6 +580,20 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
             if not run_club_scrape(only=club_filter):
                 errors.append("Club-level scraping failed")
                 logger.error("Club-level scraping failed")
+
+        # Phase 3a R2: derive coach trophies-won + tenure-seasons by joining
+        # honours.json x season_standings.json (platzierungen) + layering current
+        # staff (coaches.json) on top. Writes coaches_enriched.json next to the
+        # source files. Skipped when none of the inputs exist (e.g. dev runs
+        # using --spiders that didn't fetch the prerequisites).
+        try:
+            from data_pipeline.derive_coach_trophies import write_enriched
+            if any((SCRAPER_OUTPUT_DIR / fname).exists()
+                   for fname in ("honours.json", "season_standings.json", "coaches.json")):
+                logger.info("--- Deriving coach trophies + tenure-seasons ---")
+                write_enriched(SCRAPER_OUTPUT_DIR)
+        except Exception as exc:  # noqa: BLE001 — non-fatal post-process step
+            logger.warning("Coach trophy derivation failed: %s (continuing)", exc)
     else:
         logger.info("Skipping scrape step (--skip-scrape)")
 
