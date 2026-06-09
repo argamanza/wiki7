@@ -2,21 +2,23 @@ import scrapy
 
 
 class RecordsSpider(scrapy.Spider):
-    """Scrape transfer records from Transfermarkt transferrekorde page.
+    """Scrape transfer records from the Transfermarkt `transferrekorde`
+    page (German "transfer records").
 
     Phase 3a R2 finding (audited 2026-06-09): TM **no longer exposes a
-    separate "Record departures" page** — `/teuerstetransfers/`,
-    `/transfererloese/`, and `?sa=1` query variants all 404 or fall back to
-    the arrivals view. The single `transferrekorde/verein/2976` URL serves
-    arrivals only. Each emitted row carries `direction: "in"` so downstream
-    templates and Cargo queries can stay forward-compatible: when a future
-    pipeline derives departures from `alletransfers` (filter by `direction:
-    "out"` + sort by fee), it can populate `direction: "out"` rows into the
-    same shape and the records page rendering doesn't need to change.
+    separate "Record departures" page** — `/teuerstetransfers/` ("most
+    expensive transfers"), `/transfererloese/` ("transfer revenues"), and
+    `?sa=1` query variants all 404 or fall back to the arrivals view. The
+    single `transferrekorde/verein/2976` URL serves arrivals only. Each
+    emitted row carries `direction: "in"` so downstream templates and
+    Cargo queries can stay forward-compatible: when a future pipeline
+    derives departures from `alletransfers` (filter by `direction: "out"`
+    + sort by fee), it can populate `direction: "out"` rows into the same
+    shape and the records page rendering doesn't need to change.
 
     Inventory recommendation moved: "scrape both tabs" is replaced with
-    "derive departure records from alletransfers" — landing as part of the
-    records-page rendering step instead of as a spider change.
+    "derive departure records from `alletransfers`" — landing as part of
+    the records-page rendering step instead of as a spider change.
     """
 
     name = "records"

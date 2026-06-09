@@ -43,9 +43,9 @@ Spot-check protocol: when you see something, just paste the URL or page title + 
 
 - **Match `home_lineup` / `away_lineup` are empty in the existing 2024 scrape** *(Data)* — the Phase 3a spider fix corrected the CSS selector, but the existing `tmk-scraper/output/2024/matches.json` was scraped pre-fix and still has `home_lineup: null` / `away_lineup: {}`. Re-running the match spider for 2024 would cost ~45 ScraperAPI requests and refresh lineups; Phase 3a deferred this in favour of credit conservation. // fix: `python run_pipeline.py --season 2024 --spiders match --skip-normalize --skip-merge --skip-hebrew --skip-import`, then re-import.
 
-- **Transfers row drops `age` + `position`** *(Data)* — current TM `/alletransfers/` page no longer surfaces these inline; they're only on the player profile. Could be backfilled by joining against the player spider's output during the normalize step. Phase 3b decision.
+- **Transfers row drops `age` + `position`** *(Data)* — current TM `/alletransfers/` ("all transfers") page no longer surfaces these inline; they're only on the player profile. Could be backfilled by joining against the player spider's output during the normalize step. Phase 3b decision.
 
-- **Coach spider only returns *current* staff (6 entries)** *(Data)* — `/trainer/verein/` and `/trainerhistorie/verein/` are both 404 on TM as of 2026-06-07. `/mitarbeiter/verein/` is the only working URL and lists only current staff. Full historical coach list with per-tenure match records needs either an archive source (web.archive.org snapshot of the old `/trainer/` page) or hand-curated data.
+- **Coach spider only returns *current* staff (6 entries)** *(Data)* — `/trainer/verein/` ("coach page") and `/trainerhistorie/verein/` ("coach history") are both 404 on TM as of 2026-06-07. `/mitarbeiter/verein/` ("staff") is the only working URL and lists only current staff. Phase 3a R2 fills the historical gap via the `platzierungen` ("standings") page, which carries the season's manager as a column on each row — see [`docs/research/0002-transfermarkt-data-surface.md`](research/0002-transfermarkt-data-surface.md) §3.4.
 
 ## SEO
 

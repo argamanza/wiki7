@@ -2,7 +2,8 @@ import scrapy
 
 
 class HonoursSpider(scrapy.Spider):
-    """Scrape club honours/trophies from Transfermarkt erfolge page."""
+    """Scrape club honours/trophies from the Transfermarkt `erfolge` page
+    (German "successes / honours")."""
 
     name = "honours"
     allowed_domains = ["transfermarkt.com"]

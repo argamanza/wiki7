@@ -1,4 +1,5 @@
-"""Scrape per-opponent head-to-head record from Transfermarkt bilanz page.
+"""Scrape per-opponent head-to-head record from the Transfermarkt `bilanz`
+page (German "balance" / record).
 
 Phase 3a R2 addition. Single one-shot request to the club-level URL; emits
 one row per opponent club, aggregated across all competitions and all

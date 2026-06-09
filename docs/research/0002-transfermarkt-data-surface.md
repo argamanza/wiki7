@@ -19,6 +19,52 @@ Before we re-run the bot against every season Transfermarkt has data for, we nee
 
 This is PR A. Open questions get resolved here. PR B implements the resulting plan.
 
+### 1.1 TM glossary (German page names)
+
+Transfermarkt is a German site; their URL paths and CSS classes retain the original German names even on the English-localised view. This doc, the spider code, and other phase documents keep the German page names verbatim (they're the canonical TM identifier and the search key when looking something up). One-time glossary so readers can decode a German term to its English meaning without context-switching:
+
+| German term | What it means / where TM uses it |
+|---|---|
+| `verein` | "club" — URL segment for any club-scoped page (`/verein/2976` = "club ID 2976"). |
+| `saison_id` | "season ID" — URL parameter naming the season's start-year (e.g. `saison_id=2024` for the 2024/25 season). |
+| `kader` | "squad" — the per-season squad page (`/kader/verein/2976/saison_id/2015`). |
+| `leihspieler` | "loan players" — loaned-out players sub-page. |
+| `leistungsdaten` | "performance data" — per-season per-player stats page (apps, goals, assists, cards, minutes). |
+| `spielplan` / `spielplandatum` | "schedule" / "schedule by date" — the season's fixture list. |
+| `spielbericht` | "match report" — individual match page (lineups, goals, cards, etc.). |
+| `mitarbeiter` | "staff" — current-staff page (head coach + assistants + youth staff). |
+| `trainer` / `trainerhistorie` | "coach" / "coach history" — both 404 on current TM; replaced by `mitarbeiter` for current and per-season extraction for historical. |
+| `alletransfers` | "all transfers" — club-level transfers in/out for a season (or all seasons in one response). |
+| `transferrekorde` | "transfer records" — club's record arrivals page (TM removed the departures variant). |
+| `teuerstetransfers` / `transfererloese` | "most expensive transfers" / "transfer revenues" — both 404; were prior variants for record departures. |
+| `erfolge` | "successes / honours" — club's trophy list. |
+| `stadion` | "stadium" — current stadium info. |
+| `startseite` | "start page / homepage" — club's per-season summary page; also exposes that season's manager(s). |
+| `platzierungen` | "placements / standings" — season-by-season league positions table. |
+| `bilanz` | "balance / record" — per-opponent head-to-head record across all seasons. |
+| `torschuetzenkoenig` | "top scorer king" — was per-club top-scorers; now 404. |
+| `europapokalspiele` | "European cup matches" — was per-club European campaign history; now 404. |
+| `schiedsrichter` | "referee" — referee profile URL; the inline match-report metadata cites the main referee via this href. |
+| `wappen` | "coat of arms / club crest" — image URL fragment for the club badge. |
+| `sb-zusatzinfos` | "score-board additional info" — CSS class on the match-report metadata box (stadium + attendance + referee). |
+| `sb-endstand` / `sb-halbzeit` | "score-board final score" / "score-board halftime" — CSS classes for the final + halftime scores. |
+| `sb-aktion-*` | "score-board action ..." — CSS class prefix for match events: `sb-aktion-heim` = home-team action, `sb-aktion-gast` = away, `sb-aktion-uhr` = clock/minute, `sb-aktion-aktion` = action description, `sb-aktion-spielstand` = score-line, `sb-aktion-wappen` = team badge. |
+| `sb-tore` / `sb-wechsel` / `sb-karten` / `sb-elfmeterscheissen` / `sb-sanktionen` | "score-board goals / substitutions / cards / penalty shootout / sanctions" — DOM IDs the match spider walks to extract each event class. |
+| `aufstellung-*` | "lineup ..." — CSS prefix for the lineup boxes (`aufstellung-box`, `aufstellung-unterueberschrift-mannschaft`). |
+| `kapitaenicon` / `kapitaenicon-formation` | "captain icon" — CSS class on the captain marker in lineup graphics (NOT on the squad page; see §3.1). |
+| `formation-number-name` / `formation-player-container` | CSS classes for player slots inside the lineup graphic. |
+| `tm-shirt-number` | CSS class on the shirt-number badge in lineup graphics. |
+| `profilheader` | "profile header" — table class on the stadium-info table. |
+| `hauptlink` | "main link" — CSS class on the primary linked cell in TM tables (player name, club name, etc.). |
+| `auflistung` | "listing" — CSS class on TM's filter/form tables (NOT data tables; data tables use `items`). |
+| `items` | (English) — CSS class on TM's actual data tables (squad, stats, transfers, standings, bilanz). |
+| `zentriert` / `rechts` / `links` | "centered" / "right" / "left" — CSS classes for cell alignment. |
+| `ceapi` | "common encapsulated API" (TM internal) — the AJAX endpoints the player spider chains to (market values, transfer history). |
+| `Gvia haMedina` | Hebrew, not German — the Israeli State Cup. |
+| `Ligat ha'Al` | Hebrew, not German — the Israeli Premier League. |
+
+This glossary lives once here; individual sections below mostly use the German term standalone (with the glossary as the lookup). On first mention in a major section the English meaning may also appear in parens for orientation.
+
 ## 2. Empirical season-availability floor
 
 Probed via the `.us` mirror on 2026-06-09 (the `.com` host blocks the WebFetch tool but `.us` resolves the same database). Findings:
@@ -42,14 +88,14 @@ Probed via the `.us` mirror on 2026-06-09 (the `.com` host blocks the WebFetch t
 **Practical floors (PR B must reconfirm exactly during the run by walking back season-by-season):**
 
 - **Squad data:** roughly **1974/75–1976/77** with gaps (e.g. 1980/81 has no squad). Pre-1974: no useful data. Some intermediate seasons in the late-1970s / early-1980s have arrivals/departures/coach but no squad.
-- **Per-player stats (`leistungsdaten`):** at least **1985/86** with real values. Earlier seasons likely 0 or empty; PR B probes 1980-1985 to find the floor exactly.
+- **Per-player stats (`leistungsdaten` — performance data):** at least **1985/86** with real values. Earlier seasons likely 0 or empty; PR B probes 1980-1985 to find the floor exactly.
 - **Fixtures + match-report links:** at least **1985/86**. Older may exist for some seasons.
-- **Match reports (lineups + goals + subs + attendance + referee):** verified populated for **1985/86** (Sat Sep 14 1985, vs Kiryat Eliezer, 3,000 attendance, ref Zvi Sharir). Older reports (if linked) likely sparser.
+- **Match reports (`spielbericht` — lineups + goals + subs + attendance + referee):** verified populated for **1985/86** (Sat Sep 14 1985, vs Kiryat Eliezer, 3,000 attendance, ref Zvi Sharir). Older reports (if linked) likely sparser.
 - **Per-player market values:** start ~**2003-2005**. Older seasons show `—` per row.
-- **League positions (`platzierungen`):** earliest shown is **1986/87** (11th in Liga Leumit with 36 points).
-- **Bilanz / head-to-head season filter:** dropdown goes back to **1976/77**.
-- **Coach (`mitarbeiter`):** **current staff only** as of 2026-06-09 (Ran Kozuch, Manager since 2024-07-01; Assistant Manager Ben Binyamin; etc.). No historical-coach list URL is exposed (verified — `/trainer/verein/`, `/trainerhistorie/verein/` are both 404 on TM). Per-season summary pages show that-season's manager(s).
-- **Honours:** the `erfolge/verein/2976` page lists every title. Verified contents (2026-06-09): 6 league titles (1974/75, 1975/76, 2015/16, 2016/17, 2017/18, 2025/26), 4 cups (1996/97, 2019/20, 2021/22, 2024/25), 5 Super Cups (1975/76, 2016/17, 2017/18, 2022/23, 2025/26), 1 Second Tier (2000/01), Europa League (2016/17, 2017/18, 2020/21), Conference League (2022/23), promoted to 1st league (2000/01, 2008/09).
+- **League positions (`platzierungen` — standings):** earliest shown is **1986/87** (11th in Liga Leumit with 36 points).
+- **`bilanz` (head-to-head) season filter:** dropdown goes back to **1976/77**.
+- **Coach (`mitarbeiter` — staff page):** **current staff only** as of 2026-06-09 (Ran Kozuch, Manager since 2024-07-01; Assistant Manager Ben Binyamin; etc.). No historical-coach list URL is exposed (verified — `/trainer/verein/`, `/trainerhistorie/verein/` are both 404 on TM). Per-season summary pages (`startseite`) show that-season's manager(s).
+- **Honours:** the `erfolge/verein/2976` page (`erfolge` = "successes / honours") lists every title. Verified contents (2026-06-09): 6 league titles (1974/75, 1975/76, 2015/16, 2016/17, 2017/18, 2025/26), 4 cups (1996/97, 2019/20, 2021/22, 2024/25), 5 Super Cups (1975/76, 2016/17, 2017/18, 2022/23, 2025/26), 1 Second Tier (2000/01), Europa League (2016/17, 2017/18, 2020/21), Conference League (2022/23), promoted to 1st league (2000/01, 2008/09).
 
 **PR B scope for "all-time": seasons 1949/50 → current**, season-by-season, with placeholder discipline (decided 2026-06-09):
 

@@ -5,12 +5,14 @@ from scrapy.http import Request
 
 
 class TransfersSpider(scrapy.Spider):
-    """Scrape club-level arrivals + departures for a single season from Transfermarkt.
+    """Scrape club-level arrivals + departures for a single season from
+    Transfermarkt.
 
-    The `/alletransfers/verein/2976/saison_id/<season>` page returns *all* past seasons in
-    one HTML response (TM ignores the saison_id query for the table contents and only uses
-    it for navigation). We walk every `div.box`, parse the `<h2>` for direction + season,
-    and filter rows to the spider's `self.season`.
+    The `/alletransfers/verein/2976/saison_id/<season>` page (`alletransfers`
+    = "all transfers") returns *all* past seasons in one HTML response (TM
+    ignores the saison_id query for the table contents and only uses it for
+    navigation). We walk every `div.box`, parse the `<h2>` for direction +
+    season, and filter rows to the spider's `self.season`.
     """
 
     name = "transfers"

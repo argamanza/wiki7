@@ -3,14 +3,19 @@ from scrapy.http import Request
 
 
 class CoachSpider(scrapy.Spider):
-    """Scrape current coaching staff from the Transfermarkt 'mitarbeiter' (staff) page.
+    """Scrape current coaching staff from the Transfermarkt `mitarbeiter`
+    page (German "staff" — head coach + assistants + admin).
 
-    Phase 3a note: the historical-coach URL (/trainer/verein/ or /trainerhistorie/verein/)
-    returns 404 on TM as of 2026-06-07; only the current-staff page `/mitarbeiter/verein/`
-    resolves. So this spider yields the *current* coaching staff (head coach + assistants +
-    fitness coach + admin staff), not a full historical list. Full coach history with
-    per-tenure match records is a Phase 3b follow-up (would need either an archive source or
-    hand-curated data).
+    Phase 3a note: the historical-coach URLs (`/trainer/verein/` = "coach
+    page", `/trainerhistorie/verein/` = "coach history") both return 404 on
+    TM as of 2026-06-07; only the current-staff page `/mitarbeiter/verein/`
+    resolves. So this spider yields the *current* coaching staff (head coach
+    + assistants + fitness coach + admin staff), not a full historical list.
+
+    Phase 3a R2 fills the historical gap differently: per-season manager data
+    is extracted from the `platzierungen` (standings) page, which carries
+    "Manager" as a column on every season row. See `platzierungen_spider.py`
+    + `derive_coach_trophies.py`.
     """
 
     name = "coach"

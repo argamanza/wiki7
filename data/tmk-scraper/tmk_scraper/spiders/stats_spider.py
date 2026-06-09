@@ -26,7 +26,9 @@ HEADER_ALIASES = {
 
 
 class StatsSpider(scrapy.Spider):
-    """Scrape per-season player statistics from Transfermarkt leistungsdaten page."""
+    """Scrape per-season player statistics from the Transfermarkt
+    `leistungsdaten` page (German "performance data" — apps, goals,
+    assists, cards, minutes)."""
 
     name = "stats"
     allowed_domains = ["transfermarkt.com", "api.scraperapi.com"]

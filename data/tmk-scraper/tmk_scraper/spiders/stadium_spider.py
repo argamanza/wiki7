@@ -4,7 +4,8 @@ import scrapy
 
 
 class StadiumSpider(scrapy.Spider):
-    """Scrape stadium information from Transfermarkt stadion page."""
+    """Scrape stadium information from the Transfermarkt `stadion` page
+    (German "stadium")."""
 
     name = "stadium"
     allowed_domains = ["transfermarkt.com"]

@@ -1,4 +1,5 @@
-"""Scrape per-season league standings from Transfermarkt platzierungen page.
+"""Scrape per-season league standings from the Transfermarkt `platzierungen`
+page (German "placements" / standings).
 
 Phase 3a R2 addition. Single one-shot request to a club-level URL; emits one
 row per (season, competition). The page covers ~1986/87 to current — older
@@ -8,7 +9,8 @@ Per row TM gives us: season ("25/26"), competition + level, W/D/L, goals
 (as "54:23"), goal difference, points, final position rank, and the
 season's manager (name + TM coach id). The manager column is the same
 data the inventory's per-season-manager extraction was going to derive from
-the startseite page — so we get both jobs done in one spider.
+the `startseite` (club homepage) page — so we get both jobs done in one
+spider.
 """
 
 import re
