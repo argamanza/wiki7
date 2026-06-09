@@ -1,6 +1,6 @@
 # Research 0002 — Transfermarkt data surface for Hapoel Beer Sheva
 
-- **Status:** PR A draft — awaiting alignment on the curated-subset decisions before PR B implements.
+- **Status:** PR A — all 8 open questions resolved 2026-06-09; the binding decisions live in §7.
 - **Date:** 2026-06-09
 - **Phase:** 3a R2 (pipeline finalization, multi-season, all-time).
 - **Companion:** [`docs/revival-plan.md`](../revival-plan.md) §4 Phase 3 / Phase 3a R2 sub-phase.
@@ -51,9 +51,14 @@ Probed via the `.us` mirror on 2026-06-09 (the `.com` host blocks the WebFetch t
 - **Coach (`mitarbeiter`):** **current staff only** as of 2026-06-09 (Ran Kozuch, Manager since 2024-07-01; Assistant Manager Ben Binyamin; etc.). No historical-coach list URL is exposed (verified — `/trainer/verein/`, `/trainerhistorie/verein/` are both 404 on TM). Per-season summary pages show that-season's manager(s).
 - **Honours:** the `erfolge/verein/2976` page lists every title. Verified contents (2026-06-09): 6 league titles (1974/75, 1975/76, 2015/16, 2016/17, 2017/18, 2025/26), 4 cups (1996/97, 2019/20, 2021/22, 2024/25), 5 Super Cups (1975/76, 2016/17, 2017/18, 2022/23, 2025/26), 1 Second Tier (2000/01), Europa League (2016/17, 2017/18, 2020/21), Conference League (2022/23), promoted to 1st league (2000/01, 2008/09).
 
-**Recommended PR B scope for "all-time": seasons 1974/75 → current** (probe each season; skip absent ones gracefully; expect ~50 seasons present out of the ~52 calendar slots, with gaps in the late-70s/early-80s).
+**PR B scope for "all-time": seasons 1949/50 → current**, season-by-season, with placeholder discipline (decided 2026-06-09):
 
-**Pre-1974 is out of scope** for the bot — content for the 1949 founding through the early 1970s lives in hand-curated articles (Phase 3b's "Did You Know" / fan-culture work), not the data pipeline.
+- The bot **always emits a season-overview page** for every season from the club's founding (1949/50) to current, ~77 total. This gives the wiki a complete chronological index — `עונת 1965/66` exists as a page even when TM has zero data for that year, rendered from the same template with a "no data available — TM did not cover this season" note + a hand-curate prompt.
+- **Per-entity pages** (squad, transfers, competition, match reports) emit only when TM has data for that entity. The season-overview page lists which sub-pages exist (linked) and which are absent (with a one-line "TM coverage starts in 1985/86 for stats" footnote).
+- This approach has two practical benefits: (a) reviewers can browse the entire season index in `Special:AllPages?namespace=3000` knowing nothing is silently missing; (b) hand-curated content for pre-TM-coverage seasons (1949-1974) gets a real wiki home — the bot writes the skeleton, future hand-curation fills it in.
+- The empirical TM coverage floor becomes a *finding* recorded in the prod-push report ("squad data starts at season X, per-player stats at Y, match reports at Z"), not a config knob set in advance.
+
+Pre-1974 seasons end up as thin pages by design — appropriate for hand-curated "Did You Know" / fan-culture / oral-history work in Phase 3b. The wiki structure supports that work from day one.
 
 ## 3. Per-entity walkthrough — what TM publishes vs. what we cover
 
@@ -145,7 +150,7 @@ Each row classifies fields as **TM publishes** (✅), **TM doesn't publish for t
 | Per-season manager + W/D/L | ✅ via club-season summary page | ❌ | **PR B implement** | Walk each season's `startseite/verein/2976/saison_id/<yr>` page; extract the "Manager" box; deduplicate. This *constructs* a historical-coach list from per-season pages. |
 | Coach's playing career | ✅ on coach profile | ❌ | **skip** | Off-club data. |
 | Coach's tactical preference (formation) | ✅ on coach profile (recent) | ❌ | **skip** | Subjective + flaky. |
-| Trophies won (with HBS) | ✅ derivable from honours + tenure dates | ❌ | **Phase 3b** | Computable from existing data; defer. |
+| Trophies won (with HBS) | ✅ derivable from honours + tenure dates | ❌ | **PR B implement** | ~10 LOC join: honours.json (which trophies + when) × per-season manager extraction (who was manager in season Y) → per-coach trophy list. Big payoff for coach pages ("won 2 league titles + 1 cup as HBS manager"). |
 
 ### 3.5 Season (per-season summary pages)
 
@@ -338,18 +343,18 @@ PR B files these as Phase 3b backlog entries — no PR B code change.
 
 ### 5.5 ScraperAPI credit budget
 
-ScraperAPI free tier is 1,000 requests/month (verify operator tier). All-time scope estimated:
+Operator commits to one month of the ScraperAPI Hobby plan ($49/mo, **100,000 credits/month**) for the v1 all-time crawl; reverts to free tier afterwards for incremental in-season runs.
 
-- ~50 seasons × per-season spiders: ~50 × 4 page-level requests (squad, fixtures, stats, transfers) = **200 requests** (squad spider chains the loan-page = +50).
-- ~50 seasons × 30 players × 3 chained `/ceapi/` requests (profile + market values + transfer history) = **4,500 player-level requests**. Players are heavily overlapping across seasons, so dedup by TM ID before fetching — realistic post-dedup is ~1,500 unique players × 3 = **4,500** dedup'd ceiling.
-- ~50 seasons × ~30 matches × 1 match-report request = **1,500 match-report requests** (a lot; cap-driven decision).
-- Club-level pages (coaches, honours, stadium, records, bilanz, platzierungen): **~15 one-shot requests**.
+Estimated all-time consumption (post-dedup):
 
-**Optimistic total:** ~6,000-7,000 ScraperAPI requests.
+- ~77 seasons × per-season spiders: ~77 × 4 page-level requests (squad, fixtures, stats, transfers) ≈ **310 requests**. Squad spider chains the loan-page (+77). Seasons where the spider returns empty (1949-1974 sparse era) consume the request but skip the chained children.
+- ~1,500 unique players (post-dedup across seasons) × 3 chained `/ceapi/` requests (profile + market values + transfer history) = **4,500 player-level requests**.
+- ~45 seasons × ~30 matches × 1 match-report request = **1,350 match-report requests** (~1985/86 onwards; older seasons skipped because no report links).
+- Club-level pages (coaches, honours, stadium, records, bilanz, platzierungen, transferrekorde, both record-tabs): **~15 one-shot requests**.
 
-**Decision:** PR B's "local multi-season test" runs end-to-end against a small slice first (1985/86 + 2000/01 + 2024/25) to validate the schema + Cargo + idempotency story. The full all-time prod run then runs in slices (decade-by-decade), with credits verified at the start of each slice. If we exhaust the free tier, the operator either tops up the plan or accepts that the long tail (1985-1995) stays sparse until next month.
+**Estimated total:** ~6,200 ScraperAPI credits. **Headroom on Hobby plan:** ~94% of monthly allowance left untouched. Generous re-crawl budget for fixing a spider bug mid-run, refreshing fixtures after a TM HTML change, or re-running a season with a corrected mapping. The local multi-season test (1985/86 + 2000/01 + 2024/25) is the trial slice the brief asks for; the full all-time prod run can then go end-to-end without staging.
 
-**Cost note** to surface in PR B's prod-push report: actual credits consumed per slice + remaining balance.
+**Cost note** to surface in PR B's prod-push report: actual credits consumed + remaining balance + an estimate of monthly-incremental ongoing cost so the operator can decide whether to keep Hobby or revert to free.
 
 ## 6. Curated subset — what makes it into Phase 3a R2
 
@@ -368,12 +373,15 @@ Summary of recommendations from §3, in priority order for PR B work:
 **New page types:**
 - Per-season season-page header with "Finished Nth, X points, M-W-D-L, GF:GA".
 - Per-season cup-runs summary ("Won the cup", "Reached the QF", etc.).
+- Always-emitted **season-overview placeholders** for every season from 1949/50 → current (~77 pages), even when TM has no data. Templates render the existing fields when present; otherwise show "אין מידע זמין על עונה זו" (no information available for this season) + a one-line hand-curate prompt. Gives the wiki a complete chronological index.
 - Derbies page (vs Maccabi TA, Hapoel TA, Beitar Jerusalem, Maccabi Haifa) — driven by `bilanz`.
 - European campaign history page — derived from fixtures.
+- Per-coach trophy list rendered on each coach page (derivable join: honours × per-season manager extraction).
 
 **Pipeline shape changes:**
-- Season-identifier normalization (§5.1).
-- Translation file shape change to nested w/ confidence (§5.3).
+- Season-identifier normalization: human surfaces → slash format `YYYY/YY`; internal data files stay bare integer start-year as join key (§5.1).
+- Cargo emission on every new field + every new entity type (Season, HeadToHead) — enables ad-hoc `{{#cargo_query}}`-driven aggregates from hand-curated 3b pages (§5.2).
+- Translation file shape change to nested `{he, src, confidence}` w/ Claude API; backward-compat reader for the existing flat shape (§5.3).
 - Idempotency + resume across seasons.
 - Graceful degradation for sparse old seasons (null-tolerant Jinja, `#cargo_store` skipping incomplete rows).
 - "What's missing" footer on historical-season pages.
@@ -381,6 +389,7 @@ Summary of recommendations from §3, in priority order for PR B work:
 **Test coverage:**
 - Multi-era HTML fixtures: 2024/25 + 2015/16 (post-Turner move) + 1985/86 (lineups but no market values + no cards in older reports).
 - Pytest per-spider, all three eras.
+- Plus one fixture for a completely-empty season (e.g. 1965/66) to verify the placeholder path renders.
 
 ### Skip — deliberately out of scope
 
@@ -393,7 +402,7 @@ Summary of recommendations from §3, in priority order for PR B work:
 | Coach tactical preference | Subjective + flaky. |
 | Post-match TM rating | Subjective. |
 | Weather | TM doesn't publish. |
-| Match referee assistants | Stretch; lead referee is enough for the wiki. |
+| Match referee assistants | Decided 2026-06-09 to skip: lead referee captures the operationally-meaningful authority on the match; the linesmen are bookkeeping for a *fan* wiki and would bulk every match infobox + Cargo schema for marginal added value. **Future re-include path** if we change our mind: TM exposes them as additional rows in the match-report's "referee box" (typically labeled "Assistant referee 1", "Assistant referee 2", "Fourth official"); add 3 new fields to `Template:Cargo/Match` (`assistant_referee_1`, `assistant_referee_2`, `fourth_official` — all `String`, all nullable for older matches), thread through `extract_match_officials()` in `match_spider.py` (~10 LOC CSS selector), and update `Match infobox.wikitext` to render when present. ~30 LOC end-to-end; no schema migration concerns because the fields are nullable. |
 | TM API for Europa campaigns | `europapokalspiele/verein/2976` 404s; use fixture derivation. |
 
 ### Defer to Phase 3b (re-curation phase)
@@ -404,7 +413,6 @@ Summary of recommendations from §3, in priority order for PR B work:
 | Per-competition player stats split (league vs cup vs Europe) | Aggregation is enough for v1. |
 | Player full-career stats (across all clubs, not just HBS) | One extra ScraperAPI request per player; not core. |
 | National team appearances | Not core to a *club* wiki. |
-| Trophies won by coach (with HBS) | Derivable post-hoc. |
 | Match events timeline unified into one render | Cosmetic; three tables work today. |
 | Longest winning streak / biggest win-loss | Computable from fixtures; defer. |
 | Individual player awards | Hand-curated; not on TM. |
@@ -413,18 +421,35 @@ Summary of recommendations from §3, in priority order for PR B work:
 | Loan-with-option / contract length on transfers | Rare; cosmetic. |
 | Reviewer-queue tooling (sub-special-pages, batch promote, Telegram inline approve) | 3b workflow problem, not pipeline. |
 
-## 7. Question for the user (resolve during PR A review)
+## 7. Resolved decisions (signed off 2026-06-09)
 
-These are decisions PR A puts forward; the user signs off (or redirects) before PR B starts:
+All 8 open questions PR A surfaced were resolved before any PR B code was written. Recorded here as the binding decisions PR B implements.
 
-1. **Empirical season floor** — recommended 1974/75 to current, probe each season, skip absent. Acceptable?
-2. **Season identifier** — slash format `YYYY/YY` on all page titles + headings (§5.1). Acceptable?
-3. **Cross-season aggregates** — keep Python-driven *and* additionally emit Cargo rows for ad-hoc queries (§5.2). Acceptable?
-4. **Translation strategy** — switch auto-translate to Claude API with nested `{he, src, confidence}` shape (§5.3). The auto-translation file pattern is backward-compatible. ~$0.50 first-pass cost. Acceptable?
-5. **Reviewer-queue scaling** — surface as Phase 3b prep; PR B doesn't build it. Acceptable?
-6. **ScraperAPI strategy** — stage the prod run in decade slices, verify credits between slices (§5.5). Acceptable?
-7. **Skip list** (§6 "Skip — deliberately out of scope") — anything that should move back into scope?
-8. **3b defer list** (§6 "Defer to Phase 3b") — anything that should move into PR B?
+1. **Empirical season floor — RESOLVED: 1949/50 → current, always emit season-overview placeholder.** Pipeline attempts every season from the founding year. Seasons where TM has no data still get a season-overview page rendered from the template with a "no data available — please hand-curate" note + a one-line explanation of TM's coverage start. Sparse seasons get partial pages (overview + arrivals/departures if those exist; no squad/stats if those don't). The empirical floor becomes a *finding* in the prod-push report, not a config knob. Rationale: gives the wiki a complete chronological index from day one + supports Phase 3b hand-curated content for the pre-TM era.
+
+2. **Season identifier — RESOLVED: slash format `YYYY/YY` on all human surfaces; bare integer start-year internally.** Page titles (e.g. `סגל 2024/25`, `העברות 2024/25`), h1 headings, category names, infobox display all use `2024/25`. Internal data files (`season: "2024"`), Cargo `season` column, filesystem dirs (`output/2024/`), spider CLI args (`--season 2024`), and TM `saison_id` URL params all stay as bare integer start-year. One helper `to_season_display(season: str) -> str` does the format flip. Rationale: integer is sortable + matches TM's URL + matches the existing spider arg / filesystem layout; converting only for display avoids churning every test + spider + file path.
+
+3. **Cross-season aggregates — RESOLVED: pipeline-written + Cargo rows for ad-hoc queries.** Pipeline keeps producing the well-known aggregate pages (top scorers, season overview, leaderboards) via Python aggregation — works today, no rework. *Additionally*, every new template (`Season infobox`, `HeadToHead row`, etc.) transcludes the matching Cargo declaration template so the data lands in queryable Cargo tables. Concrete payoff: hand-curated 3b pages (Vasermil stadium history, Did You Know, Fan Culture) can embed `{{#cargo_query}}` calls without any pipeline change. Cost: ~5 lines per new template.
+
+4. **Translation strategy — RESOLVED: Claude API with nested `{he, src, confidence}` shape, backward-compat reader.** Switch `auto_translate_hebrew.py` from Google Translate to Claude API. Output shape becomes nested per entry (manual entries preserved with `src: manual`; auto entries flagged `src: auto-llm` with `confidence: high|low`). `apply_hebrew_mapping.py` reads both shapes during transition; emits nested going forward. Existing 2024/25 file is migrated automatically on first run. ~$0.50 first-pass cost for the all-time corpus with prompt caching; negligible afterwards. Reviewer sees a flagged-only filtered view via new `--review-flagged-only` flag.
+
+5. **Reviewer-queue scaling — RESOLVED: detailed proposal in Phase 3b backlog; PR B's prod-push report invokes it.** PR B does not build the tooling, but the operator confirmed (2026-06-09) they want the best final solution invested in upfront. The proposal lands in `docs/phase-3b-backlog.md` with this level of detail so 3b implementation is unambiguous:
+
+   - **3b.1 Sub-special-pages** (~30 LOC PHP in `Wiki7ReviewGate`). Three new special pages, each filtering NS_DRAFT by title-prefix or Cargo lookup:
+     - `Special:UnapprovedPlayers` — drafts NOT matching the seasonal-page title patterns. Pure player profile drafts. Sorted by draft creation time descending.
+     - `Special:UnapprovedMatches` — drafts whose title matches the match-report pattern (e.g. `Draft:<date> vs <opponent>`). Grouped by season + competition. Each group is collapsible so the reviewer can ignore irrelevant competitions.
+     - `Special:UnapprovedSeasons` — drafts matching `Draft:עונת *`, `Draft:סגל *`, `Draft:העברות *`. Grouped by decade (1950s, 1960s, …). Lets the reviewer triage by era ("the modern era is fine; let me focus on the 1980s").
+   - **3b.2 Batch-promote maintenance script** (~80 LOC PHP). `php maintenance/run.php extensions/Wiki7ReviewGate/maintenance/promoteBatch.php --filter='עונת 199*' --dry-run|--confirm`. Walks NS_DRAFT matching the filter glob, moves each to mainspace via the same `MovePage` primitive the UI uses, with the redirect-suppression flag set. `--dry-run` lists what would move; `--confirm` actually moves. Logs to `extensions/Wiki7ReviewGate/maintenance/promote_<timestamp>.log` for audit. Refuses to run if both flags are passed (same safety pattern as the `resetContent` script).
+   - **3b.3 Per-season filter on Special:UnapprovedPages** (~20 LOC PHP hook). `Special:UnapprovedPages?season=2010` filters the existing Approved Revs special page by joining against the Cargo `season` field. Same filter applies to the API surface (`list=unapprovedrevs`).
+   - **3b.4 Telegram inline-keyboard approve/reject** (already in 3b backlog; cross-referenced here). Phone-based one-tap approval for the operator on the move; reduces the desktop-required surface for fast-path approvals.
+
+   PR B's prod-push report quantifies the draft count post-run (estimated 2,000-2,400 across the all-time corpus) and adds a "before reviewing this, ship 3b.1 + 3b.2 first" pointer to the 3b backlog. That pointer becomes the gate on starting Phase 3b review work.
+
+6. **ScraperAPI strategy — RESOLVED: Hobby plan ($49/mo, 100k credits) for the v1 all-time crawl; no decade-staging.** Operator commits one month of the paid tier; reverts to free after v1 lands. Estimated ~6,200 credits for the full crawl (~6% of monthly headroom) leaves generous slack for re-crawls after spider fixes. Full all-time prod run goes end-to-end; the local multi-season test (1985/86 + 2000/01 + 2024/25 + 1965/66-as-empty-placeholder fixture) is the trial slice. Cost reporting in the prod-push report includes the monthly-incremental ongoing estimate so the operator can decide whether to keep Hobby or revert to free for in-season work.
+
+7. **Skip list — RESOLVED: hold the line, with referee-assistants future-re-include path documented.** Every item in §6's "Skip" table stays out of scope. The "Match referee assistants" row gets an expanded note (in-table) describing exactly how to add the field if a future operator changes their mind: add 3 nullable String fields to `Template:Cargo/Match`, ~10 LOC CSS-selector add in `match_spider.py`, update `Match infobox.wikitext` to render when present. Nullable means no schema migration concerns. ~30 LOC end-to-end. Recorded for traceability.
+
+8. **3b defer list — RESOLVED: move "Coach trophies won (with HBS)" into PR B; keep rest deferred.** The trophy join is ~10 LOC (honours.json × per-season manager extraction, computed at import time) and substantially improves coach pages ("won 2 league titles + 1 cup as HBS manager" reads as the *point* of a coach page). Cost-to-value is too good to defer. Everything else in the defer list stays in 3b for stated reasons.
 
 ---
 
