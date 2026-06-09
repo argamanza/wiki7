@@ -2,7 +2,22 @@ import scrapy
 
 
 class RecordsSpider(scrapy.Spider):
-    """Scrape transfer records from Transfermarkt transferrekorde page."""
+    """Scrape transfer records from Transfermarkt transferrekorde page.
+
+    Phase 3a R2 finding (audited 2026-06-09): TM **no longer exposes a
+    separate "Record departures" page** — `/teuerstetransfers/`,
+    `/transfererloese/`, and `?sa=1` query variants all 404 or fall back to
+    the arrivals view. The single `transferrekorde/verein/2976` URL serves
+    arrivals only. Each emitted row carries `direction: "in"` so downstream
+    templates and Cargo queries can stay forward-compatible: when a future
+    pipeline derives departures from `alletransfers` (filter by `direction:
+    "out"` + sort by fee), it can populate `direction: "out"` rows into the
+    same shape and the records page rendering doesn't need to change.
+
+    Inventory recommendation moved: "scrape both tabs" is replaced with
+    "derive departure records from alletransfers" — landing as part of the
+    records-page rendering step instead of as a spider change.
+    """
 
     name = "records"
     allowed_domains = ["transfermarkt.com"]
@@ -20,12 +35,7 @@ class RecordsSpider(scrapy.Spider):
 
         # Page title contains the category (e.g., "Record arrivals")
         page_title = response.css("title::text").get("").split("|")[0].strip()
-        # Remove club name prefix if present
-        category = page_title.replace("Hapoel Beer Sheva - ", "").strip() or "Transfer records"
-
-        # Also check navigation for sub-pages (arrivals vs departures)
-        # The page has tabs for "Record arrivals" and "Record departures"
-        nav_links = response.css("div.content-box-headline a")
+        category = page_title.replace("Hapoel Beer Sheva - ", "").strip() or "Record arrivals"
 
         for row in response.css("table.items > tbody > tr"):
             # Only process data rows (odd/even)
@@ -60,9 +70,10 @@ class RecordsSpider(scrapy.Spider):
                 count += 1
                 yield {
                     "category": category,
+                    "direction": "in",
                     "player_name": player_name,
                     "player_id": player_id,
                     "value": value,
                 }
 
-        self.logger.info("Scraped %d record entries", count)
+        self.logger.info("Scraped %d record arrivals", count)

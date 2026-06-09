@@ -91,7 +91,7 @@ Each row classifies fields as **TM publishes** (✅), **TM doesn't publish for t
 | Injury history | ✅ via `/verletzungen/spieler/<id>` | ❌ | **skip** | Niche; rotting data. |
 | Suspension history | ✅ via `/sperren/spieler/<id>` | ❌ | **skip** | Niche; cards data is already in stats. |
 | Image (player photo) | ✅ | ❌ skip (copyrighted) | **skip** | Per hybrid workspace policy: reviewer/operator uploads CC-licensed photos manually. |
-| Captain status (current) | ✅ on squad page (current season) | ❌ | **PR B implement** | Squad spider misses the captain icon; easy CSS-selector add. |
+| Captain status (current) | ⚠️ **NOT on TM's squad page** (audited 2026-06-09 against current + 2015/16 + 1985/86 fixtures — no `kapitaen*` class, no "C" badge, no "Captain" label). TM only marks the per-match captain via the graphic-lineup formation. | ✅ derivable | **PR B partial: derive from latest match lineup** | The `match` spider already captures per-match `captain: bool` via `.kapitaenicon-formation` on each player in the graphic_lineup. Player.is_captain is therefore derived at import time: the player marked captain in the team's most-recent match. Squad spider unconditionally emits `is_captain=False`. |
 | Retired flag | ✅ derivable from "Career ended" facts entry | ✅ | — | `is_retired()` helper. |
 | Homegrown flag | ✅ via flag icon on squad page | ✅ | — | `is_homegrown()` helper. |
 
@@ -188,7 +188,7 @@ Each row classifies fields as **TM publishes** (✅), **TM doesn't publish for t
 | Field | TM publishes? | In pipeline? | Recommendation | Notes |
 |---|---|---|---|---|
 | Record arrivals (top fees in) | ✅ via `transferrekorde/verein/2976` | ✅ | — | Existing records spider. |
-| Record departures (top fees out) | ✅ same page, different tab | ⚠️ only one tab scraped | **PR B implement** | Scrape both tabs. |
+| Record departures (top fees out) | ⚠️ **NOT a separate TM page anymore** (audited 2026-06-09 — `?sa=1`, `/teuerstetransfers/`, `/transfererloese/` all 404 or fall back to arrivals). | ✅ derivable | **PR B partial: derive from alletransfers** | The `transfers` spider already yields `direction: "out"` rows from `alletransfers/verein/2976`. Records-page rendering sorts those by fee descending + takes top N to populate the "record departures" section. Records spider stays single-direction (arrivals only); the row carries `direction: "in"` so the schema is unified across pipeline-emitted vs derived rows. |
 | All-time top scorer (HBS-career-only) | ✅ via `torschuetzenkoenig/verein/2976` — but page returned 404 in probe | ⚠️ only "since 1985/86 stats" via leaderboards aggregation | **PR B verify** | If the dedicated page is gone, leaderboards from stats.jsonl is the next best thing. Note: stats start 1985/86, so "all-time top scorer" is "top scorer since 1985/86" — acknowledge this limit in the page footer. |
 | Most appearances | ✅ derivable from stats | ✅ via leaderboards | — | Same caveat as above. |
 | Longest winning streak / biggest win / loss | ⚠️ TM doesn't surface explicitly | ❌ | **Phase 3b** | Computable from fixtures.json. |

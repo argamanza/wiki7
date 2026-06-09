@@ -5,7 +5,10 @@ import tempfile
 from pathlib import Path
 
 
-from data_pipeline.normalize_enrich_players import main, normalize_player, normalize_transfers, normalize_market_values, normalize_stats
+from data_pipeline.normalize_enrich_players import (
+    main, normalize_player, normalize_transfers, normalize_market_values, normalize_stats,
+    _parse_preferred_foot, _parse_height_cm, _latest_market_value,
+)
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -65,6 +68,106 @@ class TestNormalizePlayer:
         }
         player = normalize_player(raw)
         assert player.name_hebrew == "שגיב יחזקאל"
+
+
+class TestPlayerR2Fields:
+    """Phase 3a R2: new player fields (preferred_foot, height_cm,
+    contract_expires, current_market_value, other_positions) flow from
+    raw spider output through normalization."""
+
+    def test_full_r2_player(self):
+        raw = {
+            "name_english": "Sagiv Jehezkel",
+            "profile_url": "https://www.transfermarkt.com/test/profil/spieler/503642",
+            "number": "10",
+            "season": "2024",
+            "loaned": False,
+            "facts": {
+                "Foot": "right",
+                "Height": "1,78 m",
+                "Contract expires": "30/06/2027",
+            },
+            "positions": {
+                "main": "Attacking Midfield",
+                "other": ["Second Striker", "Left Winger"],
+            },
+            "transfers": [],
+            "market_value_history": [
+                {"date": "Jun 2023", "value": "€1.50m", "team": "Hapoel Beer Sheva"},
+                {"date": "Dec 2024", "value": "€2.50m", "team": "Hapoel Beer Sheva"},
+            ],
+            # Phase 3a R2: squad spider always emits is_captain=False; the
+            # actual current-captain derivation happens elsewhere.
+            "is_captain": False,
+        }
+        player = normalize_player(raw)
+        assert player.preferred_foot == "right"
+        assert player.height_cm == 178
+        assert player.contract_expires == "30/06/2027"
+        assert player.current_market_value == "€2.50m"
+        assert player.other_positions == ["Second Striker", "Left Winger"]
+        assert player.is_captain is False
+
+    def test_pre_2003_player_has_no_market_value(self):
+        """1985/86-era player: no market_value_history rows. current_market_value
+        normalises to None so the infobox can skip rendering the row."""
+        raw = {
+            "name_english": "Historical Player",
+            "profile_url": "https://www.transfermarkt.com/test/profil/spieler/99",
+            "number": "-",
+            "season": "1985",
+            "loaned": False,
+            "facts": {},
+            "positions": {},
+            "transfers": [],
+            "market_value_history": [],
+        }
+        player = normalize_player(raw)
+        assert player.current_market_value is None
+        assert player.preferred_foot is None
+        assert player.height_cm is None
+        assert player.other_positions == []
+
+
+class TestR2Helpers:
+    """Helpers behind the R2 player fields. Tested standalone so the
+    parsing rules are pinned independent of the full normalize_player path.
+    """
+
+    def test_preferred_foot(self):
+        assert _parse_preferred_foot("right") == "right"
+        assert _parse_preferred_foot("Left") == "left"
+        assert _parse_preferred_foot("BOTH") == "both"
+        assert _parse_preferred_foot("") is None
+        assert _parse_preferred_foot(None) is None
+        # Unknown values normalise to None rather than passing through.
+        assert _parse_preferred_foot("ambidextrous") is None
+
+    def test_height_cm_european_comma(self):
+        assert _parse_height_cm("1,78 m") == 178
+
+    def test_height_cm_anglo_dot(self):
+        assert _parse_height_cm("1.78 m") == 178
+
+    def test_height_cm_no_unit_suffix(self):
+        assert _parse_height_cm("1.95") == 195
+
+    def test_height_cm_missing(self):
+        assert _parse_height_cm("") is None
+        assert _parse_height_cm(None) is None
+
+    def test_height_cm_malformed(self):
+        assert _parse_height_cm("very tall") is None
+
+    def test_latest_market_value(self):
+        history = [
+            {"date": "Jun 2023", "value": "€1.50m", "team": "Hapoel Beer Sheva"},
+            {"date": "Dec 2024", "value": "€2.50m", "team": "Hapoel Beer Sheva"},
+        ]
+        assert _latest_market_value(history) == "€2.50m"
+
+    def test_latest_market_value_empty(self):
+        assert _latest_market_value([]) is None
 
 
 class TestNormalizeTransfers:

@@ -25,12 +25,22 @@ class SquadSpider(scrapy.Spider):
 
             if name and link:
                 self.players_scraped += 1
+                # Phase 3a R2: TM's modern squad page does NOT expose a captain
+                # marker (audited 2026-06-09 against 2015/16 and 1985/86 kader
+                # fixtures + the current squad page — no `kapitaenicon-*`
+                # classes, no "Captain" label, no "C" badge). The is_captain
+                # field on the Player model is therefore populated *outside*
+                # the squad spider: the latest match-report's graphic_lineups
+                # carries a per-match captain bool already, which the import
+                # step can use to derive "current captain". Hand-curation is
+                # the fallback. Default False here.
                 yield {
                     "name_english": name.strip(),
                     "profile_url": response.urljoin(link.strip()),
                     "number": number.strip() if number else "-",
                     "season": self.season,
-                    "loaned": False
+                    "loaned": False,
+                    "is_captain": False,
                 }
 
         # Now follow to the loaned players page
@@ -53,7 +63,9 @@ class SquadSpider(scrapy.Spider):
                     "profile_url": response.urljoin(link.strip()),
                     "number": "-",  # loan page doesn't include jersey number
                     "season": self.season,
-                    "loaned": True
+                    "loaned": True,
+                    # Loaned-out players can't be the active captain of HBS.
+                    "is_captain": False,
                 }
 
         self.logger.info(f"Scraped total {self.players_scraped} players for season {self.season}")

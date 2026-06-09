@@ -19,6 +19,8 @@ from scrapy.http import HtmlResponse, Request
 
 from tmk_scraper.spiders.coach_spider import CoachSpider
 from tmk_scraper.spiders.match_spider import MatchSpider
+from tmk_scraper.spiders.records_spider import RecordsSpider
+from tmk_scraper.spiders.squad_spider import SquadSpider
 from tmk_scraper.spiders.transfers_spider import TransfersSpider
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -68,6 +70,113 @@ class TestMatchSpiderPhase3a:
         # First call sees the home team; second call should return "away" regardless of name.
         assert self.spider.resolve_team_key("Hapoel Beer Sheva", response) == "home"
         assert self.spider.resolve_team_key("Hapoel Jerusalem", response) == "away"
+
+
+class TestMatchSpiderR2Additions:
+    """Phase 3a R2: halftime score, stadium, main referee, AET inference,
+    referee-team placeholder fields.
+    """
+
+    def setup_method(self):
+        self.spider = MatchSpider(season="2024")
+
+    def test_extract_halftime_score(self):
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        # Fixture is HBS 3:1 H. Jerusalem with HT 0:1.
+        assert self.spider.extract_halftime_score(response) == "0:1"
+
+    def test_extract_stadium(self):
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        # 2024/25 fixture is at Turner Stadium.
+        assert self.spider.extract_stadium(response) == "Toto Jacob Turner Stadium"
+
+    def test_extract_referee_modern_match(self):
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        assert self.spider.extract_referee(response) == "Yoav Mizrahi"
+
+    def test_extract_referee_1985_match(self):
+        """Verify the same selector works against TM's 1985/86-era HTML. The
+        Sep 14 1985 fixture was refereed by Zvi Sharir (verified during PR A
+        probing).
+        """
+        response = _fake_response(FIXTURES_DIR / "match_report_1985_sample.html")
+        assert self.spider.extract_referee(response) == "Zvi Sharir"
+
+    def test_aet_false_when_no_penalties_no_late_goal(self):
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        response.request.meta["match_data"] = {"competition": "Ligat ha'Al"}
+        record = next(iter(self.spider.parse_match_report(response)))
+        # 3:1 in regulation with no late winner past minute 90.
+        assert record["aet"] is False
+
+    def test_referee_team_placeholder_fields_default_none(self):
+        """TM doesn't expose assistants / 4th official / VAR in the match-
+        report layout; PR B records them as nullable for hand-curation or a
+        future IFA scraper. Spider must emit them as None so the schema
+        validates and Cargo skips them on store.
+        """
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        response.request.meta["match_data"] = {"competition": "Ligat ha'Al"}
+        record = next(iter(self.spider.parse_match_report(response)))
+        assert record["assistant_referee_1"] is None
+        assert record["assistant_referee_2"] is None
+        assert record["fourth_official"] is None
+        assert record["var_referee"] is None
+        assert record["var_assistant"] is None
+
+
+class TestSquadSpiderR2Captain:
+    """Phase 3a R2 finding: TM's squad page does NOT expose a captain marker
+    in any era (audited 2026-06-09 against 2015/16, 1985/86, and current
+    fixtures). The is_captain field on the Player model is populated outside
+    the squad spider — from the latest match-report's graphic_lineups (which
+    already carries a per-match captain bool), or by hand-curation. The squad
+    spider emits is_captain=False unconditionally.
+    """
+
+    def test_2015_squad_defaults_to_no_captain(self):
+        spider = SquadSpider(season="2015")
+        response = _fake_response(FIXTURES_DIR / "kader_2015_sample.html")
+        # The spider also yields a Request to the loans page at the end;
+        # filter it out so we're only asserting against player dicts.
+        players = [item for item in spider.parse(response) if isinstance(item, dict)]
+        assert len(players) > 0
+        assert all(p["is_captain"] is False for p in players)
+
+    def test_1985_squad_defaults_to_no_captain(self):
+        spider = SquadSpider(season="1985")
+        response = _fake_response(FIXTURES_DIR / "kader_1985_sample.html")
+        players = [item for item in spider.parse(response) if isinstance(item, dict)]
+        assert len(players) > 0
+        assert all(p["is_captain"] is False for p in players)
+
+    def test_loaned_players_default_to_no_captain(self):
+        spider = SquadSpider(season="2015")
+        response = _fake_response(FIXTURES_DIR / "kader_2015_sample.html")
+        loans = list(spider.parse_loans(response))
+        for p in loans:
+            assert p["is_captain"] is False
+
+
+class TestRecordsSpiderR2Direction:
+    """Phase 3a R2 finding: TM removed the separate departures page. Records
+    spider stays single-direction (arrivals only) but every row carries a
+    `direction: "in"` marker so downstream code can populate departure rows
+    derived from alletransfers into the same shape.
+    """
+
+    def test_records_arrivals_carries_direction_marker(self):
+        spider = RecordsSpider()
+        response = _fake_response(
+            FIXTURES_DIR / "transferrekorde_arrivals_sample.html",
+            url="https://www.transfermarkt.com/hapoel-beer-sheva/transferrekorde/verein/2976",
+        )
+        records = list(spider.parse(response))
+        assert len(records) > 0
+        for r in records:
+            assert r["direction"] == "in"
+            assert r["player_name"]
+            assert r["value"]
 
 
 class TestCoachSpiderPhase3a:

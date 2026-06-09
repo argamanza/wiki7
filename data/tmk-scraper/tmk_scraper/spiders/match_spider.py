@@ -38,6 +38,7 @@ class MatchSpider(scrapy.Spider):
 
         graphic_lineups = self.extract_from_graphic_field(response)
         table_lineups = self.extract_from_simple_table(response)
+        goals = self.extract_goals(response)
 
         data = {
             "season": self.season,
@@ -45,17 +46,82 @@ class MatchSpider(scrapy.Spider):
             "report_scraped_from": response.url,
             "home_lineup": graphic_lineups.get("home") or table_lineups.get("home"),
             "away_lineup": graphic_lineups.get("away") or table_lineups.get("away"),
-            "goals": self.extract_goals(response),
+            "goals": goals,
             "substitutions": self.extract_substitutions(response),
             "cards": self.extract_cards(response),
             "manager_sanctions": self.extract_manager_sanctions(response),
+            # Phase 3a R2 additions: match-detail fields surfaced inline in the
+            # match-report metadata box (`.sb-zusatzinfos`) or derived from the
+            # score / goal markers.
+            "halftime_score": self.extract_halftime_score(response),
+            "stadium": self.extract_stadium(response),
+            "referee": self.extract_referee(response),
         }
 
         penalties = self.extract_penalties(response)
         if penalties:
             data["penalties"] = penalties
 
+        # AET is True if penalties were taken OR any goal was scored after the
+        # 90th minute. TM doesn't expose an explicit AET marker on the English-
+        # localised match-report layout, so this heuristic covers both cases:
+        # straight extra-time without penalties (late winner in stoppage-AET
+        # rather than 90+) and the penalties path.
+        data["aet"] = bool(penalties) or any(
+            (g.get("minute") or 0) > 90 for g in goals
+        )
+
+        # Phase 3a R2 referee-team placeholder fields. TM only exposes the main
+        # referee on its match-report layout (audited 2026-06-09 against 2024/25
+        # + 2015/16 fixtures). The other 5 slots stay null on the data file so
+        # reviewers + a future IFA spider can fill them later without schema
+        # churn. See docs/research/0002-transfermarkt-data-surface.md §3.2.
+        data["assistant_referee_1"] = None
+        data["assistant_referee_2"] = None
+        data["fourth_official"] = None
+        data["var_referee"] = None
+        data["var_assistant"] = None
+
         yield data
+
+    @staticmethod
+    def extract_halftime_score(response) -> str | None:
+        """Return the halftime score string ("0:1") or None if absent.
+
+        Surfaced on TM's match-report inside `.sb-endstand > .sb-halbzeit` as
+        `(0:<span>1</span>)`. TM duplicates the scoreboard markup on the page
+        (once in the main header, once in a compact summary box), so we take
+        the first occurrence only.
+        """
+        first = response.css(".sb-endstand .sb-halbzeit").get()
+        if not first:
+            return None
+        # Strip the inner HTML tags out via selector text traversal on the
+        # captured fragment.
+        from scrapy.selector import Selector
+        text = "".join(Selector(text=first).css("::text").getall())
+        cleaned = text.replace("(", "").replace(")", "").strip()
+        return cleaned or None
+
+    @staticmethod
+    def extract_stadium(response) -> str | None:
+        """Stadium name from `.sb-zusatzinfos a[href*='/stadion/']`."""
+        stadium = response.css('.sb-zusatzinfos a[href*="/stadion/"]::text').get()
+        return stadium.strip() if stadium else None
+
+    @staticmethod
+    def extract_referee(response) -> str | None:
+        """Main referee from `.sb-zusatzinfos a[href*='/schiedsrichter/']`.
+
+        Falls back to the `title` attribute when the inline text is empty (TM
+        sometimes wraps the referee name in an `<a>` whose text comes from a
+        non-default rendering path).
+        """
+        link = response.css('.sb-zusatzinfos a[href*="/schiedsrichter/"]')
+        if not link:
+            return None
+        name = link.css("::text").get() or link.attrib.get("title", "")
+        return name.strip() or None
 
     def extract_goals(self, response):
         goals = []
