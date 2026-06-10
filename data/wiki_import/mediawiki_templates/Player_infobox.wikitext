@@ -46,4 +46,22 @@
 {{!}} [https://www.transfermarkt.com/player/profil/spieler/{{{tmk_id|}}} Transfermarkt]
 }}
 |}
+{{!-- Cargo storage — every player page transcludes this infobox, so calling
+     Template:Cargo/Player here populates the `players` Cargo table without
+     requiring the page wikitext to invoke both templates. Field-name mapping
+     normalises infobox params (position, jersey_number) to Cargo names
+     (main_position, current_jersey_number). --}}
+{{Cargo/Player
+| tmk_id = {{{tmk_id|}}}
+| name_english = {{{name_english|}}}
+| name_hebrew = {{{name_hebrew|}}}
+| birth_date = {{{birth_date|}}}
+| birth_place = {{{birth_place|}}}
+| nationality = {{{nationality|}}}
+| main_position = {{{position|}}}
+| current_jersey_number = {{{jersey_number|}}}
+| current_squad = {{{current_squad|}}}
+| homegrown = {{{homegrown|}}}
+| retired = {{{retired|}}}
+}}
 </includeonly>

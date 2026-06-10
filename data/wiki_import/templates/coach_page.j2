@@ -9,4 +9,23 @@
 
 |}
 
+{# Cargo storage — one row per coach. tenure_seasons + hbs_trophies_won are
+   pipe-list values for the Cargo `List` field type. #}
+{% for c in coaches %}
+{{"{{"}}Cargo/Coach
+| coach_id = {{ c.id or '' }}
+| name = {{ c.name or '' }}
+| tenure_start = {{ c.tenure_start or '' }}
+| tenure_end = {{ c.tenure_end or '' }}
+| played = {{ c.played or 0 }}
+| wins = {{ c.wins or 0 }}
+| draws = {{ c.draws or 0 }}
+| losses = {{ c.losses or 0 }}
+| ppm = {{ c.ppm or '' }}
+| is_caretaker = {{ 'Yes' if c.is_caretaker else 'No' }}
+| tenure_seasons = {{ c.tenure_seasons | join(',') if c.tenure_seasons else '' }}
+| hbs_trophies_won = {{ c.hbs_trophies_won | join(',') if c.hbs_trophies_won else '' }}
+{{"}}"}}
+{% endfor %}
+
 [[קטגוריה:מאמנים]]

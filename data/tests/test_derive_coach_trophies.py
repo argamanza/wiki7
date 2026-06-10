@@ -113,10 +113,10 @@ class TestDeriveEndToEnd:
         coaches_current = [
             {"id": "96723", "name": "Ran Kozuch", "role": "Manager",
              "tenure_start": "01/07/2024", "tenure_end": "30.06.2028",
-             "matches": 0, "wins": 0, "draws": 0, "losses": 0, "ppm": ""},
+             "played": 0, "wins": 0, "draws": 0, "losses": 0, "ppm": ""},
             {"id": "10000", "name": "Ben Binyamin", "role": "Assistant Manager",
              "tenure_start": "01/07/2024", "tenure_end": "",
-             "matches": 0, "wins": 0, "draws": 0, "losses": 0, "ppm": ""},
+             "played": 0, "wins": 0, "draws": 0, "losses": 0, "ppm": ""},
         ]
 
         honours_path = tmp_path / "honours.json"

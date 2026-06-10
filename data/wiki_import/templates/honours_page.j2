@@ -9,6 +9,11 @@
 {% endfor %}
 {% endif %}
 
+{{"{{"}}Cargo/Honour
+| competition = {{ honour.competition or '' }}
+| achievement = {{ honour.achievement or '' }}
+| seasons = {{ honour.seasons | join(',') if honour.seasons else '' }}
+{{"}}"}}
 {% endfor %}
 
 [[קטגוריה:תארים]]

@@ -249,34 +249,58 @@ uv run python run_pipeline.py --season 2024
 # 6. Fix issues in code, repeat.
 ```
 
-## 9. Cargo tables — post-import approval + population
+## 9. Cargo tables — post-import approval + population (fully automatable)
 
-When the bot writes Cargo declaration templates (`Template:Cargo/Player`, etc.), they land in `NS_TEMPLATE` which has Approved Revs gating. **Until a reviewer approves each template, the Cargo extension doesn't create the SQL table.** Existing player/match pages that transclude the template skip their `#cargo_store` calls.
+Cargo's table-creation lifecycle has TWO subtle gotchas that bit iter-cycle 1. Read all of §9 before running anything new — there's a fix here for both.
 
-One-time steps after each bot import:
+### How `#cargo_declare` actually behaves
 
-1. **Approve each Cargo template** via `Special:ApprovedRevs?show=unapproved` (the canonical "show me everything never approved" view on this install — `Special:UnapprovedPages` returns nothing on MW 1.45 / Approved Revs current; the extension consolidated those into a query-filter on `Special:ApprovedRevs`). There are 9 Cargo templates plus 4 MediaWiki infobox templates plus the main page + sub-templates.
+Per the Cargo docs (mediawiki.org/wiki/Extension:Cargo/Storing_data): **`#cargo_declare` does NOT create the SQL table when parsed.** It only registers the schema in MediaWiki's `page_props` table (as `CargoTableName` + `CargoFields`). The actual SQL table creation is a separate, **explicit** action triggered either by:
 
-2. **Populate Cargo data rows** — existing pages need a re-parse to fire their `#cargo_store` calls. Use the Cargo maintenance script:
+- Clicking the **"Create data" / "Recreate data"** tab on the template page (UI), or
+- Running `cargoRecreateData.php --table <NAME>` (CLI)
 
-   ```bash
-   docker exec docker-mediawiki-1 php \
-     /var/www/html/extensions/Cargo/maintenance/cargoRecreateData.php \
-     --table=players
-   # Repeat per Cargo table (matches, transfers, player_stats, coaches,
-   # honours, market_values, season_standings, head_to_head).
-   ```
+**Caveat: `cargoRecreateData.php` WITHOUT `--table` is a no-op on a fresh install** — it iterates over already-registered tables in `cargo_tables`, which is empty until each table is created at least once. Don't be misled by its silent exit-0.
 
-   Or run unconditional rebuild across all Cargo tables:
+Additionally, **Approved Revs gates the `#cargo_declare` parse:** the template lands as latest-unapproved on the bot's write; the parse that populates `page_props` happens after a reviewer approves the template's current revision.
 
-   ```bash
-   docker exec docker-mediawiki-1 php \
-     /var/www/html/extensions/Cargo/maintenance/cargoRecreateData.php
-   ```
+### Cargo reserved words
 
-3. **Verify on `Special:Cargo`** — each Cargo table should now report row counts.
+`CargoDeclare.php` rejects table names AND field names that match its small reserved list: **`holds`, `matches`, `near`, `within`**. The rejection is silent — `#cargo_declare` just doesn't register the schema in `page_props`, and a small error message appears on the template page. This is what made the table named `matches` and the field named `matches` both silently fail in iter-cycle 1 (now renamed to `match_reports` and `played` respectively). Avoid these four names entirely for both new tables and new fields.
 
-This workflow is documented as a Phase 3b backlog item for eventual automation. Reviewer handles it manually during the iteration-cycle phase.
+### The recipe (fully automated, no clicking)
+
+After every bot import, run two scripts back-to-back:
+
+```bash
+# Step 1 — approve all unapproved revisions. Fires the #cargo_declare parse
+# on every Cargo template, which populates page_props. Also approves the 4
+# MediaWiki templates + 11 main-page sub-templates + the homepage.
+docker exec docker-mediawiki-1 php /var/www/html/maintenance/run.php \
+  /var/www/html/extensions/ApprovedRevs/maintenance/approveAllPages.php
+
+# Step 2 — create the SQL table + populate it for each Cargo table. The
+# script reads CargoTableName from page_props (populated by step 1) to find
+# the declaring template, creates the SQL table, then queues background
+# jobs to crawl every page transcluding the template + run #cargo_store.
+for table in players match_reports transfers market_values player_stats \
+             coaches honours season_standings head_to_head; do
+  docker exec docker-mediawiki-1 php /var/www/html/maintenance/run.php \
+    /var/www/html/extensions/Cargo/maintenance/cargoRecreateData.php \
+    --table=$table --quiet
+done
+
+# Step 3 — drain the background-job queue so the data actually lands in
+# the Cargo tables before the reviewer starts inspecting. cargoRecreateData
+# enqueues `cargoPopulateTable` jobs; runJobs drains them synchronously.
+docker exec docker-mediawiki-1 php /var/www/html/maintenance/run.php runJobs.php
+```
+
+### Verify
+
+`http://localhost:8080/Special:Cargo` should now show each table with > 0 rows. Spot-check one query: `Special:CargoQuery` → table `match_reports` → fields `_pageName, opponent, result, season` → run.
+
+If a table is missing, the most common cause is the same Approved Revs / reserved-word combo: check `page_props WHERE pp_propname='CargoTableName'` to see which schemas registered.
 
 ---
 

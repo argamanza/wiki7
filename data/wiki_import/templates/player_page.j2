@@ -22,6 +22,21 @@
 {% endfor %}
 
 |}
+{# Cargo storage — one row per transfer. Invisible (the wikitext above
+   renders the user-facing table; this is data-only for queries). #}
+{% for t in transfers %}
+{{"{{"}}Cargo/Transfer
+| player_id = {{ player.id }}
+| season = {{ t.season or '' }}
+| transfer_date = {{ t.transfer_date or '' }}
+| from_club = {{ t.from_club or '' }}
+| to_club = {{ t.to_club or '' }}
+| fee = {{ t.fee or '' }}
+| loan = {{ 'Yes' if t.loan else 'No' }}
+| from_club_tm_id = {{ t.from_club_tm_id or '' }}
+| to_club_tm_id = {{ t.to_club_tm_id or '' }}
+{{"}}"}}
+{% endfor %}
 {% endif %}
 
 {% if stats %}
@@ -37,6 +52,20 @@
 |-
 ! סה"כ !! {{ stats | sum(attribute='appearances') }} !! {{ stats | sum(attribute='goals') }} !! {{ stats | sum(attribute='assists') }} !! {{ stats | sum(attribute='yellow_cards') }} !! {{ stats | map(attribute='second_yellow_cards') | map('default', 0) | sum }} !! {{ stats | sum(attribute='red_cards') }} !! {{ stats | sum(attribute='minutes_played') }}
 |}
+{# Cargo storage — one row per season's stats. #}
+{% for s in stats %}
+{{"{{"}}Cargo/PlayerStats
+| player_id = {{ player.id }}
+| season = {{ s.season or '' }}
+| appearances = {{ s.appearances or 0 }}
+| goals = {{ s.goals or 0 }}
+| assists = {{ s.assists or 0 }}
+| yellow_cards = {{ s.yellow_cards or 0 }}
+| second_yellow_cards = {{ s.get('second_yellow_cards', 0) }}
+| red_cards = {{ s.red_cards or 0 }}
+| minutes_played = {{ s.minutes_played or 0 }}
+{{"}}"}}
+{% endfor %}
 {% endif %}
 
 {% if market_values %}
@@ -49,6 +78,15 @@
 {% endfor %}
 
 |}
+{# Cargo storage — one row per market-value snapshot. #}
+{% for mv in market_values %}
+{{"{{"}}Cargo/MarketValue
+| player_id = {{ player.id }}
+| value_date = {{ mv.value_date or '' }}
+| value = {{ mv.value or '' }}
+| team = {{ mv.team or '' }}
+{{"}}"}}
+{% endfor %}
 {% endif %}
 
 [[קטגוריה:שחקנים]]

@@ -88,7 +88,13 @@ CARGO_TABLES = {
         },
     },
     "Template:Cargo/Match": {
-        "table": "matches",
+        # `match_reports` not `matches` — `matches` is a Cargo reserved word
+        # for both fields AND tables (CargoDeclare.php's $cargoReservedWords).
+        # Empirically verified iter-cycle 1: the table-rejection is silent
+        # (page_props for Template:Cargo/Match remained empty while the other
+        # 8 Cargo declarations registered cleanly). Same constraint applied
+        # to the `matches` field in three other tables (renamed to `played`).
+        "table": "match_reports",
         "fields": {
             "competition": "String",
             "matchday": "String",

@@ -1,6 +1,19 @@
 == עונת {{ season_display }} ==
 
 {% if standings %}
+{{"{{"}}Cargo/SeasonStanding
+| season = {{ standings.season or '' }}
+| competition = {{ standings.competition or '' }}
+| tier = {{ standings.tier or '' }}
+| final_position = {{ standings.final_position or '' }}
+| played = {{ standings.played or 0 }}
+| wins = {{ standings.wins or 0 }}
+| draws = {{ standings.draws or 0 }}
+| losses = {{ standings.losses or 0 }}
+| goals_for = {{ standings.goals_for or 0 }}
+| goals_against = {{ standings.goals_against or 0 }}
+| points = {{ standings.points or 0 }}
+{{"}}"}}
 === סיכום העונה ===
 {| class="wikitable"
 ! נתון !! ערך

@@ -33,6 +33,28 @@
 | attendance = {{ match.attendance or '' }}
 {{"}}"}}
 
+{{"{{"}}Cargo/Match
+| competition = {{ match.competition or '' }}
+| matchday = {{ match.matchday or '' }}
+| match_date = {{ match.date or '' }}
+| match_time = {{ match.time or '' }}
+| venue = {{ match.venue or '' }}
+| opponent = {{ match.opponent or '' }}
+| result = {{ match.result or '' }}
+| system_of_play = {{ match.system_of_play or '' }}
+| attendance = {{ match.attendance or '' }}
+| season = {{ match.season or '' }}
+| halftime_score = {{ match.halftime_score or '' }}
+| aet = {{ 'Yes' if match.aet else 'No' }}
+| stadium = {{ match.stadium or '' }}
+| referee = {{ match.referee or '' }}
+| assistant_referee_1 = {{ match.assistant_referee_1 or '' }}
+| assistant_referee_2 = {{ match.assistant_referee_2 or '' }}
+| fourth_official = {{ match.fourth_official or '' }}
+| var_referee = {{ match.var_referee or '' }}
+| var_assistant = {{ match.var_assistant or '' }}
+{{"}}"}}
+
 {% if match.home_lineup %}
 == הרכב ביתי ==
 {% if match.home_lineup is mapping %}
