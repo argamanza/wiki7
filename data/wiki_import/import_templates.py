@@ -137,7 +137,10 @@ CARGO_TABLES = {
             "name": "String",
             "tenure_start": "String",
             "tenure_end": "String",
-            "matches": "Integer",
+            # `played` not `matches` — Cargo reserves `matches` as a SQL-ish
+            # keyword (CargoDeclare.php $cargoReservedWords). Same constraint
+            # applies to season_standings + head_to_head schemas below.
+            "played": "Integer",
             "wins": "Integer",
             "draws": "Integer",
             "losses": "Integer",
@@ -164,7 +167,7 @@ CARGO_TABLES = {
             "competition": "String",         # e.g. "Ligat ha'Al"
             "tier": "Integer",               # 1 = top flight, 2 = second tier
             "final_position": "Integer",
-            "matches": "Integer",
+            "played": "Integer",             # NOT `matches` — Cargo reserved (see Coach above)
             "wins": "Integer",
             "draws": "Integer",
             "losses": "Integer",
@@ -178,7 +181,7 @@ CARGO_TABLES = {
         "fields": {
             "opponent": "String",
             "opponent_tm_id": "String",
-            "matches": "Integer",
+            "played": "Integer",             # NOT `matches` — Cargo reserved (see Coach above)
             "wins": "Integer",
             "draws": "Integer",
             "losses": "Integer",
@@ -977,7 +980,7 @@ def import_derbies_page(
     derby_aliases = {a for derby in _MAJOR_DERBIES for a in derby["aliases"]}
     other_opponents = sorted(
         (r for r in rows if r["opponent"] not in derby_aliases),
-        key=lambda r: r.get("matches", 0),
+        key=lambda r: r.get("played", 0),
         reverse=True,
     )
 

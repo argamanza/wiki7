@@ -12,7 +12,7 @@
 {| class="wikitable"
 ! נתון !! ערך
 |-
-| משחקים || {{ derby.row.matches }}
+| משחקים || {{ derby.row.played }}
 |-
 | ניצחונות || {{ derby.row.wins }}
 |-
@@ -20,7 +20,7 @@
 |-
 | הפסדים || {{ derby.row.losses }}
 |-
-| אחוז ניצחונות || {{ "%.1f"|format(derby.row.wins / derby.row.matches * 100) if derby.row.matches > 0 else '—' }}%
+| אחוז ניצחונות || {{ "%.1f"|format(derby.row.wins / derby.row.played * 100) if derby.row.played > 0 else '—' }}%
 {% if derby.row.avg_attendance %}
 |-
 | ממוצע צופים || {{ "{:,}".format(derby.row.avg_attendance) }}
@@ -41,7 +41,7 @@
 ! יריבה !! משחקים !! ניצחונות !! תיקואים !! הפסדים !! % ניצחונות
 {% for r in other_opponents[:20] %}
 |-
-| [[{{ r.opponent }}]] || {{ r.matches }} || {{ r.wins }} || {{ r.draws }} || {{ r.losses }} || {{ "%.1f"|format(r.wins / r.matches * 100) if r.matches > 0 else '—' }}%
+| [[{{ r.opponent }}]] || {{ r.played }} || {{ r.wins }} || {{ r.draws }} || {{ r.losses }} || {{ "%.1f"|format(r.wins / r.played * 100) if r.played > 0 else '—' }}%
 {% endfor %}
 
 |}

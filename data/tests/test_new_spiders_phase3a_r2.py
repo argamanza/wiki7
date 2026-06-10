@@ -118,12 +118,12 @@ class TestBilanzSpider:
         assert len(derby_hits) >= 3, f"expected 3+ derby rivals, found {derby_hits}"
 
     def test_aggregates_arithmetic(self):
-        """For every row, wins + draws + losses must equal matches."""
+        """For every row, wins + draws + losses must equal played."""
         for r in self.rows:
             total = r["wins"] + r["draws"] + r["losses"]
-            assert total == r["matches"], (
+            assert total == r["played"], (
                 f"WDL sum mismatch for {r['opponent']}: "
-                f"{r['wins']}+{r['draws']}+{r['losses']} != {r['matches']}"
+                f"{r['wins']}+{r['draws']}+{r['losses']} != {r['played']}"
             )
 
     def test_attendance_parsed_to_int_or_null(self):

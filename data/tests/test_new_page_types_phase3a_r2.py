@@ -28,20 +28,20 @@ class TestDerbiesPage:
     def test_renders_all_four_major_derbies_with_data(self, tmp_path: Path):
         head_to_head = [
             {"opponent": "Maccabi Tel Aviv", "opponent_tm_id": "869",
-             "matches": 121, "wins": 35, "draws": 42, "losses": 44,
+             "played": 121, "wins": 35, "draws": 42, "losses": 44,
              "goals_for": 140, "goals_against": 160, "avg_attendance": 12500},
             {"opponent": "Hapoel Tel Aviv", "opponent_tm_id": "1000",
-             "matches": 100, "wins": 30, "draws": 35, "losses": 35,
+             "played": 100, "wins": 30, "draws": 35, "losses": 35,
              "goals_for": 110, "goals_against": 115, "avg_attendance": 8000},
             {"opponent": "Beitar Jerusalem", "opponent_tm_id": "3793",
-             "matches": 103, "wins": 53, "draws": 26, "losses": 24,
+             "played": 103, "wins": 53, "draws": 26, "losses": 24,
              "goals_for": 0, "goals_against": 0, "avg_attendance": 9501},
             {"opponent": "Maccabi Haifa", "opponent_tm_id": "999",
-             "matches": 119, "wins": 40, "draws": 35, "losses": 44,
+             "played": 119, "wins": 40, "draws": 35, "losses": 44,
              "goals_for": 0, "goals_against": 0, "avg_attendance": 10000},
             # Tail opponent
             {"opponent": "Bnei Sakhnin", "opponent_tm_id": "888",
-             "matches": 50, "wins": 25, "draws": 15, "losses": 10,
+             "played": 50, "wins": 25, "draws": 15, "losses": 10,
              "goals_for": 0, "goals_against": 0, "avg_attendance": 5000},
         ]
         path = _write_json(tmp_path / "head_to_head.json", head_to_head)
@@ -55,7 +55,7 @@ class TestDerbiesPage:
         must accept both the canonical and the short form."""
         head_to_head = [
             {"opponent": "B. Jerusalem", "opponent_tm_id": "3793",
-             "matches": 103, "wins": 53, "draws": 26, "losses": 24,
+             "played": 103, "wins": 53, "draws": 26, "losses": 24,
              "goals_for": 0, "goals_against": 0, "avg_attendance": 9501},
         ]
         path = _write_json(tmp_path / "head_to_head.json", head_to_head)

@@ -96,7 +96,7 @@ class TestDeriveEndToEnd:
         # Not in his tenure: 2018/19 super cup (he wasn't manager).
         assert "Israeli Super Cup 2025/26" not in bakhar["hbs_trophies_won"]
         # Match aggregation: should be 55W + 15D + 8L = 78 matches across 3 seasons.
-        assert bakhar["matches"] == 78
+        assert bakhar["played"] == 78
         assert bakhar["wins"] == 55
 
         # Abukasis: manager 2019/20 only, no honours that season.

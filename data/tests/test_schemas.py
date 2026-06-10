@@ -272,7 +272,7 @@ class TestSeasonStandingSchema:
     def test_full(self):
         s = SeasonStanding(
             season="2024", competition="Ligat ha'Al", tier=1,
-            final_position=1, matches=24, wins=17, draws=4, losses=3,
+            final_position=1, played=24, wins=17, draws=4, losses=3,
             goals_for=54, goals_against=23, points=55,
         )
         assert s.final_position == 1
@@ -282,17 +282,17 @@ class TestSeasonStandingSchema:
 class TestHeadToHeadSchema:
     def test_minimal(self):
         h = HeadToHead(opponent="Maccabi Tel Aviv")
-        assert h.matches == 0
+        assert h.played == 0
         assert h.wins == 0
 
     def test_full(self):
         h = HeadToHead(
             opponent="Maccabi Tel Aviv", opponent_tm_id="869",
-            matches=121, wins=35, draws=42, losses=44,
+            played=121, wins=35, draws=42, losses=44,
             goals_for=140, goals_against=160, avg_attendance=12500,
         )
         assert h.opponent_tm_id == "869"
-        assert h.matches == 121
+        assert h.played == 121
         assert h.wins + h.draws + h.losses == 121
 
 
@@ -300,7 +300,7 @@ class TestSeasonManagerSchema:
     def test_full(self):
         sm = SeasonManager(
             season="2015", coach_id="68820", coach_name="Barak Bakhar",
-            matches=46, wins=30, draws=11, losses=5, ppm="2.20",
+            played=46, wins=30, draws=11, losses=5, ppm="2.20",
         )
         assert sm.coach_id == "68820"
         assert sm.is_caretaker is False

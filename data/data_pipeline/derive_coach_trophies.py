@@ -146,7 +146,8 @@ def derive(
             "role": "Manager",
             "tenure_start": "",
             "tenure_end": "",
-            "matches": 0,
+            # `played` not `matches` — Cargo reserved keyword. See schemas.py Coach.
+            "played": 0,
             "wins": 0,
             "draws": 0,
             "losses": 0,
@@ -167,7 +168,7 @@ def derive(
                 coach[key] += val
 
     for coach in coaches_by_id.values():
-        coach["matches"] = coach["wins"] + coach["draws"] + coach["losses"]
+        coach["played"] = coach["wins"] + coach["draws"] + coach["losses"]
         coach["tenure_seasons"].sort()
         # Sort trophies by the season-suffix so newest is last (display happens
         # in template order; deterministic order keeps idempotent diffs).

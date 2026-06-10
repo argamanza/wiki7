@@ -39,7 +39,11 @@ class Coach(BaseModel):
     role: Optional[str] = None  # "Manager", "Assistant Manager", etc. (from /mitarbeiter/)
     tenure_start: Optional[str] = None
     tenure_end: Optional[str] = None
-    matches: int = 0
+    # Field is `played` not `matches` — `matches` is a Cargo reserved keyword
+    # (CargoDeclare.php $cargoReservedWords). Discovered iter-cycle 1 review
+    # when the HeadToHead Cargo template approval surfaced the error. Same
+    # constraint applies to all four Cargo schemas using games-played counts.
+    played: int = 0
     wins: int = 0
     draws: int = 0
     losses: int = 0
@@ -157,7 +161,7 @@ class SeasonStanding(BaseModel):
     competition: str  # e.g. "Ligat ha'Al"
     tier: Optional[int] = None  # 1 = top flight, 2 = second tier
     final_position: Optional[int] = None
-    matches: Optional[int] = None
+    played: Optional[int] = None  # NOT `matches` — Cargo reserved keyword (see Coach above).
     wins: Optional[int] = None
     draws: Optional[int] = None
     losses: Optional[int] = None
@@ -174,7 +178,7 @@ class HeadToHead(BaseModel):
     """
     opponent: str
     opponent_tm_id: Optional[str] = None  # for cross-linking
-    matches: int = 0
+    played: int = 0  # NOT `matches` — Cargo reserved keyword (see Coach above).
     wins: int = 0
     draws: int = 0
     losses: int = 0
@@ -193,7 +197,7 @@ class SeasonManager(BaseModel):
     coach_id: str
     coach_name: str
     is_caretaker: bool = False
-    matches: Optional[int] = None
+    played: Optional[int] = None  # NOT `matches` — Cargo reserved keyword (see Coach above).
     wins: Optional[int] = None
     draws: Optional[int] = None
     losses: Optional[int] = None

@@ -77,7 +77,8 @@ class CoachSpider(scrapy.Spider):
                 # The mitarbeiter page does not surface per-tenure match records; zero them
                 # out so the downstream pipeline can still validate against the Coach schema.
                 # Historical match records would come from a separate Phase 3b source.
-                "matches": 0,
+                # `played` not `matches` — Cargo reserved keyword. See schemas.py Coach.
+                "played": 0,
                 "wins": 0,
                 "draws": 0,
                 "losses": 0,

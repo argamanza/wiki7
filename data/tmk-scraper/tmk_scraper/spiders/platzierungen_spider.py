@@ -91,7 +91,8 @@ class PlatzierungenSpider(scrapy.Spider):
                 "competition": competition or None,
                 "tier": tier,
                 "final_position": final_position,
-                "matches": matches if matches > 0 else None,
+                # `played` not `matches` — Cargo reserved keyword. See schemas.py Coach.
+                "played": matches if matches > 0 else None,
                 "wins": wins,
                 "draws": draws,
                 "losses": losses,

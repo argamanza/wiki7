@@ -93,7 +93,9 @@ class BilanzSpider(scrapy.Spider):
             yield {
                 "opponent": opponent,
                 "opponent_tm_id": opponent_tm_id or None,
-                "matches": matches,
+                # `played` not `matches` — Cargo reserves `matches` as a SQL-ish
+                # keyword. See data_pipeline/schemas.py Coach class for full note.
+                "played": matches,
                 "wins": wins or 0,
                 "draws": draws or 0,
                 "losses": losses or 0,
