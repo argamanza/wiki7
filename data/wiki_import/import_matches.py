@@ -66,9 +66,17 @@ def _render_template(template_name: str, **kwargs) -> str:
     return template.render(**kwargs)
 
 
+# Retry policy tuned for MediaWiki's `ratelimited` API error specifically.
+# Wiki7Bot lives in the `bot` group (which has `noratelimit`), but in
+# practice we still hit `ratelimited` on burst writes — observed in the
+# 2024/25 iteration-cycle re-runs (2026-06-10) dropping single match pages.
+# MW's per-bucket reset window is typically ~60s, so we need backoff that
+# crosses that threshold rather than the original 3-attempt / ~6s policy.
+# Total worst-case wall-clock per page = 5 + 10 + 20 + 40 + 60 + 60 ≈ 3min,
+# acceptable for a once-per-page write.
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(6),
+    wait=wait_exponential(multiplier=5, min=5, max=60),
     retry=retry_if_exception_type((mwclient.errors.APIError, ConnectionError)),
     reraise=True,
 )

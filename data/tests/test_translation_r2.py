@@ -85,11 +85,17 @@ class TestLookup:
 class TestMigration:
     def test_migrate_entry_with_value(self):
         result = att._migrate_entry("שוער")
-        assert result == {"he": "שוער", "src": "manual", "confidence": "high", "note": ""}
+        assert result == {
+            "he": "שוער", "src": "manual", "confidence": "high",
+            "wikidata_qid": "", "note": "",
+        }
 
     def test_migrate_entry_empty(self):
         result = att._migrate_entry("")
-        assert result == {"he": "", "src": "", "confidence": "", "note": ""}
+        assert result == {
+            "he": "", "src": "", "confidence": "",
+            "wikidata_qid": "", "note": "",
+        }
 
     def test_migrate_section_with_mixed_entries(self):
         section = {
@@ -99,11 +105,14 @@ class TestMigration:
         }
         new_section, migrated = att._migrate_section(section)
         assert migrated == 1   # only "Goalkeeper" was a non-empty flat entry
-        # The nested entry passes through unchanged.
+        # The nested entry passes through unchanged, with wikidata_qid
+        # defaulted to "" since the legacy entry lacked the field.
         assert new_section["Already Nested"]["src"] == "auto-llm"
+        assert new_section["Already Nested"]["wikidata_qid"] == ""
         # The flat manual entry is now nested.
         assert new_section["Goalkeeper"] == {
-            "he": "שוער", "src": "manual", "confidence": "high", "note": ""
+            "he": "שוער", "src": "manual", "confidence": "high",
+            "wikidata_qid": "", "note": "",
         }
         # The flat empty entry is now an empty nested slot.
         assert new_section["Centre-Back"]["src"] == ""
@@ -223,6 +232,18 @@ class TestAutoTranslateOrchestration:
         }
         path = _write_mapping(tmp_path, mapping)
 
+        # Force Wikidata + Wikipedia to miss so the test reaches Claude
+        # deterministically (no live HTTP).
+        from data_pipeline import wikidata_lookup, wikipedia_lookup
+        monkeypatch.setattr(
+            wikidata_lookup, "lookup_batch",
+            lambda names, entity_type="player": {n: None for n in names},
+        )
+        monkeypatch.setattr(
+            wikipedia_lookup, "lookup_batch",
+            lambda names: {n: None for n in names},
+        )
+
         mock_client = MagicMock()
         mock_client.messages.create.return_value = _make_fake_claude_response([
             {"en": "Obscure Russian Player", "he": "פלוני אלמוני", "confidence": "low"},
@@ -236,28 +257,36 @@ class TestAutoTranslateOrchestration:
         assert entry["confidence"] == "low"
         assert entry["src"] == "auto-llm"
 
-    def test_wikipedia_first_then_claude_for_names(self, tmp_path, monkeypatch):
-        """Phase 3a R2: the `names` category gets a Wikipedia first-pass.
-        Anything Wikipedia resolves is stamped `src: wikipedia, confidence:
-        high`. The remaining unresolved names fall through to Claude."""
+    def test_wikidata_first_then_wikipedia_then_claude_for_names(self, tmp_path, monkeypatch):
+        """Iteration-cycle phase: the `names` category gets a Wikidata first-pass,
+        a Wikipedia langlinks secondary pass, then Claude. Wikidata-resolved
+        entries carry `src: wikidata` + `wikidata_qid: <Q-ID>`; the Wikipedia
+        secondary catches the remainder; Claude handles whatever both missed."""
         mapping = {
             "positions": {},
             "nationalities": {},
             "clubs": {},
             "competitions": {},
             "names": {
-                "Lior Refaelov": "",
-                "Sagiv Jehezkel": "",
-                "Obscure Player": "",
+                "Lior Refaelov": "",      # resolved via Wikidata
+                "Sagiv Jehezkel": "",     # resolved via Wikipedia secondary
+                "Obscure Player": "",     # falls through to Claude
             },
         }
         path = _write_mapping(tmp_path, mapping)
 
-        from data_pipeline import wikipedia_lookup
+        from data_pipeline import wikidata_lookup, wikipedia_lookup
+        monkeypatch.setattr(
+            wikidata_lookup, "lookup_batch",
+            lambda names, entity_type="player": {
+                "Lior Refaelov": ("ליאור רפאלוב", "Q964300"),
+                "Sagiv Jehezkel": None,
+                "Obscure Player": None,
+            },
+        )
         monkeypatch.setattr(
             wikipedia_lookup, "lookup_batch",
             lambda names: {
-                "Lior Refaelov": "ליאור רפאלוב",
                 "Sagiv Jehezkel": "שגיב יחזקאל",
                 "Obscure Player": None,
             },
@@ -274,22 +303,70 @@ class TestAutoTranslateOrchestration:
         reloaded = load_mapping(path)
 
         refaelov = reloaded["names"]["Lior Refaelov"]
-        assert refaelov["src"] == "wikipedia"
+        assert refaelov["src"] == "wikidata"
         assert refaelov["confidence"] == "high"
         assert refaelov["he"] == "ליאור רפאלוב"
+        assert refaelov["wikidata_qid"] == "Q964300"
 
         jehezkel = reloaded["names"]["Sagiv Jehezkel"]
         assert jehezkel["src"] == "wikipedia"
         assert jehezkel["he"] == "שגיב יחזקאל"
+        assert jehezkel["wikidata_qid"] == ""
 
         obscure = reloaded["names"]["Obscure Player"]
         assert obscure["src"] == "auto-llm"
         assert obscure["he"] == "פלוני אלמוני"
         assert obscure["confidence"] == "low"
+        assert obscure["wikidata_qid"] == ""
+
+    def test_wikidata_called_for_clubs_competitions_nationalities(self, tmp_path, monkeypatch):
+        """Iteration-cycle phase: Wikidata pass applies to all four categories.
+        Captures which entity_type was used for each category."""
+        mapping = {
+            "positions": {},
+            "nationalities": {"Israel": ""},
+            "clubs": {"Maccabi Tel Aviv": ""},
+            "competitions": {"UEFA Champions League": ""},
+            "names": {},
+        }
+        path = _write_mapping(tmp_path, mapping)
+
+        calls: list[tuple[str, str]] = []  # (name, entity_type)
+        canned = {
+            "Israel": ("ישראל", "Q801"),
+            "Maccabi Tel Aviv": ("מכבי תל אביב", "Q204605"),
+            "UEFA Champions League": ("ליגת האלופות", "Q18756"),
+        }
+        from data_pipeline import wikidata_lookup
+
+        def fake_wd(names, entity_type="player"):
+            for n in names:
+                calls.append((n, entity_type))
+            return {n: canned.get(n) for n in names}
+
+        monkeypatch.setattr(wikidata_lookup, "lookup_batch", fake_wd)
+        monkeypatch.setenv("WIKI7_ANTHROPIC_API_KEY", "test-key")
+
+        att.auto_translate(mapping_path=path)
+
+        # All three non-name categories invoked Wikidata with the right
+        # entity_type. Order across categories isn't fixed (CATEGORIES tuple
+        # order); presence is what matters.
+        types_by_name = {n: t for n, t in calls}
+        assert types_by_name["Israel"] == "country"
+        assert types_by_name["Maccabi Tel Aviv"] == "club"
+        assert types_by_name["UEFA Champions League"] == "competition"
+
+        reloaded = load_mapping(path)
+        assert reloaded["nationalities"]["Israel"]["src"] == "wikidata"
+        assert reloaded["nationalities"]["Israel"]["wikidata_qid"] == "Q801"
+        assert reloaded["clubs"]["Maccabi Tel Aviv"]["src"] == "wikidata"
+        assert reloaded["competitions"]["UEFA Champions League"]["src"] == "wikidata"
 
     def test_wikipedia_skipped_for_non_name_categories(self, tmp_path, monkeypatch):
-        """Positions / nationalities / clubs don't get Wikipedia lookups in v1.
-        They go straight to Claude."""
+        """Positions / nationalities / clubs / competitions don't get the
+        English Wikipedia langlinks pass — that's a names-only path. They
+        rely on Wikidata + Claude only."""
         mapping = {
             "positions": {"Centre-Back": ""},
             "nationalities": {},
@@ -299,11 +376,22 @@ class TestAutoTranslateOrchestration:
         }
         path = _write_mapping(tmp_path, mapping)
 
-        lookup_calls: list[list[str]] = []
-        from data_pipeline import wikipedia_lookup
+        wikipedia_calls: list[list[str]] = []
+        wikidata_calls: list[tuple[list[str], str]] = []
+        from data_pipeline import wikidata_lookup, wikipedia_lookup
         monkeypatch.setattr(
             wikipedia_lookup, "lookup_batch",
-            lambda names: (lookup_calls.append(list(names)), {n: None for n in names})[1],
+            lambda names: (
+                wikipedia_calls.append(list(names)),
+                {n: None for n in names},
+            )[1],
+        )
+        monkeypatch.setattr(
+            wikidata_lookup, "lookup_batch",
+            lambda names, entity_type="player": (
+                wikidata_calls.append((list(names), entity_type)),
+                {n: None for n in names},
+            )[1],
         )
 
         mock_client = MagicMock()
@@ -314,7 +402,9 @@ class TestAutoTranslateOrchestration:
         monkeypatch.setenv("WIKI7_ANTHROPIC_API_KEY", "test-key")
 
         att.auto_translate(mapping_path=path)
-        assert lookup_calls == [], "Wikipedia should not be called for non-name categories"
+        # `positions` skips both Wikidata + Wikipedia → goes straight to Claude.
+        assert wikipedia_calls == [], "Wikipedia is names-only"
+        assert wikidata_calls == [], "Wikidata is skipped for positions"
 
     def test_falls_back_to_google_when_no_api_key(self, tmp_path, monkeypatch):
         """When neither WIKI7_ANTHROPIC_API_KEY nor ANTHROPIC_API_KEY is set,

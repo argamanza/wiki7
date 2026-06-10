@@ -93,18 +93,37 @@ def _collect_match_data(scraper_output_dir: Path) -> tuple[set, set]:
                 if not lineup:
                     continue
                 if isinstance(lineup, list):
+                    # Graphic formation lineup — list of player dicts. Read
+                    # `name_english` (slug-derived full name from the post
+                    # iter-cycle spider) rather than `name_short` (which is
+                    # the surname-only visible text and pollutes the names
+                    # corpus with single-token duplicates).
                     for p in lineup:
                         name = p.get("name_hebrew") or p.get("name_english") or p.get("name", "")
                         if name:
                             names.add(name)
                 elif isinstance(lineup, dict):
+                    # Simple-table lineup — historical matches. Each position
+                    # value is a list of player dicts (post iter-cycle) OR a
+                    # bare string (legacy data). Manager value is similarly
+                    # either a dict or a bare string. Tolerate both shapes
+                    # so old cached output doesn't need a wholesale re-scrape.
                     for _pos, players in lineup.items():
                         if isinstance(players, str):
                             names.add(players)
+                        elif isinstance(players, dict):
+                            # manager slot, post iter-cycle
+                            n = players.get("name_english") or players.get("name_short")
+                            if n:
+                                names.add(n)
                         elif isinstance(players, list):
                             for pl in players:
                                 if isinstance(pl, str):
                                     names.add(pl)
+                                elif isinstance(pl, dict):
+                                    n = pl.get("name_english") or pl.get("name_short")
+                                    if n:
+                                        names.add(n)
             for pen in match.get("penalties", []):
                 if pen.get("player"):
                     names.add(pen["player"])

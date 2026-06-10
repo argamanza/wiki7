@@ -11,8 +11,9 @@ flagged entries rather than the full corpus.
 Output shape (Phase 3a R2 — nested):
     Centre-Back:
       he: בלם
-      src: manual          # manual | auto-llm | auto-google
+      src: manual          # manual | wikidata | wikipedia | auto-llm | auto-google | auto-translit
       confidence: high     # high | low
+      wikidata_qid: ""     # Q-ID when src=wikidata; "" otherwise (post Phase 3a R2 iter-cycle)
       note: ""             # optional human comment
 
 The legacy flat shape (`Centre-Back: בלם`) is auto-migrated on first load:
@@ -20,6 +21,15 @@ existing entries are wrapped in the nested form with `src: manual` and
 `confidence: high` (assumes they were human-curated before R2). Auto-fill
 only writes entries that were previously empty; manual entries are
 preserved unchanged.
+
+Translation backend chain (per category):
+- names + clubs + competitions + nationalities:
+    1. Wikidata (canonical Hebrew label, when type filter matches) — high confidence
+    2. (names only) English Wikipedia langlinks — thin secondary, kept as cheap insurance
+    3. Claude API — phonetic / context-aware transliteration
+    4. Phonetic transliteration — final fallback when Claude omits the entry
+- positions: skips Wikidata + Wikipedia (per docs/research/0003 §1 — positional
+  vocabulary is too short / generic for entity disambiguation), goes direct to Claude.
 
 Usage:
     python -m data_pipeline.auto_translate_hebrew [--mapping-path PATH] [...]
@@ -62,6 +72,16 @@ MAX_WORKERS = 5
 # prompt-flavour hint per category (e.g. "this is a club name" vs "this is
 # a player name") so transliteration quality is calibrated.
 CATEGORIES = ("positions", "nationalities", "clubs", "competitions", "names")
+
+# Wikidata entity type per category. Categories absent from this map skip
+# the Wikidata pass and go straight to Claude (positions are too generic
+# to disambiguate via Wikidata's claims; see docs/research/0003 §1).
+_WIKIDATA_ENTITY_TYPE = {
+    "names": "player",
+    "clubs": "club",
+    "competitions": "competition",
+    "nationalities": "country",
+}
 
 # Chunk size for the Anthropic API calls — keeps each request well inside
 # the model's output-token cap and gives readable progress updates without
@@ -109,8 +129,11 @@ def _migrate_entry(value: str) -> dict | None:
     `src: manual`, `confidence: high`.
     """
     if not value:
-        return {"he": "", "src": "", "confidence": "", "note": ""}
-    return {"he": value, "src": "manual", "confidence": "high", "note": ""}
+        return {"he": "", "src": "", "confidence": "", "wikidata_qid": "", "note": ""}
+    return {
+        "he": value, "src": "manual", "confidence": "high",
+        "wikidata_qid": "", "note": "",
+    }
 
 
 def _migrate_section(section: dict) -> tuple[dict, int]:
@@ -124,10 +147,13 @@ def _migrate_section(section: dict) -> tuple[dict, int]:
                 migrated += 1
         else:
             # Already nested — pass through but normalise missing fields.
+            # `wikidata_qid` was added during the iteration-cycle phase;
+            # older nested entries lack it, default to "".
             out[key] = {
                 "he": entry.get("he", ""),
                 "src": entry.get("src", ""),
                 "confidence": entry.get("confidence", ""),
+                "wikidata_qid": entry.get("wikidata_qid", ""),
                 "note": entry.get("note", ""),
             }
     return out, migrated
@@ -409,18 +435,53 @@ def _fill_section(
     if dry_run:
         return len(empty_keys)
 
-    # Phase 3a R2: Wikipedia first-pass for the `names` category. For HBS
-    # players who have an English Wikipedia article with a Hebrew langlink,
-    # the langlinked title IS the canonical Hebrew name Israeli football
-    # media uses — better than any transliteration. Only the still-empty
-    # remainder goes to Claude / Google as fallback. Other categories
-    # (positions, nationalities, clubs, competitions) skip the Wikipedia
-    # pass for v1 — they're less prone to transliteration ambiguity and
-    # benefit less from the lookup.
     filled = 0
+
+    # Iteration-cycle phase: Wikidata first-pass for names + clubs +
+    # competitions + nationalities. Wikidata returns canonical Hebrew
+    # labels with type-aware disambiguation (P31/P641 filters), and
+    # covers Israeli-league players the English Wikipedia pass misses.
+    # Persisted Q-IDs let later runs skip the search step. See
+    # docs/research/0003 for the empirical motivation.
+    wd_entity_type = _WIKIDATA_ENTITY_TYPE.get(category)
+    if wd_entity_type:
+        from data_pipeline.wikidata_lookup import lookup_batch as wd_lookup
+        logger.info(
+            "  Wikidata lookup pass: %d %s (type=%s)...",
+            len(empty_keys), category, wd_entity_type,
+        )
+        wd_results = wd_lookup(empty_keys, entity_type=wd_entity_type)
+        wd_filled = set()
+        for key, result in wd_results.items():
+            if not result:
+                continue
+            he, qid = result
+            section[key] = {
+                "he": he,
+                "src": "wikidata",
+                "confidence": "high",
+                "wikidata_qid": qid,
+                "note": "",
+            }
+            wd_filled.add(key)
+            filled += 1
+        empty_keys = [k for k in empty_keys if k not in wd_filled]
+        logger.info(
+            "  Wikidata resolved %d; %d remaining for next backend.",
+            len(wd_filled), len(empty_keys),
+        )
+        if not empty_keys:
+            return filled
+
+    # Phase 3a R2: English Wikipedia langlinks pass for the `names`
+    # category. Kept as a thin secondary AFTER Wikidata — covers a small
+    # tail of cases where Wikidata's type filter rejects a candidate but
+    # Wikipedia's `redirects=1` parameter handles a spelling variation.
+    # Cheap (zero API cost). If empirical data shows it adds zero on top
+    # of Wikidata, remove in a follow-up.
     if category == "names":
         from data_pipeline.wikipedia_lookup import lookup_batch
-        logger.info("  Wikipedia lookup pass: %d names...", len(empty_keys))
+        logger.info("  Wikipedia langlinks pass: %d names...", len(empty_keys))
         wikipedia_results = lookup_batch(empty_keys)
         wp_filled_keys = set()
         for key, he in wikipedia_results.items():
@@ -429,12 +490,11 @@ def _fill_section(
                     "he": he,
                     "src": "wikipedia",
                     "confidence": "high",
+                    "wikidata_qid": "",
                     "note": "",
                 }
                 wp_filled_keys.add(key)
                 filled += 1
-        # Anything Wikipedia didn't resolve falls through to the LLM /
-        # Google backend below.
         empty_keys = [k for k in empty_keys if k not in wp_filled_keys]
         logger.info(
             "  Wikipedia resolved %d; %d remaining for %s fallback.",
@@ -458,7 +518,8 @@ def _fill_section(
                 google_results = _translate_batch_via_google(chunk)
                 for key, he in zip(chunk, google_results):
                     section[key] = {
-                        "he": he, "src": "auto-google", "confidence": "low", "note": "",
+                        "he": he, "src": "auto-google", "confidence": "low",
+                        "wikidata_qid": "", "note": "",
                     }
                     filled += 1
                 continue
@@ -473,6 +534,7 @@ def _fill_section(
                         "he": fallback,
                         "src": "auto-translit" if fallback else "",
                         "confidence": "low",
+                        "wikidata_qid": "",
                         "note": "Claude did not return a translation; phonetic fallback applied.",
                     }
                     if fallback:
@@ -482,6 +544,7 @@ def _fill_section(
                     "he": r["he"],
                     "src": "auto-llm",
                     "confidence": r.get("confidence", "low"),
+                    "wikidata_qid": "",
                     "note": "",
                 }
                 filled += 1
@@ -494,6 +557,7 @@ def _fill_section(
                 "he": he or "",
                 "src": "auto-google" if he else "",
                 "confidence": "low",
+                "wikidata_qid": "",
                 "note": "",
             }
             if he:

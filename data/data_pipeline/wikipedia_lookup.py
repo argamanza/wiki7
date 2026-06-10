@@ -72,7 +72,10 @@ def _query(session: requests.Session, title: str) -> Optional[str]:
         response.raise_for_status()
         data = response.json()
     except (requests.RequestException, ValueError) as exc:
-        logger.debug("Wikipedia lookup failed for %r: %s", title, exc)
+        # Iteration-cycle 2026-06-10: promoted DEBUG → WARNING so silent
+        # transient errors are visible during post-run audits. Mirror of the
+        # Wikidata module's visibility policy. See [[wiki7-data-loss-vigilance]].
+        logger.warning("Wikipedia langlink lookup failed for %r: %s", title, exc)
         return None
 
     pages = data.get("query", {}).get("pages", {})

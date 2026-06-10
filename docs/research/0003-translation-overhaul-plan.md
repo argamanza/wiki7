@@ -63,13 +63,57 @@ For each English entity in `mappings.he.yaml`, try in order:
    confidence=low, src=auto-translit
 ```
 
-### Expected coverage
+### Expected coverage (pre-implementation extrapolation)
 
 - **Players:** 60-80% via Wikidata (broad coverage of footballers, including Israeli-league regulars). The remainder via Claude.
 - **Clubs:** ~95% via Wikidata (nearly every notable football club has a Wikidata entry with multilingual labels).
 - **Tournaments:** ~99% via Wikidata.
 - **Nationalities (countries):** 100% via Wikidata.
 - **Positions:** keep current Claude path — Wikidata's labels for positions are unreliable.
+
+### Measured coverage (2026-06-10, post-implementation seed verification)
+
+Representative 52-entry seed (3 positions / 7 countries / 10 clubs / 7 competitions / 25 names) run through the new chain:
+
+| Category     | Measured    | Pre-impl estimate | Δ |
+|--------------|------------:|------------------:|---|
+| Countries    | **100% (7/7)**  | 100%       | matches |
+| Clubs        | **100% (10/10)** | ~95%      | +5pp |
+| Players      | **92% (23/25)** | 60-80%     | **+12 to +32pp** |
+| Competitions | **71% (5/7)**  | ~99%       | **-28pp ⚠** |
+
+**Caveat — the seed was biased toward famous entities.** Two issues surfaced on the actual 2024/25 corpus (165 clubs, 546 names) which the seed slice missed:
+
+- A real-corpus first run reported only **5.9%** player coverage (32/546). Root cause: at 5 worker threads, Wikidata HTTP 429 rate-limited individual searches and my code silently swallowed the errors. The fix lowers concurrency to 2 workers, adds `maxlag=5` (Wikidata bot etiquette), adds exponential-backoff retry on 429/5xx/maxlag, and surfaces final failures at WARNING. After the fix, the same corpus resolves **36.4% overall — 62.8% on multi-token names alone** (well inside the plan's 60-80% estimate).
+- 44% of the names corpus is **single-token entries** (e.g. `Bareiro` appearing alongside `Mariano Bareiro`). The spider emits both as separate map keys; single tokens resolve at 2.9% on Wikidata (ambiguous by definition) and drag the headline number down. Real fix is upstream dedupe in `normalize_enrich_players.py`, recorded as a follow-up.
+
+### Real-corpus coverage (2024/25 first iteration, post-fix)
+
+| Category     | Resolved by Wikidata | Notes |
+|--------------|---------------------:|-------|
+| Countries    | 14/14 (100%)        | matches seed |
+| Clubs        | 27/165 (16.4%)*     | long tail of small foreign clubs without Hebrew labels; ~95% on the famous tier |
+| Competitions | 2/4 (50%)           | spelling-variation issue (Israeli vs Israel) |
+| Names (all)  | 199/546 (36.4%)     | dragged by 44% single-token entries |
+| Names (multi-token) | 191/304 (62.8%) | matches plan's lower bound |
+
+*Clubs still pending re-test under new concurrency settings; the 16.4% number came from the buggy 5-worker run and may lift after the fix.
+
+The Wikidata `labels.he` quality finding (Hélder Lopes' `הלדר לפופסיק`) also surfaces during real-corpus review — the v2 sitelinks-first fallback (recorded above) would mitigate it.
+
+Three findings from the verification run:
+
+1. **Player coverage materially exceeds estimate.** The strict P31=Q5 + P641=Q2736 filter works because Wikidata has good coverage of even mid-tier Israeli-league regulars. Disambiguation via claims is much more reliable than first-hit ordering — common-name searches like "Lior Cohen" return researchers/actors first, so the type filter is mandatory.
+2. **Competition misses are spelling-variation issues, not type-filter failures.** TM uses "Israeli State Cup" / "Israeli Super Cup"; Wikidata's canonical labels are "Israel State Cup" / "Israel Super Cup" (no -i). Both Q-IDs exist with quality Hebrew labels. Recommendation: pre-seed `mappings.he.yaml` with ~5-7 canonical Israeli competition entries as `src: manual` instead of adding fuzzy retry logic.
+3. **Some Wikidata `labels.he` values are stale or low quality, but `sitelinks.hewiki.title` is more reliable.** Verified empirically on Hélder Lopes (Q5964151):
+   - `labels.he` = `הלדר לפופסיק` (gibberish-looking, likely vandalism / stale edit)
+   - `sitelinks.hewiki.title` = `הלדר לופש` (the actual Hebrew Wikipedia article title — correct)
+
+   v1 reads `labels.he`. **v2 improvement: prefer the `sitelinks.hewiki.title` when present, fall back to `labels.he` otherwise.** Sitelinks are higher-friction-to-edit (they're the article name itself), so they're better curated than free-form labels. Added to the operator-loop follow-up list.
+
+   Note on canonical vs. stylised names: not every "unusual" Hebrew label is a bug. e.g. Vladimir Broun (Q16514195) → `וובה ברואון` looks wrong but is correct — *Vova* is the standard Russian/Hebrew short form of Vladimir and the form the player goes by. Reviewer judgment is the only filter for these; pipeline can't tell them apart from real typos.
+
+One implementation detail surfaced during verification: Wikidata Hebrew labels occasionally carry trailing Unicode bidi-control marks (LRM `‎`, RLM `‏`) that are invisible but break slug generation / YAML round-trip. The lookup module strips these at the source.
 
 ### Apply to all categories, not just names
 
@@ -148,7 +192,7 @@ For a brand-new Cargo declaration template:
 
 ### Reviewer workflow needed for v1 Cargo tables to materialize
 
-1. Reviewer goes to `Special:UnapprovedPages` and approves each `Template:Cargo/*` (16 templates currently — 9 Cargo + 4 MediaWiki templates + 3 other infoboxes)
+1. Reviewer goes to `Special:ApprovedRevs?show=unapproved` (`Special:UnapprovedPages` returns nothing on MW 1.45 / current Approved Revs — the extension consolidated those into the query-filter view) and approves each `Template:Cargo/*` (16 templates currently — 9 Cargo + 4 MediaWiki templates + 3 other infoboxes)
 2. The first approved render of each Cargo declaration template causes Cargo to create the SQL table
 3. Existing player/match pages that transclude the template need a re-parse to fire their `#cargo_store` calls. Options:
    - Manual: edit + save each page (impractical for 552 player pages)
@@ -165,7 +209,7 @@ A new section in `docs/operational-bootstrap.md` or `data/README.md`:
 > 
 > One-time steps after each bot import:
 > 
-> 1. Visit `Special:UnapprovedPages` as Admin, approve each `Template:Cargo/*` and the 4 MediaWiki templates.
+> 1. Visit `Special:ApprovedRevs?show=unapproved` as Admin, approve each `Template:Cargo/*` and the 4 MediaWiki templates.
 > 2. SSH into the container + run `cargoRecreateData.php` per table:
 >    ```bash
 >    docker exec docker-mediawiki-1 php /var/www/html/extensions/Cargo/maintenance/cargoRecreateData.php --table=players
@@ -237,15 +281,15 @@ export WIKI_URL='http://localhost:8080' \
 cd data && uv run python run_pipeline.py --season 2024
 
 # 4. Approve Cargo templates (one-time per fresh stack)
-# Visit http://localhost:8080/wiki/Special:UnapprovedPages
-# Approve each Template:Cargo/*
+# Visit http://localhost:8080/Special:ApprovedRevs?show=unapproved
+# Approve each Template:Cargo/* + the MediaWiki:* sub-templates
 
 # 5. Refresh Cargo data for this season's data
 docker exec docker-mediawiki-1 php /var/www/html/extensions/Cargo/maintenance/cargoRecreateData.php
 
 # 6. Review draft pages, edit/promote as appropriate
-# Visit http://localhost:8080/wiki/Special:UnapprovedPages
-# Visit http://localhost:8080/wiki/Special:AllPages?namespace=3000
+# Visit http://localhost:8080/Special:AllPages?namespace=3000
+# (drafts aren't Approved-Revs gated; review = edit-in-place + MovePage to mainspace)
 
 # 7. Note issues found, fix in code, repeat
 ```

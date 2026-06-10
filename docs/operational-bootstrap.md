@@ -244,7 +244,8 @@ export WIKI_URL='http://localhost:8080' \
 uv run python run_pipeline.py --season 2024
 
 # 4. Approve Cargo templates (one-time per fresh stack; see §9 below).
-# 5. Review drafts at Special:UnapprovedPages, edit/promote, capture issues.
+# 5. Review drafts at http://localhost:8080/Special:AllPages?namespace=3000
+#    edit/promote (Special:MovePage) per draft, capture issues.
 # 6. Fix issues in code, repeat.
 ```
 
@@ -254,7 +255,7 @@ When the bot writes Cargo declaration templates (`Template:Cargo/Player`, etc.),
 
 One-time steps after each bot import:
 
-1. **Approve each Cargo template** via `Special:UnapprovedPages`. There are 9 Cargo templates plus 4 MediaWiki infobox templates.
+1. **Approve each Cargo template** via `Special:ApprovedRevs?show=unapproved` (the canonical "show me everything never approved" view on this install — `Special:UnapprovedPages` returns nothing on MW 1.45 / Approved Revs current; the extension consolidated those into a query-filter on `Special:ApprovedRevs`). There are 9 Cargo templates plus 4 MediaWiki infobox templates plus the main page + sub-templates.
 
 2. **Populate Cargo data rows** — existing pages need a re-parse to fire their `#cargo_store` calls. Use the Cargo maintenance script:
 

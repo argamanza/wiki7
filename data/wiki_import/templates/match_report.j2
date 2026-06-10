@@ -1,3 +1,26 @@
+{# Iteration-cycle phase: player names render via a {{#ifexist:}} chain so
+   HBS players (current + historical) get a clickable link to their wiki page,
+   while non-HBS players (opponents whose Hebrew name has no wiki page yet)
+   appear as plain text. The chain checks mainspace first, then NS_DRAFT —
+   so links work during the per-season review walk (everything in Draft:)
+   and stay correct after promotion to mainspace. When an opposing player
+   later signs for HBS and gets a wiki page created, all historic match
+   mentions become live links automatically on next parser-cache invalidation.
+   See docs/research/0003 §4 for the design discussion. #}
+{% macro player_link(name) -%}
+{%- if name -%}
+{{"{{"}}#ifexist:{{ name }}|[[{{ name }}]]|{{"{{"}}#ifexist:Draft:{{ name }}|[[Draft:{{ name }}|{{ name }}]]|{{ name }}{{"}}"}}{{"}}"}}
+{%- endif -%}
+{%- endmacro %}
+{# Resolve a lineup-entry value (string for legacy data, dict for new spider
+   output) to its display name. Order matches apply_hebrew_mapping's write
+   order: name_hebrew → name_english (which post-translate holds the Hebrew
+   value for new entries) → name (legacy). #}
+{% macro lineup_name(value) -%}
+{%- if value is string -%}{{ value }}
+{%- elif value is mapping -%}{{ value.name_hebrew or value.name_english or value.get('name', '') }}
+{%- endif -%}
+{%- endmacro %}
 {{"{{"}}Match infobox
 | competition = {{ match.competition or '' }}
 | matchday = {{ match.matchday or '' }}
@@ -16,7 +39,7 @@
 {| class="wikitable"
 {% for position, players in match.home_lineup.items() %}
 {% if position != 'manager' %}
-{% set player_cell %}{% if players is string %}[[{{ players }}]]{% elif players is iterable %}{% for name in players %}{% if not loop.first %}, {% endif %}[[{{ name }}]]{% endfor %}{% else %}{{ players }}{% endif %}{% endset %}
+{% set player_cell %}{% if players is string or players is mapping %}{{ player_link(lineup_name(players)) }}{% elif players is iterable %}{% for entry in players %}{% if not loop.first %}, {% endif %}{{ player_link(lineup_name(entry)) }}{% endfor %}{% else %}{{ players }}{% endif %}{% endset %}
 |-
 ! {{ position | capitalize }}
 || {{ player_cell }}
@@ -26,14 +49,14 @@
 
 |-
 ! מאמן
-|| [[{{ match.home_lineup.manager }}]]
+|| {{ player_link(lineup_name(match.home_lineup.manager)) }}
 {% endif %}
 
 |}
 {% else %}
 {% for p in match.home_lineup %}
-{% set player_link %}[[{{ p.name_hebrew | default(p.name_english | default(p.get('name', ''))) }}]]{% if p.captain %} (C){% endif %}{% endset %}
-* {{ p.number | default('') }} {{ player_link }}
+{% set display_name = p.name_hebrew or p.name_english or p.get('name', '') %}
+* {{ p.number | default('') }} {{ player_link(display_name) }}{% if p.captain %} (C){% endif %}
 {% endfor %}
 {% endif %}
 {% endif %}
@@ -44,7 +67,7 @@
 {| class="wikitable"
 {% for position, players in match.away_lineup.items() %}
 {% if position != 'manager' %}
-{% set player_cell %}{% if players is string %}[[{{ players }}]]{% elif players is iterable %}{% for name in players %}{% if not loop.first %}, {% endif %}[[{{ name }}]]{% endfor %}{% else %}{{ players }}{% endif %}{% endset %}
+{% set player_cell %}{% if players is string or players is mapping %}{{ player_link(lineup_name(players)) }}{% elif players is iterable %}{% for entry in players %}{% if not loop.first %}, {% endif %}{{ player_link(lineup_name(entry)) }}{% endfor %}{% else %}{{ players }}{% endif %}{% endset %}
 |-
 ! {{ position | capitalize }}
 || {{ player_cell }}
@@ -54,14 +77,14 @@
 
 |-
 ! מאמן
-|| [[{{ match.away_lineup.manager }}]]
+|| {{ player_link(lineup_name(match.away_lineup.manager)) }}
 {% endif %}
 
 |}
 {% else %}
 {% for p in match.away_lineup %}
-{% set player_link %}[[{{ p.name_hebrew | default(p.name_english | default(p.get('name', ''))) }}]]{% if p.captain %} (C){% endif %}{% endset %}
-* {{ p.number | default('') }} {{ player_link }}
+{% set display_name = p.name_hebrew or p.name_english or p.get('name', '') %}
+* {{ p.number | default('') }} {{ player_link(display_name) }}{% if p.captain %} (C){% endif %}
 {% endfor %}
 {% endif %}
 {% endif %}
@@ -72,7 +95,7 @@
 ! דקה !! תוצאה !! כובש !! בישול !! קבוצה
 {% for g in match.goals %}
 |-
-| {{ g.minute or '' }}{% if g.extra_time %}+{{ g.extra_time }}{% endif %} || {{ g.score or '' }} || [[{{ g.scorer or '' }}]] || {% if g.assist %}[[{{ g.assist }}]]{% endif %} || {{ g.team or '' }}
+| {{ g.minute or '' }}{% if g.extra_time %}+{{ g.extra_time }}{% endif %} || {{ g.score or '' }} || {{ player_link(g.scorer or '') }} || {% if g.assist %}{{ player_link(g.assist) }}{% endif %} || {{ g.team or '' }}
 {% endfor %}
 
 |}
@@ -84,7 +107,7 @@
 ! דקה !! נכנס !! יצא !! קבוצה !! סיבה
 {% for s in match.substitutions %}
 |-
-| {{ s.minute or '' }}{% if s.extra_time %}+{{ s.extra_time }}{% endif %} || [[{{ s.player_in or '' }}]] || [[{{ s.player_out or '' }}]] || {{ s.team or '' }} || {{ s.reason or '' }}
+| {{ s.minute or '' }}{% if s.extra_time %}+{{ s.extra_time }}{% endif %} || {{ player_link(s.player_in or '') }} || {{ player_link(s.player_out or '') }} || {{ s.team or '' }} || {{ s.reason or '' }}
 {% endfor %}
 
 |}
@@ -96,7 +119,7 @@
 ! דקה !! שחקן !! כרטיס !! קבוצה !! סיבה
 {% for c in match.cards %}
 |-
-| {{ c.minute or '' }}{% if c.extra_time %}+{{ c.extra_time }}{% endif %} || [[{{ c.player or '' }}]] || {{ c.card or '' }} || {{ c.team or '' }} || {{ c.reason or '' }}
+| {{ c.minute or '' }}{% if c.extra_time %}+{{ c.extra_time }}{% endif %} || {{ player_link(c.player or '') }} || {{ c.card or '' }} || {{ c.team or '' }} || {{ c.reason or '' }}
 {% endfor %}
 
 |}
@@ -108,7 +131,7 @@
 ! קבוצה !! שחקן !! תוצאה !! תוצאה מצטברת
 {% for p in match.penalties %}
 |-
-| {{ p.club or p.team or '' }} || [[{{ p.player or '' }}]] || {{ p.result or '' }} || {{ p.score or '' }}
+| {{ p.club or p.team or '' }} || {{ player_link(p.player or '') }} || {{ p.result or '' }} || {{ p.score or '' }}
 {% endfor %}
 
 |}

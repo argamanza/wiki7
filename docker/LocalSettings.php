@@ -178,6 +178,15 @@ $wgGroupPermissions['reviewer']['edit']              = true;
 $wgGroupPermissions['reviewer']['move']              = true;
 $wgGroupPermissions['reviewer']['approverevisions']  = true;
 $wgGroupPermissions['reviewer']['unapprovedpages']   = true;
+
+// Bot group's `noratelimit` (iter-cycle audit 2026-06-10): MW 1.45's `bot`-group
+// default does NOT include `noratelimit` — only `apihighlimits` + the `bot` flag
+// + autoconfirmed-ish. Empirically the data-pipeline hit `ratelimited` on burst
+// writes (~1 page dropped per ~117 imports) despite Wiki7Bot being in the bot
+// group. Granting this explicitly eliminates that failure mode; the import
+// code's tenacity retry policy is the belt, this is the suspenders. Applies
+// universally (local docker + prod) since Wiki7Bot is a bot regardless of env.
+$wgGroupPermissions['bot']['noratelimit']            = true;
 # sysop can grant/revoke 'reviewer'; reviewers can self-remove.
 $wgAddGroups['sysop'][]       = 'reviewer';
 $wgRemoveGroups['sysop'][]    = 'reviewer';
@@ -533,11 +542,11 @@ if ( getenv('WIKI_ENV') === 'production' ) {
     // Pre-PR #38 every viewer looked like a CloudFront edge IP, so per-IP rate limits were
     // nonsense (everyone shared one IP at the MW layer). After #38 + 2.5d the per-IP buckets
     // actually apply per real client. MW 1.45 defaults: edit=8/60s (ip/newbie), 90/60s (user);
-    // move/linkpurge/purge similar. For the Phase 3 data-pipeline bot, the standard pattern
-    // is to add the bot account to the `bot` user-group, which carries the `noratelimit`
-    // user right and bypasses these checks entirely (`data/BOT_SETUP.md`). No site-wide
-    // override needed; if a future ad-hoc burst trips the user-bucket limit (90 edits/min),
-    // raise the offending group here with a comment naming the bucket + reason.
+    // move/linkpurge/purge similar.
+    //
+    // For the data-pipeline bot, see the universal `$wgGroupPermissions['bot']['noratelimit']`
+    // grant above the production block — applies in both local + prod since Wiki7Bot is a bot
+    // regardless of environment.
 
     // Real client IP recovery behind CloudFront. CloudFront's origin request policy
     // (ALL_VIEWER_AND_CLOUDFRONT_2022, set in cloudfront-stack.ts) adds the

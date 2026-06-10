@@ -18,7 +18,7 @@ from pathlib import Path
 from scrapy.http import HtmlResponse, Request
 
 from tmk_scraper.spiders.coach_spider import CoachSpider
-from tmk_scraper.spiders.match_spider import MatchSpider
+from tmk_scraper.spiders.match_spider import MatchSpider, _parse_player_link
 from tmk_scraper.spiders.records_spider import RecordsSpider
 from tmk_scraper.spiders.squad_spider import SquadSpider
 from tmk_scraper.spiders.transfers_spider import TransfersSpider
@@ -60,6 +60,57 @@ class TestMatchSpiderPhase3a:
         assert sample["number"]
         assert isinstance(sample["captain"], bool)
 
+    def test_lineup_emits_full_name_from_slug_not_just_surname(self):
+        """Iteration-cycle phase: TM's formation diagram renders surnames only
+        (`Eliasi`) but encodes the full English name in the `<a href>` URL
+        slug (`/niv-eliasi/profil/spieler/912586`). The spider must surface
+        the slug-derived full name as `name_english`; the surname survives
+        as `name_short` for compact rendering. Without this, the names
+        corpus ends up with both `Eliasi` and `Niv Eliasi` as separate
+        translation keys, and the lineup section of every match report
+        shows surname-only player references."""
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        graphic = self.spider.extract_from_graphic_field(response)
+        for side in ("home", "away"):
+            for p in graphic[side]:
+                # Full name has at least one space (multi-token) for every
+                # real player. Single-name footballers (e.g. Pelé) would
+                # break this assertion, but none have appeared on HBS or
+                # any 2024/25 opponent rosters.
+                assert " " in p["name_english"], (
+                    f"Expected full name on {side} lineup but got {p['name_english']!r}"
+                )
+                assert p["tm_player_id"] is not None
+                assert p["tm_player_id"].isdigit()
+                # Surname is preserved separately.
+                assert p["name_short"] is not None
+
+    def test_event_extractors_carry_tm_player_id(self):
+        """Goals, substitutions, cards (and penalties when present) all carry
+        a TM player ID so the pipeline can dedupe across name forms and
+        the match report renderer can decide link-or-plain via {{#ifexist:}}."""
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        goals = self.spider.extract_goals(response)
+        assert goals, "fixture should have goals"
+        for g in goals:
+            assert g["scorer"]
+            assert g["scorer_tm_id"] and g["scorer_tm_id"].isdigit()
+            if g["assist"]:
+                assert g["assist_tm_id"] and g["assist_tm_id"].isdigit()
+
+        subs = self.spider.extract_substitutions(response)
+        assert subs, "fixture should have substitutions"
+        for s in subs:
+            if s["player_in"]:
+                assert s["player_in_tm_id"] and s["player_in_tm_id"].isdigit()
+            if s["player_out"]:
+                assert s["player_out_tm_id"] and s["player_out_tm_id"].isdigit()
+
+        cards = self.spider.extract_cards(response)
+        for c in cards:
+            if c["player"]:
+                assert c["player_tm_id"] and c["player_tm_id"].isdigit()
+
     def test_resolve_team_key_is_home_first(self):
         """TM renders home-team box first. The pre-fix code looked up nonexistent
         match.home_team / match.away_team fields and silently fell through to a similar
@@ -70,6 +121,43 @@ class TestMatchSpiderPhase3a:
         # First call sees the home team; second call should return "away" regardless of name.
         assert self.spider.resolve_team_key("Hapoel Beer Sheva", response) == "home"
         assert self.spider.resolve_team_key("Hapoel Jerusalem", response) == "away"
+
+
+class TestParsePlayerLink:
+    """Helper used everywhere the spider crosses an <a href> on a TM player.
+    Tested in isolation so the spider extractors only need to verify the
+    end-to-end glue."""
+
+    def test_lineup_link_yields_full_name_and_id(self):
+        assert _parse_player_link("/niv-eliasi/profil/spieler/912586") \
+            == ("Niv Eliasi", "912586")
+
+    def test_event_link_with_long_path_yields_full_name_and_id(self):
+        # Goals/cards use `/leistungsdatendetails/spieler/<id>/saison/...`
+        href = "/ohad-almagor/leistungsdatendetails/spieler/933143/saison/2024/wettbewerb/ISR1"
+        assert _parse_player_link(href) == ("Ohad Almagor", "933143")
+
+    def test_accented_slug_strips_diacritics(self):
+        # TM slug-normalises non-ASCII; downstream Wikidata search is
+        # accent-insensitive so this is fine for translation lookup.
+        assert _parse_player_link("/helder-lopes/profil/spieler/171068") \
+            == ("Helder Lopes", "171068")
+
+    def test_multi_segment_name_slug(self):
+        # Real-world: hyphenated first or last names (e.g. Jean-Luc-Picard).
+        # We split on every hyphen — the result is a space-separated string.
+        assert _parse_player_link("/jean-luc-picard/profil/spieler/1234") \
+            == ("Jean Luc Picard", "1234")
+
+    def test_missing_href_yields_none_pair(self):
+        assert _parse_player_link(None) == (None, None)
+        assert _parse_player_link("") == (None, None)
+
+    def test_unexpected_first_segment_yields_none(self):
+        # Defensive: if TM ever changes URL layout we'd rather emit None
+        # than garbage. Confirm the guard against likely-bad first-segments.
+        assert _parse_player_link("/spieler/12345") == (None, None)
+        assert _parse_player_link("/verein/2976") == (None, None)
 
 
 class TestMatchSpiderR2Additions:

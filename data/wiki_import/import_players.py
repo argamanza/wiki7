@@ -53,9 +53,12 @@ def _render_template(template_name: str, **kwargs) -> str:
     return template.render(**kwargs)
 
 
+# Iteration-cycle 2026-06-10: bumped from 3 attempts/~6s to 6 attempts /
+# ~3min total to tolerate MediaWiki's `ratelimited` API error on burst
+# writes. See import_matches.py _edit_page for the rationale.
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(6),
+    wait=wait_exponential(multiplier=5, min=5, max=60),
     retry=retry_if_exception_type((mwclient.errors.APIError, ConnectionError)),
     reraise=True,
 )
