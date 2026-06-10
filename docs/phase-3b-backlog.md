@@ -29,11 +29,15 @@ Spot-check protocol: when you see something, just paste the URL or page title + 
 
 ## Templates
 
-<!-- file items here -->
+- **Iteration-cycle template polish** *(Templates — iteration-cycle phase)* — Phase 3a R2 PR B steps 4 + 8 + 9 landed the v1 templates (player/match/squad/transfer/season-overview with standings header + placeholders + new Derbies + European campaign). The iteration-cycle phase will surface polish needs as the reviewer goes through each season: column ordering, infobox field labels, cross-link wording, category structure, sortable-table edge cases, RTL gotchas. Each iteration-cycle PR captures what changed. // see: [`docs/research/0003-translation-overhaul-plan.md`](research/0003-translation-overhaul-plan.md) §4 iteration-cycle recipe.
+
+- **Cargo `#cargo_query` consumers** *(Templates — Phase 3b)* — now that the Cargo declarations are in place (R2 step 2), aggregate pages can query Cargo instead of relying on pipeline-pre-rendered tables. Hand-curated 3b pages (Vasermil stadium history, Did You Know, Fan Culture) can embed `{{#cargo_query:tables=...}}` calls. Reviewer decides per page whether to keep the pre-rendered table or replace with a Cargo query.
 
 ## Cargo
 
-- **No `#cargo_declare` anywhere yet** *(Cargo)* — pipeline writes templates with the shape of Cargo-storable fields, but no schema is declared. Result: aggregate pages (records, leaderboards) render the data via Jinja-built tables, not Cargo queries. Phase 3b decides which page types declare schemas (player, match, season) + ships the `cargoRecreateData` backfill. // hypothesis: confirmed during Phase 2.5c review.
+- ~~**No `#cargo_declare` anywhere yet**~~ *(Cargo)* — **🟢 CLOSED in Phase 3a R2 PR B step 2:** the pipeline now ships 9 Cargo declarations (Player, Transfer, MarketValue, Match, PlayerStats, Coach, Honour, SeasonStanding, HeadToHead). Templates transclude `#cargo_store` calls so per-page transclusion populates the tables. **Caveat:** Cargo templates live in `NS_TEMPLATE` which has Approved Revs gating — tables don't materialise until reviewer approves the `Template:Cargo/*` pages, then `cargoRecreateData.php` populates existing rows. Recipe in `docs/operational-bootstrap.md` §8.
+
+- **Cargo template approval automation** *(Cargo — iteration-cycle prep)* — current flow requires the reviewer to (a) approve each `Template:Cargo/*` manually via `Special:UnapprovedPages` and (b) run `cargoRecreateData.php` per table. For the iteration cycle this is tolerable; for a polished v1 we may want a `Wiki7ReviewGate:bulkApproveTemplates` maintenance script + auto-run of `cargoRecreateData` after import. Phase 3b decides.
 
 ## Structure
 
@@ -41,11 +45,15 @@ Spot-check protocol: when you see something, just paste the URL or page title + 
 
 ## Data
 
-- **Match `home_lineup` / `away_lineup` are empty in the existing 2024 scrape** *(Data)* — the Phase 3a spider fix corrected the CSS selector, but the existing `tmk-scraper/output/2024/matches.json` was scraped pre-fix and still has `home_lineup: null` / `away_lineup: {}`. Re-running the match spider for 2024 would cost ~45 ScraperAPI requests and refresh lineups; Phase 3a deferred this in favour of credit conservation. // fix: `python run_pipeline.py --season 2024 --spiders match --skip-normalize --skip-merge --skip-hebrew --skip-import`, then re-import.
+- ~~**Match `home_lineup` / `away_lineup` are empty in the existing 2024 scrape**~~ *(Data)* — **🟢 CLOSED in Phase 3a R2 PR B step 10 all-time scrape:** the 2024 season was fully re-scraped under the post-fix selectors as part of the 1949-2025 all-time run. Lineups are populated. Future single-season runs default to resume + skip already-scraped files; use `--force-rescrape` to refresh.
 
 - **Transfers row drops `age` + `position`** *(Data)* — current TM `/alletransfers/` ("all transfers") page no longer surfaces these inline; they're only on the player profile. Could be backfilled by joining against the player spider's output during the normalize step. Phase 3b decision.
 
-- **Coach spider only returns *current* staff (6 entries)** *(Data)* — `/trainer/verein/` ("coach page") and `/trainerhistorie/verein/` ("coach history") are both 404 on TM as of 2026-06-07. `/mitarbeiter/verein/` ("staff") is the only working URL and lists only current staff. Phase 3a R2 fills the historical gap via the `platzierungen` ("standings") page, which carries the season's manager as a column on each row — see [`docs/research/0002-transfermarkt-data-surface.md`](research/0002-transfermarkt-data-surface.md) §3.4.
+- ~~**Coach spider only returns *current* staff (6 entries)**~~ *(Data)* — **🟢 CLOSED in Phase 3a R2 PR B step 4:** historical coach gap closed via the new `platzierungen` ("standings") spider, which carries the season's manager + TM coach ID + match counts as columns on each season row. Combined with the trophy-derivation join in `data_pipeline/derive_coach_trophies.py`, coach pages now state "Won 2 league titles + 1 cup as HBS manager" for every coach who ever managed HBS. See [`docs/research/0002-transfermarkt-data-surface.md`](research/0002-transfermarkt-data-surface.md) §3.4.
+
+- **Hebrew Wikipedia → Wikidata translation overhaul** *(Data — next session)* — discovered Phase 3a R2 step 10: English-Wikipedia-langlinks coverage is **0.8%** of the all-time name corpus (45/5,794). Wikidata is the right cross-language bridge: `wbsearchentities` returns Q-IDs even for Israeli league players without English articles, and `wbgetentities&languages=he` returns canonical Hebrew labels. Apply to names + clubs + tournaments + nationalities (currently only names go through Wikipedia). Expected coverage 60-80% for players, ~95% for clubs, ~99% for tournaments, 100% for countries. Plan + research in [`docs/research/0003-translation-overhaul-plan.md`](research/0003-translation-overhaul-plan.md). Next-session implementation.
+
+- **Duplicate-page problem from translation drift between runs** *(Data — next session)* — discovered Phase 3a R2 step 10: when a player's Hebrew name changes between runs (e.g. Google → Wikipedia/Claude → Wikidata), the same TM player gets a new page title. The old `Draft:<old-name>` becomes an orphan alongside the new `Draft:<new-name>`. Fix is a per-environment state file `pipeline-state/he_name_by_tm_id.yaml` tracking the prior Hebrew name; on drift, MovePage the old draft to the new title (preserves history). Defer until first reviewer-approval happens — reset-then-re-import handles the unapproved case. Plan in [`docs/research/0003-translation-overhaul-plan.md`](research/0003-translation-overhaul-plan.md) §2.
 
 ## SEO
 

@@ -105,13 +105,27 @@ To diagnose whether you're behind a MITM: `echo | openssl s_client -connect wiki
 
 ## 6. ScraperAPI key (data pipeline only)
 
-If running the data pipeline locally, the bot needs a ScraperAPI key in env. The key is operator-supplied (free tier from <https://www.scraperapi.com/>) and lives in `~/.zshrc`:
+If running the data pipeline locally, the bot needs a ScraperAPI key in env. The key is operator-supplied and lives in `~/.zshrc`:
 
 ```bash
 echo 'export SCRAPERAPI_KEY=<your key>' >> ~/.zshrc
 ```
 
 Used by `data/run_pipeline.py` to route requests through ScraperAPI (Transfermarkt blocks direct scraping). Not needed for read-only wiki operations.
+
+**Plan tier:** Phase 3a R2's all-time scrape (1949-2025) consumed **7,893 credits** — see [[wiki7-scraperapi-baseline]]. The free tier (1,000 credits/month) is insufficient for an all-time pass; the Hobby tier ($49/mo, 100k credits) supports ~12 all-time iterations per month, plenty for the iteration-cycle phase. Per-season cost varies by data density: sparse historical (1949-1974) ~5-8 credits, modern (1985+) ~100-200 credits.
+
+## 6a. WIKI7_ANTHROPIC_API_KEY — translation backend isolation
+
+Phase 3a R2 PR B step 6 added a dedicated env var for the pipeline's Claude API access. **Use `WIKI7_ANTHROPIC_API_KEY`, not `ANTHROPIC_API_KEY`** — keeping them separate prevents pipeline runs from draining day-to-day Claude Code subscription credits (relevant after Anthropic's 2026-06-15 Agent SDK credit-pool split).
+
+```bash
+echo 'export WIKI7_ANTHROPIC_API_KEY=sk-ant-api03-...' >> ~/.zshrc
+```
+
+The pipeline reads `WIKI7_ANTHROPIC_API_KEY` first and only falls back to `ANTHROPIC_API_KEY` when the wiki7-specific one is unset. Day-to-day Claude Code subscription work (which reads `ANTHROPIC_API_KEY`) remains untouched.
+
+When both are unset, the pipeline falls back to Google Translate with a warning. For Phase 3a R2 quality, export the key.
 
 ---
 
@@ -172,10 +186,107 @@ See `docker/extensions/Wiki7ReviewGate/maintenance/resetContent.php` for the imp
 
 ---
 
+## 8. Multi-season pipeline recipes (Phase 3a R2+)
+
+### Single-season run (the original 3a flow)
+
+```bash
+cd data
+uv run python run_pipeline.py --season 2024              # write to local docker
+uv run python run_pipeline.py --season 2024 --dry-run    # preview without writing
+```
+
+### Multi-season run (Phase 3a R2)
+
+```bash
+# All-time (1949 → current). Resume default: spiders whose output already exists
+# on disk are skipped. Sparse historical seasons (pre-~1974) get a placeholder
+# overview page emitted automatically. Recommended for the v1 corpus.
+uv run python run_pipeline.py --seasons 1949-2025
+
+# A focused slice — useful for sanity-checking a spider change.
+uv run python run_pipeline.py --seasons 2015,2024
+```
+
+**Resume from a partial failure:** the pipeline writes per-spider per-season output to disk as it goes. If a run dies (network hiccup, ScraperAPI rate-limit, anything), restart with the **same command** — non-empty existing output skips the matching spider call. Empty `[]` files re-fetch (so a transient TM block doesn't lock a season into permanent emptiness).
+
+```bash
+# Force a full re-fetch even where output exists (after a spider fix, etc.):
+uv run python run_pipeline.py --seasons 1949-2025 --force-rescrape
+```
+
+The wiki import step is independently idempotent — every `page.save()` does a content-hash compare against the live page text and skips no-op edits.
+
+### Iteration-cycle phase recipe (per-season review on local docker)
+
+Phase 3a R2 step 10 surfaced that bulk all-time review (2,680 pages) is overwhelming for a solo reviewer. The iteration-cycle phase walks season-by-season instead. Recommended order: **2024/25 first → walk backwards → review modern aggregates around the 10-season slice → jump to 1985/86 → walk forward → fill historical placeholders by hand**.
+
+Per-cycle recipe:
+
+```bash
+# 1. Reset draft content from last iteration (preserves seed homepage + sub-
+#    templates + users + extensions; wipes only Wiki7Bot-authored content).
+docker exec docker-mediawiki-1 php /var/www/html/maintenance/run.php \
+  /var/www/html/extensions/Wiki7ReviewGate/maintenance/resetContent.php \
+  --scope=drafts-only --confirm
+
+# 2. (Optional) wipe local pipeline output for this season to force fresh
+#    translation. Resume default would otherwise reuse the cached output.
+rm -rf data/data_pipeline/output/<season>/ data/data_pipeline/output/merged/
+
+# 3. Run pipeline for the season.
+cd data
+export WIKI_URL='http://localhost:8080' \
+       WIKI_BOT_USER='Wiki7Bot' \
+       WIKI_BOT_PASS='localdev-password-2026' \
+       WIKI_GATE_ENABLED='1' \
+       WIKI7_ANTHROPIC_API_KEY='<your key>'
+uv run python run_pipeline.py --season 2024
+
+# 4. Approve Cargo templates (one-time per fresh stack; see §9 below).
+# 5. Review drafts at Special:UnapprovedPages, edit/promote, capture issues.
+# 6. Fix issues in code, repeat.
+```
+
+## 9. Cargo tables — post-import approval + population
+
+When the bot writes Cargo declaration templates (`Template:Cargo/Player`, etc.), they land in `NS_TEMPLATE` which has Approved Revs gating. **Until a reviewer approves each template, the Cargo extension doesn't create the SQL table.** Existing player/match pages that transclude the template skip their `#cargo_store` calls.
+
+One-time steps after each bot import:
+
+1. **Approve each Cargo template** via `Special:UnapprovedPages`. There are 9 Cargo templates plus 4 MediaWiki infobox templates.
+
+2. **Populate Cargo data rows** — existing pages need a re-parse to fire their `#cargo_store` calls. Use the Cargo maintenance script:
+
+   ```bash
+   docker exec docker-mediawiki-1 php \
+     /var/www/html/extensions/Cargo/maintenance/cargoRecreateData.php \
+     --table=players
+   # Repeat per Cargo table (matches, transfers, player_stats, coaches,
+   # honours, market_values, season_standings, head_to_head).
+   ```
+
+   Or run unconditional rebuild across all Cargo tables:
+
+   ```bash
+   docker exec docker-mediawiki-1 php \
+     /var/www/html/extensions/Cargo/maintenance/cargoRecreateData.php
+   ```
+
+3. **Verify on `Special:Cargo`** — each Cargo table should now report row counts.
+
+This workflow is documented as a Phase 3b backlog item for eventual automation. Reviewer handles it manually during the iteration-cycle phase.
+
+---
+
 ## Related docs
 
 - **Secret rotation choreography** (rolling any env-file-threaded secret without breaking the running container): memory `[[wiki7-secret-rotation]]`.
 - **Phase 3.5 review-gate architecture**: `docs/adr/0002-review-gate-architecture.md`.
+- **TM data-surface inventory + glossary**: `docs/research/0002-transfermarkt-data-surface.md`.
+- **Translation overhaul plan** (Wikidata-based, iteration-cycle plan): `docs/research/0003-translation-overhaul-plan.md`.
 - **Open follow-ups** (including the `docker/scripts/recycle-wiki7.sh` helper that would automate step 1's container recycle): `docs/phase-3b-backlog.md`.
 - **Live infrastructure snapshot**: memory `[[wiki7-aws-state]]`.
+- **ScraperAPI baseline**: memory `[[wiki7-scraperapi-baseline]]`.
+- **Translation strategy + status**: memory `[[wiki7-translation-strategy]]`.
 - **High-level priorities + sequencing**: memory `[[wiki7-revival-priorities]]`.
