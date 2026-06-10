@@ -5,6 +5,7 @@ namespace MediaWiki\Extension\Wiki7ReviewGate\Maintenance;
 use Maintenance;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Title\Title;
+use SiteStatsInit;
 
 $IP = getenv( 'MW_INSTALL_PATH' );
 if ( $IP === false ) {
@@ -18,7 +19,7 @@ require_once "$IP/maintenance/Maintenance.php";
  * operator iterate freely on prod knowing they can roll back any mess with
  * one SSM command.
  *
- * WHAT IT DELETES
+ * WHAT IT DELETES (--scope=all, the default)
  *   - All pages in NS_DRAFT (3000), regardless of author.
  *   - Pages in NS_MAIN + NS_TEMPLATE + NS_FILE whose *first* revision was
  *     authored by Wiki7Bot. This preserves the docker-install seed homepage
@@ -31,6 +32,22 @@ require_once "$IP/maintenance/Maintenance.php";
  *     approval state — appropriate for a clean slate).
  *   - All rows from echo_event + echo_notification where event_agent_id is
  *     the bot's user_id (bot-generated review-pending notifications).
+ *   - **Phase 3a R2 deep-truncation** (added 2026-06-10): every row in the
+ *     audit-trail tables `archive`, `recentchanges`, `logging`, `change_tag`
+ *     — and recalculates `site_stats` so `ss_total_edits` reflects the live
+ *     revision count instead of the monotonic lifetime counter. The pre-R2
+ *     script left ~9k rows in these tables after a bulk-import reset, which
+ *     didn't actually feel like a clean slate (Special:RecentChanges still
+ *     showed every delete; Special:Log carried the full audit; lifetime
+ *     edit counter kept climbing). After this change, `--scope=all` produces
+ *     a state as close to "fresh install" as the maintenance side can
+ *     achieve without dropping the database.
+ *
+ *     Note: this also wipes the audit log of user-creation + group-promotion
+ *     actions. The users themselves (Wiki7Bot, Admin, reviewer membership)
+ *     are preserved — only the audit trail is cleared. On a dev/iteration
+ *     environment this is desired; on prod, `--scope=all` carries the same
+ *     destructive semantics it has always had.
  *
  * WHAT IT PRESERVES
  *   - Users + groups (Admin, Wiki7Bot, reviewer membership).
@@ -183,6 +200,19 @@ class ResetContent extends Maintenance {
 					->caller( __METHOD__ )->fetchField();
 			}
 			$this->output( "[tables] echo_event (bot-agent): $echoEventCount rows; echo_notification (joined): $echoNotificationCount rows\n" );
+
+			// Phase 3a R2 deep-truncation survey — the audit-trail tables that
+			// the pre-R2 script left untouched. Reported in dry-run so the
+			// operator can see what will be wiped before confirming.
+			$historyCounts = $this->countHistoryTables( $dbr );
+			$this->output(
+				"[tables] history (deep-truncate): "
+				. "archive=" . $historyCounts['archive'] . " rows; "
+				. "recentchanges=" . $historyCounts['recentchanges'] . " rows; "
+				. "logging=" . $historyCounts['logging'] . " rows; "
+				. "change_tag=" . $historyCounts['change_tag'] . " rows; "
+				. "ss_total_edits=" . $historyCounts['ss_total_edits'] . "\n"
+			);
 		}
 
 		$this->output( "\n" );
@@ -237,6 +267,14 @@ class ResetContent extends Maintenance {
 					->caller( __METHOD__ )->execute();
 			}
 			$this->output( "  cleared bot-agent rows from echo_event + echo_notification.\n" );
+
+			// Phase 3a R2 deep-truncation — wipe audit-trail tables that the
+			// page-delete cycle leaves behind, and recalculate site_stats so
+			// ss_total_edits reflects the live revision count instead of the
+			// monotonic lifetime counter.
+			$this->output( "Deep-truncating history tables...\n" );
+			$this->deepTruncateHistory( $dbw );
+			$this->output( "  truncated archive + recentchanges + logging + change_tag; recalculated site_stats.\n" );
 		}
 
 		$this->output( "\nDone.\n" );
@@ -335,6 +373,68 @@ class ResetContent extends Maintenance {
 			$out[] = reset( $values );
 		}
 		return $out;
+	}
+
+	/**
+	 * Phase 3a R2: count rows in the audit-trail tables that the deep-
+	 * truncation step will wipe. Used by the dry-run survey so the operator
+	 * sees exactly what will be cleared before they confirm.
+	 *
+	 * Returns an associative array keyed by table name (or 'ss_total_edits'
+	 * for the site_stats counter). Tables that don't exist on this MW
+	 * version report 0 rather than crashing.
+	 */
+	private function countHistoryTables( $dbr ): array {
+		$out = [
+			'archive' => 0,
+			'recentchanges' => 0,
+			'logging' => 0,
+			'change_tag' => 0,
+			'ss_total_edits' => 0,
+		];
+		foreach ( [ 'archive', 'recentchanges', 'logging', 'change_tag' ] as $table ) {
+			if ( $dbr->tableExists( $table, __METHOD__ ) ) {
+				$out[$table] = (int)$dbr->newSelectQueryBuilder()
+					->select( 'COUNT(*)' )->from( $table )
+					->caller( __METHOD__ )->fetchField();
+			}
+		}
+		if ( $dbr->tableExists( 'site_stats', __METHOD__ ) ) {
+			$out['ss_total_edits'] = (int)$dbr->newSelectQueryBuilder()
+				->select( 'ss_total_edits' )->from( 'site_stats' )
+				->caller( __METHOD__ )->fetchField();
+		}
+		return $out;
+	}
+
+	/**
+	 * Phase 3a R2: TRUNCATE the audit-trail tables that the per-page-delete
+	 * cycle leaves behind, then recalculate site_stats so the lifetime
+	 * counter ss_total_edits matches the live revision count instead of
+	 * monotonically growing across iteration cycles.
+	 *
+	 * Uses TRUNCATE (not DELETE) because (a) we're wiping the entire table,
+	 * not filtering by author, and TRUNCATE is materially faster on tables
+	 * with thousands of rows; (b) the existing `--scope=all` semantics are
+	 * already destructive of audit history (it deletes pages, after all);
+	 * (c) for the dev/iteration environment this is the desired "fresh
+	 * install" state.
+	 *
+	 * Each TRUNCATE is wrapped in a tableExists guard so MW versions that
+	 * lack a particular table don't crash the script.
+	 *
+	 * The site_stats recalc uses SiteStatsInit::doAllAndCommit() — the same
+	 * code path that maintenance/initSiteStats.php --update uses internally.
+	 */
+	private function deepTruncateHistory( $dbw ): void {
+		foreach ( [ 'archive', 'recentchanges', 'logging', 'change_tag' ] as $table ) {
+			if ( $dbw->tableExists( $table, __METHOD__ ) ) {
+				$dbw->query( "TRUNCATE TABLE " . $dbw->tableName( $table ), __METHOD__ );
+			}
+		}
+		// Recalculate site_stats from the live tables — same code path as
+		// maintenance/initSiteStats.php --update.
+		SiteStatsInit::doAllAndCommit( $dbw );
 	}
 
 	/**
