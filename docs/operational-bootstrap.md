@@ -253,6 +253,36 @@ uv run python run_pipeline.py --season 2024
 
 Cargo's table-creation lifecycle has TWO subtle gotchas that bit iter-cycle 1. Read all of §9 before running anything new — there's a fix here for both.
 
+### Namespace gate on `#cargo_store` (iter-cycle 1, 2026-06-11)
+
+Every `#cargo_store` invocation across all 9 templates is wrapped in:
+
+```wiki
+{{#ifeq:{{NAMESPACENUMBER}}|0|{{Cargo/X | ... }}|}}
+```
+
+So pages in NS_DRAFT (3000) skip the Cargo store entirely; only mainspace pages contribute data. This prevents un-reviewed draft data from leaking via public `#cargo_query` renders (leaderboards etc.) and via `Special:CargoQuery` / `Special:CargoTables` / `Special:CargoDrilldown`. Drafts remain VISUALLY complete (the infobox renders, the match-report renders) — only the SQL-store side is gated.
+
+The magic word `{{NAMESPACENUMBER}}` resolves at parse time in the context of the *transcluding* page, so the gate works correctly regardless of which template wraps the call.
+
+**Promotion flow:** when a reviewer moves a draft to mainspace, MediaWiki's `PageMoveComplete` hook fires Cargo's `onPageMoveComplete` (updates `_pageName` + `_pageNamespace` on any existing rows — none in this case since drafts skip storing) AND enqueues `refreshLinks` for the moved page. `refreshLinks` re-parses the page, the conditional now sees `NAMESPACENUMBER=0`, and `#cargo_store` fires for the first time. The row appears in the Cargo table. **No manual re-import needed.**
+
+**Reviewer workflow caveat:** aggregation pages in NS_DRAFT (e.g. `Draft:מלכי השערים של כל הזמנים`) render with zero rows during draft review because no source pages have stored data yet. To preview aggregation rendering, promote a small test slice (3-5 players) to mainspace first; the leaderboard then shows partial data and confirms the rendering logic. Full data appears as more source pages are promoted.
+
+### Defense 2 — anon revocation of `runcargoqueries`
+
+Cargo's `extension.json` grants `runcargoqueries` to `*` (anon) by default. Combined with the namespace gate above, `LocalSettings.php` revokes this from anon and re-grants it to `reviewer` + `sysop`:
+
+```php
+$wgGroupPermissions['*']['runcargoqueries']         = false;
+$wgGroupPermissions['reviewer']['runcargoqueries']  = true;
+$wgGroupPermissions['sysop']['runcargoqueries']     = true;
+```
+
+This is defense-in-depth: even if a future template edit accidentally drops the namespace gate, anon can't reach `Special:CargoQuery` / `Special:CargoTables` to exploit the leak.
+
+**Note:** the revocation does NOT affect `#cargo_query` parser functions embedded in mainspace pages (leaderboards etc.) — those render server-side and the permission check applies only to the special-page UI. Public-facing leaderboards continue to work for anon viewers; only the ad-hoc query UI is locked down.
+
 ### How `#cargo_declare` actually behaves
 
 Per the Cargo docs (mediawiki.org/wiki/Extension:Cargo/Storing_data): **`#cargo_declare` does NOT create the SQL table when parsed.** It only registers the schema in MediaWiki's `page_props` table (as `CargoTableName` + `CargoFields`). The actual SQL table creation is a separate, **explicit** action triggered either by:

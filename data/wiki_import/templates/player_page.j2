@@ -23,9 +23,11 @@
 
 |}
 {# Cargo storage — one row per transfer. Invisible (the wikitext above
-   renders the user-facing table; this is data-only for queries). #}
+   renders the user-facing table; this is data-only for queries). Wrapped
+   in {{#ifeq:{{NAMESPACENUMBER}}|0|...|}} so drafts (NS=3000) skip the
+   store. See Player_infobox.wikitext for the gating rationale. #}
 {% for t in transfers %}
-{{"{{"}}Cargo/Transfer
+{{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/Transfer
 | player_id = {{ player.id }}
 | season = {{ t.season or '' }}
 | transfer_date = {{ t.transfer_date or '' }}
@@ -35,7 +37,7 @@
 | loan = {{ 'Yes' if t.loan else 'No' }}
 | from_club_tm_id = {{ t.from_club_tm_id or '' }}
 | to_club_tm_id = {{ t.to_club_tm_id or '' }}
-{{"}}"}}
+{{"}}"}}|{{"}}"}}
 {% endfor %}
 {% endif %}
 
@@ -52,9 +54,9 @@
 |-
 ! סה"כ !! {{ stats | sum(attribute='appearances') }} !! {{ stats | sum(attribute='goals') }} !! {{ stats | sum(attribute='assists') }} !! {{ stats | sum(attribute='yellow_cards') }} !! {{ stats | map(attribute='second_yellow_cards') | map('default', 0) | sum }} !! {{ stats | sum(attribute='red_cards') }} !! {{ stats | sum(attribute='minutes_played') }}
 |}
-{# Cargo storage — one row per season's stats. #}
+{# Cargo storage — one row per season's stats. Mainspace-only gate. #}
 {% for s in stats %}
-{{"{{"}}Cargo/PlayerStats
+{{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/PlayerStats
 | player_id = {{ player.id }}
 | season = {{ s.season or '' }}
 | appearances = {{ s.appearances or 0 }}
@@ -64,7 +66,7 @@
 | second_yellow_cards = {{ s.get('second_yellow_cards', 0) }}
 | red_cards = {{ s.red_cards or 0 }}
 | minutes_played = {{ s.minutes_played or 0 }}
-{{"}}"}}
+{{"}}"}}|{{"}}"}}
 {% endfor %}
 {% endif %}
 
@@ -78,14 +80,14 @@
 {% endfor %}
 
 |}
-{# Cargo storage — one row per market-value snapshot. #}
+{# Cargo storage — one row per market-value snapshot. Mainspace-only gate. #}
 {% for mv in market_values %}
-{{"{{"}}Cargo/MarketValue
+{{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/MarketValue
 | player_id = {{ player.id }}
 | value_date = {{ mv.value_date or '' }}
 | value = {{ mv.value or '' }}
 | team = {{ mv.team or '' }}
-{{"}}"}}
+{{"}}"}}|{{"}}"}}
 {% endfor %}
 {% endif %}
 

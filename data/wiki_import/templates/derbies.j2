@@ -47,10 +47,11 @@
 |}
 {% endif %}
 
-{# Cargo storage — one row per opponent. Includes major derbies + the rest. #}
+{# Cargo storage — one row per opponent. Includes major derbies + the rest.
+   Mainspace-only gate. #}
 {% for derby in major_derbies %}
 {% if derby.row %}
-{{"{{"}}Cargo/HeadToHead
+{{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/HeadToHead
 | opponent = {{ derby.row.opponent or '' }}
 | opponent_tm_id = {{ derby.row.opponent_tm_id or '' }}
 | played = {{ derby.row.played or 0 }}
@@ -60,11 +61,11 @@
 | goals_for = {{ derby.row.goals_for or 0 }}
 | goals_against = {{ derby.row.goals_against or 0 }}
 | avg_attendance = {{ derby.row.avg_attendance or '' }}
-{{"}}"}}
+{{"}}"}}|{{"}}"}}
 {% endif %}
 {% endfor %}
 {% for r in other_opponents %}
-{{"{{"}}Cargo/HeadToHead
+{{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/HeadToHead
 | opponent = {{ r.opponent or '' }}
 | opponent_tm_id = {{ r.opponent_tm_id or '' }}
 | played = {{ r.played or 0 }}
@@ -74,7 +75,7 @@
 | goals_for = {{ r.goals_for or 0 }}
 | goals_against = {{ r.goals_against or 0 }}
 | avg_attendance = {{ r.avg_attendance or '' }}
-{{"}}"}}
+{{"}}"}}|{{"}}"}}
 {% endfor %}
 
 [[קטגוריה:דרבים]]

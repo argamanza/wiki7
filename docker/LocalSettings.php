@@ -187,6 +187,25 @@ $wgGroupPermissions['reviewer']['unapprovedpages']   = true;
 // code's tenacity retry policy is the belt, this is the suspenders. Applies
 // universally (local docker + prod) since Wiki7Bot is a bot regardless of env.
 $wgGroupPermissions['bot']['noratelimit']            = true;
+
+// === Cargo anon-read revocation (iter-cycle 1, 2026-06-11) =========================
+// Cargo's extension.json grants `runcargoqueries` to `*` (anon) by default,
+// which means anonymous users can reach Special:CargoQuery + Special:CargoTables
+// + Special:CargoDrilldown and run arbitrary queries against every Cargo SQL
+// table. Combined with the namespace gate in the #cargo_store wrappers
+// (drafts skip store), this is defense-in-depth: even if a future template
+// edit loses its namespace gate by accident, anon can't reach the ad-hoc query
+// surface to exploit the leak. The grant is restored to `reviewer` and `sysop`
+// so the operator can still drilldown / query during review walks.
+//
+// Note: this revocation does NOT affect #cargo_query parser functions embedded
+// in MAINSPACE pages (leaderboards etc.) — those render server-side and the
+// permission check applies only to the special-page UI. So public-facing
+// leaderboards continue to work for anon viewers; only the ad-hoc query UI
+// is locked down.
+$wgGroupPermissions['*']['runcargoqueries']          = false;
+$wgGroupPermissions['reviewer']['runcargoqueries']   = true;
+$wgGroupPermissions['sysop']['runcargoqueries']      = true;
 # sysop can grant/revoke 'reviewer'; reviewers can self-remove.
 $wgAddGroups['sysop'][]       = 'reviewer';
 $wgRemoveGroups['sysop'][]    = 'reviewer';

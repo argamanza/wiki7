@@ -33,7 +33,7 @@
 | attendance = {{ match.attendance or '' }}
 {{"}}"}}
 
-{{"{{"}}Cargo/Match
+{{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/Match
 | competition = {{ match.competition or '' }}
 | matchday = {{ match.matchday or '' }}
 | match_date = {{ match.date or '' }}
@@ -53,7 +53,7 @@
 | fourth_official = {{ match.fourth_official or '' }}
 | var_referee = {{ match.var_referee or '' }}
 | var_assistant = {{ match.var_assistant or '' }}
-{{"}}"}}
+{{"}}"}}|{{"}}"}}
 
 {% if match.home_lineup %}
 == הרכב ביתי ==

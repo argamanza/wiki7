@@ -10,9 +10,9 @@
 |}
 
 {# Cargo storage — one row per coach. tenure_seasons + hbs_trophies_won are
-   pipe-list values for the Cargo `List` field type. #}
+   comma-list values for the Cargo `List` field type. Mainspace-only gate. #}
 {% for c in coaches %}
-{{"{{"}}Cargo/Coach
+{{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/Coach
 | coach_id = {{ c.id or '' }}
 | name = {{ c.name or '' }}
 | tenure_start = {{ c.tenure_start or '' }}
@@ -25,7 +25,7 @@
 | is_caretaker = {{ 'Yes' if c.is_caretaker else 'No' }}
 | tenure_seasons = {{ c.tenure_seasons | join(',') if c.tenure_seasons else '' }}
 | hbs_trophies_won = {{ c.hbs_trophies_won | join(',') if c.hbs_trophies_won else '' }}
-{{"}}"}}
+{{"}}"}}|{{"}}"}}
 {% endfor %}
 
 [[קטגוריה:מאמנים]]
