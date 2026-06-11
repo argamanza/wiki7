@@ -335,9 +335,21 @@ docker exec docker-mediawiki-1 php /var/www/html/maintenance/run.php runJobs.php
 
 ### Verify
 
-`http://localhost:8080/Special:Cargo` should now show each table with > 0 rows. Spot-check one query: `Special:CargoQuery` → table `match_reports` → fields `_pageName, opponent, result, season` → run.
+`http://localhost:8080/Special:CargoTables` should now show each table. After draft promotion (or initial v1 prod approve), spot-check one query: `Special:CargoQuery` → table `match_reports` → fields `_pageName, opponent, result, season` → run.
 
 If a table is missing, the most common cause is the same Approved Revs / reserved-word combo: check `page_props WHERE pp_propname='CargoTableName'` to see which schemas registered.
+
+### Local vs prod — when does each step actually run?
+
+The full recipe above runs every iter cycle on local docker. On prod the parts have different semantics — **don't cargo-cult the recipe into routine prod ops**:
+
+| Step | Local (every iter cycle) | Prod (initial v1 launch) | Prod (ongoing ops) |
+|------|---|---|---|
+| `approveAllPages.php` | Bulk-approve so review can proceed | **Once**, for the canonical bot-produced templates that converged through iter cycles | **NO** — defeats the review gate. Reviewer approves each bot revision individually via the wiki UI (or Telegram inline-approve once Phase 3b ships) |
+| `cargoRecreateData.php --table=X` | Run after first import to materialise SQL tables | **Once** — required for SQL tables to exist | **NO** unless a Cargo schema changes (then re-run for the affected table). Ongoing `#cargo_store` calls populate incrementally |
+| `runJobs.php` | Drain inline for immediate verification | **NO** — prod has `$wgJobRunRate = 0` and the EC2 host cron drains jobs every minute (Phase 2.5 work) | **NO** — host cron handles it |
+
+The point: on prod, the bulk-approval recipe is a **one-time launch event**, not a regular operation. Once v1 is live, the review gate works as designed: new pages enter NS_DRAFT, reviewer MovePages individually; updates to existing mainspace pages create unapproved revisions, reviewer approves individually. Cargo `#cargo_store` fires on each promoted/approved page automatically. No manual scripts needed.
 
 ---
 
