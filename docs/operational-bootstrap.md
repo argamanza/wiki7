@@ -306,8 +306,15 @@ After every bot import, run two scripts back-to-back:
 # Step 1 — approve all unapproved revisions. Fires the #cargo_declare parse
 # on every Cargo template, which populates page_props. Also approves the 4
 # MediaWiki templates + 11 main-page sub-templates + the homepage.
+#
+# IMPORTANT: pass --username=Admin (or any valid registered user). Without it
+# the script runs in CLI context with no user — approvals get attributed to
+# the anonymous IP-based actor with NULL user_id, and Special:ApprovedRevs?show=all
+# subsequently throws a TypeError on MW 1.45 (`Linker::userLink(null, ...)`).
+# Discovered iter-cycle 1; fix is to always pass --username=Admin.
 docker exec docker-mediawiki-1 php /var/www/html/maintenance/run.php \
-  /var/www/html/extensions/ApprovedRevs/maintenance/approveAllPages.php
+  /var/www/html/extensions/ApprovedRevs/maintenance/approveAllPages.php \
+  --username=Admin
 
 # Step 2 — create the SQL table + populate it for each Cargo table. The
 # script reads CargoTableName from page_props (populated by step 1) to find
