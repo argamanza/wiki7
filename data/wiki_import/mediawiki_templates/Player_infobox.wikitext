@@ -46,20 +46,20 @@
 {{!}} [https://www.transfermarkt.com/player/profil/spieler/{{{tmk_id|}}} Transfermarkt]
 }}
 |}
-{{!-- Cargo storage — every player page transcludes this infobox, so calling
-     Template:Cargo/Player here populates the `players` Cargo table without
+<!-- Cargo storage — every player page transcludes this infobox, so calling
+     Template:Cargo/Player here populates the players Cargo table without
      requiring the page wikitext to invoke both templates. Field-name mapping
      normalises infobox params (position, jersey_number) to Cargo names
      (main_position, current_jersey_number).
 
-     The {{#ifeq:{{NAMESPACENUMBER}}|0|...|}} gate skips the Cargo store when
-     the transcluding page is NOT in mainspace (NS=0). This means draft pages
-     (NS_DRAFT=3000) populate the visual infobox but do NOT contribute to the
-     Cargo SQL tables — preventing un-reviewed draft data from leaking via
-     public #cargo_query renders and Special:CargoQuery. After a draft is
-     promoted via MovePage, Cargo's PageMoveComplete + refreshLinks re-parse
-     fires this store automatically (now with NAMESPACENUMBER=0). See
-     docs/operational-bootstrap.md §9 for the design rationale. --}}
+     The #ifeq:NAMESPACENUMBER|0|...| gate skips the Cargo store when the
+     transcluding page is NOT in mainspace (NS=0). Draft pages (NS_DRAFT=3000)
+     populate the visual infobox but do NOT contribute to the Cargo SQL
+     tables — preventing un-reviewed draft data from leaking via public
+     cargo_query renders and Special:CargoQuery. After a draft is promoted
+     via MovePage, Cargo's PageMoveComplete + refreshLinks re-parse fires
+     this store automatically (now with NAMESPACENUMBER=0). See
+     docs/operational-bootstrap.md §9 for the design rationale. -->
 {{#ifeq:{{NAMESPACENUMBER}}|0|{{Cargo/Player
 | tmk_id = {{{tmk_id|}}}
 | name_english = {{{name_english|}}}

@@ -312,9 +312,16 @@ After every bot import, run two scripts back-to-back:
 # the anonymous IP-based actor with NULL user_id, and Special:ApprovedRevs?show=all
 # subsequently throws a TypeError on MW 1.45 (`Linker::userLink(null, ...)`).
 # Discovered iter-cycle 1; fix is to always pass --username=Admin.
+#
+# ALSO IMPORTANT: pass --force after a mid-cycle template fix. Without --force,
+# the script only approves pages that have NEVER been approved — pages with an
+# existing-but-stale approved revision are silently skipped, and the wiki keeps
+# rendering the old (broken) version. --force re-approves the latest revision
+# of every page, including pages where the previous revision was already
+# approved. Use --force whenever bot edits go out after the initial bulk approve.
 docker exec docker-mediawiki-1 php /var/www/html/maintenance/run.php \
   /var/www/html/extensions/ApprovedRevs/maintenance/approveAllPages.php \
-  --username=Admin
+  --username=Admin --force
 
 # Step 2 — create the SQL table + populate it for each Cargo table. The
 # script reads CargoTableName from page_props (populated by step 1) to find
