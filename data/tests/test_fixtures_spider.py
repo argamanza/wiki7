@@ -14,9 +14,7 @@ These tests cover:
   - The genuinely-empty cell (postponed / no data) — must NOT crash
 """
 
-from pathlib import Path
 
-import pytest
 from scrapy.http import HtmlResponse, Request
 
 from tmk_scraper.spiders.fixtures_spider import FixturesSpider

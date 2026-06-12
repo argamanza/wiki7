@@ -25,7 +25,7 @@ LOG_LEVEL = "INFO"
 # (Scrapy itself, retry middleware, downloader middleware, run_pipeline's
 # stderr relay) goes through `redact()`. Cheap (substring check + regex
 # on hits only); no perf cost at INFO.
-from tmk_scraper.scraperapi_proxy import install_redacting_log_filter
+from tmk_scraper.scraperapi_proxy import install_redacting_log_filter  # noqa: E402
 install_redacting_log_filter()
 
 # === Concurrency ===

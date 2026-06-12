@@ -82,7 +82,10 @@ class TestMatchReportRendering:
             "competition": "Israeli Premier League",
         }
         title = _match_page_title(match)
-        assert "2024-08-24" in title
+        # Yellow-triage fix (2026-06-13): `_match_page_title` now routes the
+        # date through `to_il_date` so titles render as `DD/MM/YYYY` not
+        # raw ISO. Pre-fix this test asserted the raw "2024-08-24" string.
+        assert "24/08/2024" in title
         assert "Maccabi Tel Aviv" in title
         assert "Israeli Premier League" in title
 

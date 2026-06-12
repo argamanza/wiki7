@@ -328,9 +328,18 @@ def _translate_batch_via_claude(category: str, items: list[str]) -> list[dict]:
             {
                 "type": "text",
                 "text": _build_system_prompt(category),
-                # Phase 3a R2: cache the system prompt so subsequent batches
-                # (and re-runs) re-use it. Saves ~75% on system-prompt tokens
-                # for runs that touch multiple categories.
+                # Phase 3a R2: cache_control set with ephemeral type — but
+                # Anthropic's prompt cache has a ~2048-token minimum for
+                # the prefix to actually cache (Sonnet 4 + Opus 4), and
+                # this system prompt is ~350 tokens. Reviewer-pass yellow
+                # triage (2026-06-13): the original "saves ~75%" comment
+                # was false — caching never kicks in at this prefix size.
+                # The setting is harmless (Anthropic just ignores
+                # cache_control on under-minimum prefixes) and is left in
+                # place for forward-compat: if the system prompt grows
+                # past 2k tokens later (more category guidance, glossary,
+                # etc), the savings start materializing without a code
+                # change. Cost without caching is still <$3 per full pass.
                 "cache_control": {"type": "ephemeral"},
             }
         ],

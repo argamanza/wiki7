@@ -20,7 +20,16 @@
 
 |-{% if row_color %} style="background:{{ row_color }};"{% endif %}
 
-| {{ f.matchday }} || {{ f.date }} || {{ f.venue }} || {{ f.opponent }} || {% if f.date and f.opponent %}[[{{ f.date }} נגד {{ f.opponent }} ({{ competition }})|{{ result }}]]{% else %}{{ result }}{% endif %} || {{ f.attendance }}
+{# Yellow-triage fix (2026-06-13): build the match-page link target
+   through the `match_title` filter so it routes through the SAME
+   helper (`_format_match_title`) that `_match_page_title` uses on
+   the renderer side. Pre-fix this line inlined a separate format that
+   skipped the wikitext sanitization AND used the raw `f.date` (no
+   il_date conversion), so the link always pointed at a different
+   title than the actual match-report page when (a) the date had a
+   weekday prefix, OR (b) the opponent/competition contained a `[`,
+   `]`, `{`, `}`, `#`, or `|`. #}
+| {{ f.matchday }} || {{ f.date | il_date }} || {{ f.venue }} || {{ f.opponent }} || {% if f.date and f.opponent %}[[{{ f.date | match_title(f.opponent, competition) }}|{{ result }}]]{% else %}{{ result }}{% endif %} || {{ f.attendance }}
 {% endfor %}
 
 |}

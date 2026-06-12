@@ -14,9 +14,8 @@ pins the wiring that the reviewer caught was untested — specifically:
     would have left both old tests green; this file closes that gap.
 """
 
-import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

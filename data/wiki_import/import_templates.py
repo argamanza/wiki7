@@ -224,6 +224,16 @@ def _render_template(template_name: str, **kwargs) -> str:
     # rows correctly for both home AND away matches (previously assumed
     # HBS was always home, miscategorising ~half of all matches).
     env.filters["hbs_match_outcome"] = hbs_match_outcome
+    # Yellow-triage fix (2026-06-13): `competition_season.j2` builds per-row
+    # links to match-report pages, but pre-fix the format was inlined and
+    # skipped both the il_date conversion AND the wikitext sanitization
+    # that `_match_page_title` does on the renderer side. The filter routes
+    # both surfaces through the same `_format_match_title` helper so the
+    # link text and the actual page title are guaranteed identical.
+    from wiki_import.import_matches import _format_match_title
+    env.filters["match_title"] = lambda date, opponent, competition: (
+        _format_match_title(date, opponent, competition)
+    )
     template = env.get_template(template_name)
     return template.render(**kwargs)
 

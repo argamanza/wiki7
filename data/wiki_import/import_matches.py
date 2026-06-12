@@ -107,19 +107,50 @@ def _edit_page(site: mwclient.Site, title: str, content: str, summary: str) -> b
     return True
 
 
-def _match_page_title(match: dict) -> str:
-    """Generate a wiki page title for a match report."""
-    date = match.get("date", "תאריך לא ידוע")
-    opponent = match.get("opponent", "לא ידוע")
-    competition = match.get("competition", "")
+def _wikitext_sanitize_title(title: str) -> str:
+    """Strip wikitext-illegal chars from a page title. Shared between
+    `_match_page_title` and any caller that builds match-page link text
+    from match data (e.g. `competition_season.j2`'s per-row link), so
+    both surfaces produce identical strings.
 
-    title = f"{date} נגד {opponent}"
-    if competition:
-        title += f" ({competition})"
-
+    Yellow-triage fix (2026-06-13): pre-fix the sanitization lived only
+    in `_match_page_title`; `competition_season.j2:23` built the link
+    text inline and skipped it, so a fixture with a `[`, `]`, `{`, `}`,
+    `#`, or `|` in its opponent/competition produced a link that pointed
+    at a different page than the rendered match-report. Extract the
+    sanitization into a shared helper used by both."""
     title = title.replace("[", "(").replace("]", ")").replace("{", "(").replace("}", ")")
     title = title.replace("#", "").replace("|", "-")
     return title
+
+
+def _format_match_title(date: str, opponent: str, competition: str) -> str:
+    """Build the canonical match-page title string. Single source of
+    truth; both the renderer (`_match_page_title`) and the link-builder
+    filter (`match_title_filter` registered for Jinja) call this so the
+    two outputs are guaranteed to match.
+
+    Yellow-triage fix (2026-06-13): date is run through `to_il_date` so
+    titles render as `25/08/2024` not `Sun Aug 25, 2024` — the
+    pre-2024 sites were still embedding raw English TM dates in match
+    titles. Fix is strictly cheaper now (zero pages live this cycle)
+    than after the all-time push."""
+    from data_pipeline.helpers import to_il_date
+    formatted_date = to_il_date(date) or date or "תאריך לא ידוע"
+    safe_opponent = opponent or "לא ידוע"
+    title = f"{formatted_date} נגד {safe_opponent}"
+    if competition:
+        title += f" ({competition})"
+    return _wikitext_sanitize_title(title)
+
+
+def _match_page_title(match: dict) -> str:
+    """Generate a wiki page title for a match report."""
+    return _format_match_title(
+        match.get("date", ""),
+        match.get("opponent", ""),
+        match.get("competition", ""),
+    )
 
 
 def import_matches(

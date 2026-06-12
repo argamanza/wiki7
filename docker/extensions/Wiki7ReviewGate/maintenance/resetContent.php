@@ -295,7 +295,13 @@ class ResetContent extends Maintenance {
 			$registryTables = [ 'cargo_tables', 'cargo_pages', 'cargo_backlinks' ];
 			foreach ( $registryTables as $t ) {
 				if ( $dbw->tableExists( $t, __METHOD__ ) ) {
-					$dbw->query( "TRUNCATE TABLE `$t`", __METHOD__ );
+					// Yellow-triage fix (2026-06-13): route through
+					// $dbw->tableName() so the DB prefix (when set) is
+					// applied. Hardcoding backtick-quoted bare names
+					// works on a prefix-free local install but breaks
+					// on any deployment that sets $wgDBprefix. Same
+					// pattern as deepTruncateHistory() below uses.
+					$dbw->query( "TRUNCATE TABLE " . $dbw->tableName( $t ), __METHOD__ );
 				}
 			}
 			// Discover + drop every cargo__* data table (DOUBLE underscore is
@@ -537,8 +543,31 @@ class ResetContent extends Maintenance {
 				$dbw->query( "TRUNCATE TABLE " . $dbw->tableName( $table ), __METHOD__ );
 			}
 		}
+		// Yellow-triage fix (2026-06-13): change_tag_def carries a usage
+		// counter (`ctd_count`) per defined tag. After TRUNCATE change_tag
+		// the counters are stale — they claim X applications of tag Y
+		// while change_tag is now empty. Zero them so Special:Tags shows
+		// correct numbers post-reset. We deliberately do NOT TRUNCATE
+		// change_tag_def itself because the tag-NAME → tag-ID assignments
+		// must persist (tag IDs are referenced by extensions that may
+		// re-apply them via their own logic; truncating reassigns IDs).
+		if ( $dbw->tableExists( 'change_tag_def', __METHOD__ ) ) {
+			$dbw->newUpdateQueryBuilder()
+				->update( 'change_tag_def' )
+				->set( [ 'ctd_count' => 0 ] )
+				->where( '1=1' )
+				->caller( __METHOD__ )
+				->execute();
+		}
 		// Recalculate site_stats from the live tables — same code path as
 		// maintenance/initSiteStats.php --update.
+		//
+		// Yellow-triage note (2026-06-13): `SiteStatsInit::doAllAndCommit`
+		// is the public alias in MW 1.45. It MAY be deprecated / renamed
+		// in 1.46+; verify at the MW upgrade. The forward-compat hedge is
+		// to call it via `class_exists` guard, but the call surface is
+		// well-known and the upgrade will surface the change loudly via
+		// php-cs / deprecation logs. Documented in phase-3b-backlog.
 		SiteStatsInit::doAllAndCommit( $dbw );
 	}
 

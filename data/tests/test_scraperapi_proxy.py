@@ -136,7 +136,7 @@ class TestRedactingLogFilter:
         """Capture what the filter does to a single log record's text."""
         import logging
         from tmk_scraper.scraperapi_proxy import (
-            install_redacting_log_filter, _RedactingLogFilter,
+            _RedactingLogFilter,
         )
         # Apply the filter directly (avoid global state).
         record = logging.LogRecord(
