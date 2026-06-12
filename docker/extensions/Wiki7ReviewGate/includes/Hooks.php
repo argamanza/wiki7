@@ -179,15 +179,30 @@ class Hooks implements
 	 * ApiQueryBaseBeforeQuery — same gate, applied to the API surface that
 	 * ChangesListSpecialPageQuery doesn't cover.
 	 *
-	 * Specifically: action=query&list=recentchanges and list=allpages both
-	 * extend ApiQueryBase and run their SQL via this hook. The Special:* pages
-	 * use a different hook path. Without this, anon API clients can still
-	 * enumerate Draft: titles even though Special:RecentChanges hides them.
+	 * Specifically: action=query&list=recentchanges, list=allpages,
+	 * list=allrevisions and list=usercontribs all extend ApiQueryBase and run
+	 * their SQL via this hook. The Special:* pages use a different hook path.
+	 * Without this, anon API clients can still enumerate Draft: titles even
+	 * though Special:RecentChanges hides them.
 	 *
 	 * Filters by:
 	 *   - list=recentchanges -> rc_namespace != NS_DRAFT
 	 *   - list=allpages      -> page_namespace != NS_DRAFT  (allpages joins on
 	 *                            the `page` table directly)
+	 *   - list=allrevisions  -> page_namespace != NS_DRAFT  (allrevisions joins
+	 *                            `page` and performs NO per-title read check on
+	 *                            the metadata path — without this, anon clients
+	 *                            could enumerate Draft: titles + revision
+	 *                            metadata via arvnamespace=3000 or by paging
+	 *                            through everything)
+	 *   - list=usercontribs  -> page_namespace != NS_DRAFT  (the bot account's
+	 *                            contributions would otherwise list every draft
+	 *                            title it created)
+	 *
+	 * The page_namespace conditions are only added when the module's query
+	 * actually has the `page` table in scope (defensive: a future core change
+	 * that drops the join must not turn this into a fatal SQL error — fail-open
+	 * matches the pre-hook behavior and is caught by the leak probe runbook).
 	 *
 	 * Other ApiQueryBase descendants (links, categorymembers, etc.) we leave
 	 * alone for now; they'll need similar gating only if/when a leak surfaces.
@@ -211,6 +226,37 @@ class Hooks implements
 			$conds[] = 'rc_namespace != ' . self::NS_DRAFT;
 		} elseif ( $name === 'allpages' ) {
 			$conds[] = 'page_namespace != ' . self::NS_DRAFT;
+		} elseif ( $name === 'allrevisions' || $name === 'usercontribs' ) {
+			$hasPageTable = in_array( 'page', $tables, true )
+				|| array_key_exists( 'page', $tables );
+			if ( $hasPageTable ) {
+				$conds[] = 'page_namespace != ' . self::NS_DRAFT;
+			}
+		}
+	}
+
+	/**
+	 * ContribsPager::getQueryInfo — filter NS_DRAFT rows out of
+	 * Special:Contributions for users who can't read NS_DRAFT.
+	 *
+	 * Special:Contributions/Wiki7Bot is effectively a directory of every draft
+	 * the bot has ever written; ChangesListSpecialPageQuery doesn't cover it
+	 * (ContribsPager builds its own query). Same fail-open SQL-condition
+	 * pattern as the API gate above.
+	 *
+	 * @param \MediaWiki\Pager\ContribsPager $pager
+	 * @param array &$queryInfo
+	 */
+	public function onContribsPager__getQueryInfo( $pager, &$queryInfo ) {
+		$user = \RequestContext::getMain()->getUser();
+		if ( $this->canReadDrafts( $user ) ) {
+			return;
+		}
+		$tables = $queryInfo['tables'] ?? [];
+		$hasPageTable = in_array( 'page', $tables, true )
+			|| array_key_exists( 'page', $tables );
+		if ( $hasPageTable ) {
+			$queryInfo['conds'][] = 'page_namespace != ' . self::NS_DRAFT;
 		}
 	}
 
@@ -370,7 +416,10 @@ class Hooks implements
 			? "📝 {$userName} wrote draft: {$titleText}\n→ {$reviewUrl}"
 			: "🔄 {$userName} proposed update: {$titleText}\n→ {$reviewUrl}";
 
-		$apiUrl = 'https://api.telegram.org/bot' . urlencode( $token ) . '/sendMessage';
+		// The token is NOT urlencoded: Telegram tokens contain a literal ':'
+		// (<botid>:<hash>) and the API expects it verbatim in the path. The
+		// token comes from our own env config, not user input.
+		$apiUrl = 'https://api.telegram.org/bot' . $token . '/sendMessage';
 		$payload = http_build_query( [
 			'chat_id' => $chatId,
 			'text'    => $msg,

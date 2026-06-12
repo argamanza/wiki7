@@ -19,9 +19,6 @@
 		"MediaWiki\\Extension\\Wiki7ReviewGate\\": "includes/",
 		"MediaWiki\\Extension\\Wiki7ReviewGate\\Maintenance\\": "maintenance/"
 	},
-	"MaintenanceScripts": {
-		"Wiki7ReviewGate:resetContent": "MediaWiki\\Extension\\Wiki7ReviewGate\\Maintenance\\ResetContent"
-	},
 	"MessagesDirs": {
 		"Wiki7ReviewGate": [
 			"i18n"
@@ -34,7 +31,8 @@
 		"ChangesListSpecialPageQuery": "main",
 		"ApiQueryBaseBeforeQuery": "main",
 		"SpecialPageBeforeExecute": "main",
-		"ApiCheckCanExecute": "main"
+		"ApiCheckCanExecute": "main",
+		"ContribsPager::getQueryInfo": "main"
 	},
 	"HookHandlers": {
 		"main": {

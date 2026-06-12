@@ -6,6 +6,15 @@
  * templates, CSS/JS) on first run. It only creates pages that don't
  * already exist, so manual wiki edits are preserved across restarts.
  *
+ * When the seed content changes (hash mismatch) or --force is passed, existing
+ * pages are re-imported — but ONLY pages whose latest revision was written by
+ * this importer (edit summary starts with "Auto-import:"). A page that a human
+ * or bot has edited since the last import is never overwritten; it's reported
+ * as PRESERVED so the operator can merge the seed change manually if wanted.
+ * (Without this guard, any seed-file tweak force-rewrote all 15 pages,
+ * clobbering live edits and — because these pages are ApprovedRevs-gated —
+ * silently de-publishing the approved revision of every one of them.)
+ *
  * Usage: php maintenance/run.php /var/www/html/import-pages.php
  */
 
@@ -166,6 +175,16 @@ class ImportDefaultPages extends Maintenance {
                 continue;
             }
 
+            // Even in force mode, never overwrite a page whose latest revision
+            // came from someone other than this importer (detected via the
+            // "Auto-import:" edit-summary prefix). Hidden/missing comments are
+            // treated as human edits — fail toward preserving content.
+            if ( $pageExists && $force && !$this->latestRevisionIsAutoImport( $title ) ) {
+                $this->output( "  PRESERVED (edited since last import): $pageTitle\n" );
+                $skipped++;
+                continue;
+            }
+
             $content = file_get_contents( $filePath );
             if ( $content === false ) {
                 $this->error( "  ERROR: Cannot read file $filePath" );
@@ -229,6 +248,26 @@ class ImportDefaultPages extends Maintenance {
         $this->storeHash( $finalHash );
 
         $this->output( "\nImport complete: $created created, $updated updated, $skipped skipped, $errors errors.\n" );
+    }
+
+    /**
+     * True when the page's latest revision was written by this importer —
+     * i.e. its edit summary carries the "Auto-import:" prefix this script
+     * stamps on every save. Anything else (human edit, bot edit, hidden or
+     * unreadable comment) returns false so force mode preserves the page.
+     */
+    private function latestRevisionIsAutoImport( Title $title ): bool {
+        $rev = $this->getServiceContainer()
+            ->getRevisionLookup()
+            ->getRevisionByTitle( $title );
+        if ( !$rev ) {
+            return false;
+        }
+        $comment = $rev->getComment();
+        if ( !$comment ) {
+            return false;
+        }
+        return str_starts_with( $comment->text, 'Auto-import:' );
     }
 
     /**
