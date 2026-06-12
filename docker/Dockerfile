@@ -20,8 +20,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Download Composer — versioned URL, not composer-2.phar (a moving "latest 2.x"
-# alias), for the same reproducibility reason.
-ARG COMPOSER_VERSION=2.8.6
+# alias), for the same reproducibility reason. Must be >= 2.9: the
+# `composer config --global audit.block-insecure` call below doesn't exist in
+# earlier releases (2.8.6 failed the image build with "Setting
+# audit.block-insecure does not exist").
+ARG COMPOSER_VERSION=2.10.1
 RUN wget -cO - "https://getcomposer.org/download/${COMPOSER_VERSION}/composer.phar" > composer.phar \
     && mv composer.phar /usr/local/bin/composer \
     && chmod +x /usr/local/bin/composer
