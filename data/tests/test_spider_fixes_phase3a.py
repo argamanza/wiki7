@@ -111,16 +111,23 @@ class TestMatchSpiderPhase3a:
             if c["player"]:
                 assert c["player_tm_id"] and c["player_tm_id"].isdigit()
 
-    def test_resolve_team_key_is_home_first(self):
-        """TM renders home-team box first. The pre-fix code looked up nonexistent
-        match.home_team / match.away_team fields and silently fell through to a similar
-        first-box-is-home fallback — this test pins the surviving behavior.
-        """
+    def test_first_box_is_home_via_extraction(self):
+        """TM renders home-team box first. Was previously tested via
+        `resolve_team_key()` which used shared `response.meta`; that method
+        was removed in the §6 ③ fix (2026-06-12 review) because the shared
+        state caused the home-lineup-dropped regression on pre-formation
+        match reports. The first-box-is-home invariant is now tested by
+        running the full extractor on a real fixture and asserting the
+        home key comes back populated.
+
+        See `TestMatchSpiderHomeLineupRegression` (below) for the 1985
+        regression case that the removal addresses."""
         response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
-        response.request.meta["match_data"] = {"venue": "H", "opponent": "H. Jerusalem"}
-        # First call sees the home team; second call should return "away" regardless of name.
-        assert self.spider.resolve_team_key("Hapoel Beer Sheva", response) == "home"
-        assert self.spider.resolve_team_key("Hapoel Jerusalem", response) == "away"
+        result = self.spider.extract_from_graphic_field(response)
+        # Modern fixture has the graphic layout; both home + away populated.
+        assert "home" in result and "away" in result
+        assert len(result["home"]) > 0
+        assert len(result["away"]) > 0
 
 
 class TestParsePlayerLink:
@@ -423,3 +430,76 @@ class TestTransfersSpiderPhase3a:
         assert spider._parse_header("Arrivals 00/01") == ("in", "2000")
         assert spider._parse_header("Info") == (None, None)
         assert spider._parse_header("") == (None, None)
+
+    def test_header_parser_pre_2000_pivot(self):
+        """§6 ③ corruption fix (2026-06-12 review): pre-2000 seasons must
+        bin into 19XX, not 20XX. HBS's founding-era data exists in TM."""
+        spider = TransfersSpider(season="1985")
+        assert spider._parse_header("Arrivals 49/50") == ("in", "1949")
+        assert spider._parse_header("Arrivals 85/86") == ("in", "1985")
+        # Boundary: 29/30 still 2000s; 30/31 flips.
+        assert spider._parse_header("Arrivals 29/30") == ("in", "2029")
+        assert spider._parse_header("Arrivals 30/31") == ("in", "1930")
+
+
+class TestMatchSpiderHomeLineupRegression:
+    """§6 ③ home-lineup-dropped regression test (2026-06-12 review).
+
+    On pre-formation match reports (1985 vintage and earlier), TM uses a
+    table-layout lineup format instead of the modern graphic-field
+    diagram. The dispatcher in `parse_match_report` runs BOTH extractors
+    against the response — first the graphic-field one (returns empty
+    for this layout), then the simple-table one. Previously these shared
+    state via `response.meta["home"]`: the graphic-field call saw zero
+    formation containers but DID find the team-name header for the home
+    column (the selector matches both layouts), and set
+    `response.meta["home"] = "<home team>"`. The simple-table call then
+    saw `"home" in response.meta` for every box and keyed both as "away",
+    dropping the home lineup entirely.
+
+    This test reproduces the bug against the 1985 fixture: both
+    extractors must produce both home + away keys when called in the
+    same dispatch order as production.
+    """
+
+    def test_home_and_away_both_extracted_on_1985_table_layout(self):
+        response = _fake_response(FIXTURES_DIR / "match_report_1985_sample.html")
+        spider = MatchSpider()
+
+        # Mirror parse_match_report's dispatch ORDER exactly. The bug only
+        # manifests when graphic_field runs FIRST and contaminates meta.
+        graphic = spider.extract_from_graphic_field(response)
+        table = spider.extract_from_simple_table(response)
+
+        # graphic_field has no formation containers on this fixture — fine.
+        assert graphic == {} or all(not v for v in graphic.values())
+
+        # The bug: previously this assertion failed — only "away" was set.
+        assert "home" in table, (
+            "Home lineup dropped — extract_from_simple_table only produced "
+            f"keys {list(table.keys())} (the §6 ③ regression)"
+        )
+        assert "away" in table
+
+        # Both lineups must carry actual roster data, not empty stubs.
+        assert any(table["home"].get(pos) for pos in ("goalkeeper", "defenders", "midfielders", "forwards"))
+        assert any(table["away"].get(pos) for pos in ("goalkeeper", "defenders", "midfielders", "forwards"))
+
+    def test_extractors_have_independent_first_box_tracking(self):
+        """Each extractor must determine home/away independently — they
+        no longer share `response.meta["home"]`. Calling them in either
+        order must produce the same result."""
+        response_a = _fake_response(FIXTURES_DIR / "match_report_1985_sample.html")
+        response_b = _fake_response(FIXTURES_DIR / "match_report_1985_sample.html")
+        spider = MatchSpider()
+
+        # Order A: graphic first
+        spider.extract_from_graphic_field(response_a)
+        table_a = spider.extract_from_simple_table(response_a)
+
+        # Order B: simple-table first (the would-be-bug-free order under
+        # the old code).
+        table_b = spider.extract_from_simple_table(response_b)
+        spider.extract_from_graphic_field(response_b)
+
+        assert list(table_a.keys()) == list(table_b.keys()) == ["home", "away"]

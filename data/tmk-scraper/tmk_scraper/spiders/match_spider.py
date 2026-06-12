@@ -261,13 +261,26 @@ class MatchSpider(scrapy.Spider):
         + `tm_player_id` keyed by position; the legacy bare-string list is
         preserved alongside as `players_short` for backward compat with any
         existing match-data consumer reading position lists directly.
+
+        First box in document order is home, second is away (TM renders
+        left column = home, right column = away). The first/second tracking
+        is LOCAL to this call — sharing it with `extract_from_graphic_field`
+        via `response.meta` was the §6 ③ "home lineup dropped" regression:
+        for pre-formation matches, `extract_from_graphic_field` ran first,
+        found zero formation containers but DID set `response.meta["home"]`
+        from the team-name selector that's identical between layouts;
+        then this function saw "home already taken" for every box and
+        keyed both as "away", dropping the home lineup entirely.
+        Reproduced against `match_report_1985_sample.html` 2026-06-12.
         """
         result = {}
+        seen_home = False
         for box in response.css("div.aufstellung-box, div.large-6.columns"):
             team_name = box.css(".aufstellung-unterueberschrift-mannschaft a::text").get()
             if not team_name:
                 continue
-            team_key = self.resolve_team_key(team_name, response)
+            team_key = "home" if not seen_home else "away"
+            seen_home = True
             players = {}
             for row in box.css("table tr"):
                 pos = row.css("td b::text").get()
@@ -304,11 +317,16 @@ class MatchSpider(scrapy.Spider):
         per-jersey-number compact rendering.
         """
         result = {}
+        seen_home = False
         for box in response.css("div.box > div.large-6.columns"):
             team_name = box.css(".aufstellung-unterueberschrift-mannschaft a::text").get()
             if not team_name:
                 continue
-            team_key = self.resolve_team_key(team_name, response)
+            # First box = home, second = away. Local state (was: shared via
+            # response.meta with extract_from_simple_table, which dropped
+            # home lineups for pre-formation matches — §6 ③ fix).
+            team_key = "home" if not seen_home else "away"
+            seen_home = True
             players = []
             for p in box.css(".formation-player-container"):
                 a = p.css(".formation-number-name a")
@@ -327,15 +345,11 @@ class MatchSpider(scrapy.Spider):
                 result[team_key] = players
         return result
 
-    def resolve_team_key(self, team_name, response):
-        # Transfermarkt renders home-first on the match-report page (left column = home,
-        # right column = away). The fixture dict we ride along on doesn't carry the home/away
-        # team names (only venue=H/A + opponent), so we just track box order: first
-        # `aufstellung-unterueberschrift-mannschaft` we see is home, the second is away.
-        if "home" not in response.meta:
-            response.meta["home"] = team_name.lower()
-            return "home"
-        return "away"
+    # NOTE: `resolve_team_key()` was removed in the §6 ③ fix (2026-06-12).
+    # Its use of `response.meta["home"]` was shared between both lineup
+    # extractors and caused the home-lineup-dropped regression on pre-
+    # formation match reports. Both extractors now use a local `seen_home`
+    # counter — there's no longer a need for an instance method here.
 
     def extract_penalties(self, response):
         items = response.css("#sb-elfmeterscheissen li")
