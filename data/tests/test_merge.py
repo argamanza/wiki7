@@ -61,6 +61,55 @@ class TestMergePlayers:
         merged = merge_players([s1])
         assert len(merged) == 2
 
+    def test_seasons_active_tracks_every_appearance(self, tmp_path):
+        """§6 high #8 fix (2026-06-12 review): merge_players must stamp
+        `seasons_active: [<year>, ...]` on each merged record so the
+        per-season squad page renderer can filter to that season's squad.
+        Pre-fix the field didn't exist and the squad page rendered the
+        entire all-time roster."""
+        s_2002 = tmp_path / "2002"
+        s_2010 = tmp_path / "2010"
+        s_2024 = tmp_path / "2024"
+        # Player A in 2002 + 2010 (but not 2024)
+        _write_jsonl(s_2002 / "players.jsonl", [
+            {"id": "A", "name_english": "A", "current_squad": True,
+             "current_jersey_number": 7, "birth_date": None, "birth_place": None,
+             "nationality": None, "main_position": None, "name_hebrew": None,
+             "homegrown": False, "retired": False},
+        ])
+        _write_jsonl(s_2010 / "players.jsonl", [
+            {"id": "A", "name_english": "A", "current_squad": True,
+             "current_jersey_number": 9, "birth_date": None, "birth_place": None,
+             "nationality": None, "main_position": None, "name_hebrew": None,
+             "homegrown": False, "retired": False},
+        ])
+        # Player B in 2024 only
+        _write_jsonl(s_2024 / "players.jsonl", [
+            {"id": "B", "name_english": "B", "current_squad": True,
+             "current_jersey_number": 10, "birth_date": None, "birth_place": None,
+             "nationality": None, "main_position": None, "name_hebrew": None,
+             "homegrown": False, "retired": False},
+        ])
+
+        merged = merge_players([s_2002, s_2010, s_2024])
+        by_id = {p["id"]: p for p in merged}
+        assert by_id["A"]["seasons_active"] == ["2002", "2010"]
+        assert by_id["B"]["seasons_active"] == ["2024"]
+
+    def test_seasons_active_single_season_input(self, tmp_path):
+        """When the merge sees only one season, every player still gets a
+        single-element `seasons_active` — keeps the field shape stable so
+        downstream filters don't need a None check."""
+        s = tmp_path / "2024"
+        _write_jsonl(s / "players.jsonl", [
+            {"id": "X", "name_english": "X", "current_squad": True,
+             "current_jersey_number": 1, "birth_date": None, "birth_place": None,
+             "nationality": None, "main_position": None, "name_hebrew": None,
+             "homegrown": False, "retired": False},
+        ])
+        merged = merge_players([s])
+        assert merged[0]["seasons_active"] == ["2024"]
+
 
 class TestMergeAppendable:
     def test_concatenate_and_dedup(self, tmp_path):

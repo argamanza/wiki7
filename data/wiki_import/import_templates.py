@@ -396,6 +396,25 @@ def import_squad_page(
     resolved_stats = stats_path or DEFAULT_STATS_PATH
     players = _load_jsonl(resolved_players)
 
+    # §6 high #8 fix (2026-06-12 review): filter players to those who were
+    # in the SQUAD for THIS season. Pre-fix, the merged-mode players file
+    # contained the all-time roster and the squad page rendered every
+    # player ever, regardless of season — so the 2002/03 squad page showed
+    # Ramzi Safouri (signed 2023). The merge step now stamps
+    # `seasons_active` on each player; we filter on it here. When the
+    # field isn't present (legacy single-season pipeline run), don't
+    # filter — preserves backward compat for the iter-cycle 1 path.
+    if players and any("seasons_active" in p for p in players):
+        season_str = str(season)
+        players = [
+            p for p in players
+            if season_str in (p.get("seasons_active") or [])
+        ]
+        logger.info(
+            "import_squad_page: filtered to %d players active in season %s",
+            len(players), season_str,
+        )
+
     # Enrich players with season-specific stats
     if resolved_stats.exists():
         all_stats = _load_jsonl(resolved_stats)

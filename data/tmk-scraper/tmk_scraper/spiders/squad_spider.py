@@ -13,7 +13,18 @@ class SquadSpider(scrapy.Spider):
         self.start_urls = [
             f"{self.base_url}/hapoel-beer-sheva/kader/verein/2976/saison_id/{self.season}"
         ]
-        self.loan_url = f"{self.base_url}/hapoel-beer-sheva/leihspieler/verein/2976"
+        # §6 high #8 fix (2026-06-12 review): the loan-page URL must carry
+        # `/saison_id/{year}` too. Without it, TM serves TODAY's loanees
+        # regardless of which historical season we asked for, so a 2024
+        # snapshot of loaned-out players got stamped into every historical
+        # season's roster — contaminating ~70 squads with anachronistic
+        # players. Empirically TM accepts the saison_id parameter on the
+        # leihspieler URL (probed 2026-06-12); for pre-modern seasons it
+        # simply yields no rows, which is the correct behavior.
+        self.loan_url = (
+            f"{self.base_url}/hapoel-beer-sheva/leihspieler/verein/2976"
+            f"/saison_id/{self.season}"
+        )
 
     def parse(self, response: scrapy.http.Response, **kwargs):
         rows = response.css("table.items > tbody > tr")

@@ -28,10 +28,18 @@ def write_jsonl(data: list, path: Path):
 
 
 def merge_players(season_dirs: List[Path]) -> list:
-    """Merge player records across seasons. Latest season wins for mutable fields."""
+    """Merge player records across seasons. Latest season wins for mutable fields.
+
+    §6 high #8 fix (2026-06-12 review): also accumulates `seasons_active`
+    — a sorted list of bare-integer season strings the player appeared in
+    that season's squad. Used downstream by `import_squad_page` to render
+    the correct squad per season. Without this list the per-season squad
+    page rendered the entire merged all-time roster (no season filter).
+    """
     players_by_id = {}
 
     for season_dir in sorted(season_dirs):  # sorted = chronological order
+        season = season_dir.name  # bare integer e.g. "2024"
         players = load_jsonl(season_dir / "players.jsonl")
         for player in players:
             pid = player["id"]
@@ -47,7 +55,11 @@ def merge_players(season_dirs: List[Path]) -> list:
                 # Homegrown/retired: True if ever true
                 existing["homegrown"] = existing["homegrown"] or player["homegrown"]
                 existing["retired"] = existing["retired"] or player["retired"]
+                # Track every season this player appears in.
+                if season not in existing["seasons_active"]:
+                    existing["seasons_active"].append(season)
             else:
+                player["seasons_active"] = [season]
                 players_by_id[pid] = player
 
     logger.info("Merged %d unique players from %d seasons", len(players_by_id), len(season_dirs))
