@@ -152,7 +152,7 @@ This is a deliberate, scheduled verification pass. After it passes, the platform
 | # | What | How | Expected | Outcome |
 |---|---|---|---|---|
 | E1 | WAF Web ACL active on the distribution | `aws wafv2 list-web-acls --scope=CLOUDFRONT --region us-east-1` and verify it's referenced by the distribution | WebACL listed; CloudFront distribution.webACLId matches | |
-| E2 | WAF rule ordering (bot-allow < bot-block priority) | `aws wafv2 get-web-acl --scope=CLOUDFRONT --region us-east-1 ...` | AllowLegitimateBot priority < BlockSuspiciousMediaWikiPatterns | |
+| E2 | WAF rule ordering (bot-allow < bot-block priority) | `aws wafv2 get-web-acl --scope=CLOUDFRONT --region us-east-1 ...` | AllowLegitimateBot priority < BlockSuspiciousMediaWikiPatterns. *Expectation updated 2026-06-12 (review fix, PR #62): full order is now RateLimitPerIP (6) < AllowLegitimateBot (7) < BlockSuspiciousMediaWikiPatterns (8) — the rate limit must come FIRST or a spoofed crawler UA bypasses it.* | |
 | E3 | WAF managed rule sets present | Same output | Common + KnownBadInputs + SQLi + PHP rule sets | |
 | E4 | WAF custom rules: geo-block + rate limit | Same | Both present | |
 | E5 | WAF allowlist covers crawlers including uptimerobot | Same | UA list includes Googlebot, Bingbot, Twitterbot, facebookexternalhit, LinkedInBot, WhatsApp, Telegram, uptimerobot | |

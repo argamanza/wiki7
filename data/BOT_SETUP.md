@@ -1,8 +1,15 @@
 # Bot Account Setup (Local Docker Wiki)
 
+> **Review-gate note (Phase 3.5+):** bot writes no longer land directly in public
+> mainspace. With `WIKI_GATE_ENABLED=1` the pipeline routes new pages to the
+> `Draft:` namespace and updates become unapproved revisions (ApprovedRevs);
+> a reviewer promotes them via `Special:MovePage` / `Special:UnapprovedPages`.
+> See `docs/adr/0002-review-gate-architecture.md`. The setup below still applies —
+> it creates the account the gate-routed pipeline logs in with.
+
 ## Prerequisites
 
-- Docker and docker-compose installed
+- Docker (with the compose plugin) installed
 - Wiki7 Docker environment available (`wiki7/docker/`)
 
 ## Steps
@@ -10,7 +17,7 @@
 ### 1. Start the local wiki
 
 ```bash
-cd wiki7/docker && docker-compose up -d
+cd wiki7/docker && docker compose up -d
 ```
 
 Wait for it to be ready at http://localhost:8080 (first start takes ~30 seconds for DB init).
@@ -48,18 +55,20 @@ export WIKI_BOT_PASS="BotPass1234"
 cd wiki7/data
 
 # Dry run first (no wiki writes)
-python run_pipeline.py --season 2024 --dry-run -v
+uv run python run_pipeline.py --season 2024 --dry-run -v
 
 # Real run
-python run_pipeline.py --season 2024 -v
+uv run python run_pipeline.py --season 2024 -v
 
 # Multi-season
-python run_pipeline.py --seasons 2015-2025 -v
+uv run python run_pipeline.py --seasons 2015-2025 -v
 ```
+
+(Dependencies are managed with uv — `make pipeline-install` / `uv sync` once first.)
 
 ## Troubleshooting
 
 - **"Anonymous users cannot edit"**: Bot account not set up or env vars not exported
 - **"Login failed"**: Check WIKI_BOT_USER/WIKI_BOT_PASS match what you created
-- **Connection refused**: Docker wiki not running, check `docker-compose ps`
+- **Connection refused**: Docker wiki not running, check `docker compose ps`
 - **Cargo table errors**: Run `php maintenance/run.php cargoRecreateData` inside the container
