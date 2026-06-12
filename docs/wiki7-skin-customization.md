@@ -50,7 +50,7 @@ re-forking, apply exactly these — nothing more.
 
 ### Hebrew fonts — `resources/skins.wiki7.styles.fonts.he/`
 
-A self-contained directory: `index.less` overrides `--font-family-wiki7-base` / `--font-family-wiki7-serif` to Noto Sans / Serif Hebrew, `he.less` declares the `@font-face` blocks, and `fonts/` holds the four `.woff2` files (Noto Sans Hebrew, Noto Serif Hebrew, Rubik, Open Sans). All four are checked into the repo so the skin is self-sufficient.
+A self-contained directory: `index.less` overrides `--font-family-wiki7-base` / `--font-family-wiki7-serif` to Noto Sans / Serif Hebrew, `he.less` declares the `@font-face` blocks, and `fonts/` holds the two `.woff2` files (Noto Sans Hebrew, Noto Serif Hebrew), checked into the repo so the skin is self-sufficient. *(Rubik and Open Sans were also checked in originally but were never `@font-face`-declared anywhere — removed as dead weight in the 2026-06-12 review. The `@font-face` blocks use `format('woff2-variations')`, matching upstream's pattern for variable fonts.)*
 
 ### PHP — `includes/`
 
