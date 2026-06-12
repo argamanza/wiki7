@@ -76,6 +76,17 @@ class TestPlatzierungenSpider:
         assert PlatzierungenSpider._season_from_label("") is None
         assert PlatzierungenSpider._season_from_label("nonsense") is None
 
+    def test_season_from_label_pre_2000_pivot(self):
+        """§6 ③ corruption fix (2026-06-12 review): the founding-era seasons
+        ("49/50", "50/51") used to map to 2049/2050. HBS was founded in
+        1949 — pivot cutoff at 30 puts these in the 1900s correctly."""
+        assert PlatzierungenSpider._season_from_label("49/50") == "1949"
+        assert PlatzierungenSpider._season_from_label("50/51") == "1950"
+        assert PlatzierungenSpider._season_from_label("87/88") == "1987"
+        # Boundary: 29/30 is still 2000s; 30/31 flips to 1900s.
+        assert PlatzierungenSpider._season_from_label("29/30") == "2029"
+        assert PlatzierungenSpider._season_from_label("30/31") == "1930"
+
     def test_tier_from_label(self):
         assert PlatzierungenSpider._tier_from_label("First Tier") == 1
         assert PlatzierungenSpider._tier_from_label("Second Tier") == 2

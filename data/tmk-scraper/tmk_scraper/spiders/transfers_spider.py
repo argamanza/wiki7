@@ -49,10 +49,13 @@ class TransfersSpider(scrapy.Spider):
         if not m:
             return None, None
         direction = "in" if m.group(1).lower() == "arrivals" else "out"
-        # Two-digit year prefix. Years 50-99 belong to the 1900s, 00-49 to the 2000s
-        # (handles the early-2000s seasons in the archive).
+        # Two-digit year prefix. Pivot at 30 so HBS's founding-era seasons
+        # bin correctly: "49/50" → 1949 (not 2049 — the §6 ③ corruption
+        # from the 2026-06-12 review). yy < 30 → 20yy; yy >= 30 → 19yy.
+        # Cutoff = 30 leaves a ~5-year forward window (2025-2029 still 20XX);
+        # bump down to 25 by 2030.
         yy = int(m.group(2))
-        season_yyyy = 1900 + yy if yy >= 50 else 2000 + yy
+        season_yyyy = 1900 + yy if yy >= 30 else 2000 + yy
         return direction, str(season_yyyy)
 
     def parse(self, response: scrapy.http.Response, **kwargs):

@@ -213,6 +213,34 @@ def is_retired(player: dict) -> bool:
     return False
 
 
+# 2-digit year pivot. Choosing 30 means:
+#   yy < 30 → 20yy (so 24 → 2024, 29 → 2029)
+#   yy >= 30 → 19yy (so 49 → 1949, 87 → 1987, 99 → 1999)
+# Rationale (§6 ③ fix, 2026-06-12 review): HBS was founded ~1949/50, so the
+# corpus carries seasons + birth dates back to the late 1940s. A naïve "always
+# 20XX" or "cutoff at 50" pivot mis-binned the founding-era data:
+#   - to_il_date("25/07/87") used to expand to "25/07/2087" (year 2087)
+#   - transfers/platzierungen spiders mapped "49/50" to 2049, not 1949
+# The 30 cutoff gives a ~5-year forward window (2025-2029 still bin to 20XX);
+# bump it to 25 by 2030 if pre-2000 data hasn't aged out by then.
+YY_PIVOT_CUTOFF = 30
+
+
+def pivot_two_digit_year(yy: int, cutoff: int = YY_PIVOT_CUTOFF) -> int:
+    """Expand a 2-digit year to 4 digits using the project's standard pivot.
+
+    `yy >= cutoff` → 19YY; otherwise → 20YY. The default cutoff (30) maps
+    24/25/29 to the 2000s and 30/49/87/99 to the 1900s — appropriate for
+    a corpus whose oldest content reaches the late 1940s.
+
+    Idempotent for already-4-digit values: pass them through unchanged
+    (`pivot_two_digit_year(2024)` returns 2024).
+    """
+    if yy >= 100:
+        return yy
+    return 1900 + yy if yy >= cutoff else 2000 + yy
+
+
 def to_il_date(raw: str | None) -> str:
     """Convert a date string to Israeli DD/MM/YYYY format.
 
@@ -234,6 +262,11 @@ def to_il_date(raw: str | None) -> str:
     the canonical thing readers reference; the day-of-week can be
     derived if needed.
 
+    2-digit year expansion uses `pivot_two_digit_year()` — yy < 30 →
+    20yy, yy >= 30 → 19yy. The old "always 20yy" path expanded
+    "25/07/87" to "25/07/2087" (the §6 ③ corruption from the
+    2026-06-12 review).
+
     Returns the original string if parsing fails (defensive — don't
     blank a date the user might still want to see, even if oddly formed).
     """
@@ -249,11 +282,11 @@ def to_il_date(raw: str | None) -> str:
     # Already DD/MM/YYYY?
     if re.fullmatch(r"\d{2}/\d{2}/\d{4}", s):
         return s
-    # DD/MM/YY → expand 2-digit year (assume 20XX for now; revisit if pre-2000
-    # data starts flowing through this filter).
+    # DD/MM/YY → pivot 2-digit year to 4 digits (cutoff 30; see helper).
     m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{2})", s)
     if m:
-        return f"{m.group(1)}/{m.group(2)}/20{m.group(3)}"
+        yyyy = pivot_two_digit_year(int(m.group(3)))
+        return f"{m.group(1)}/{m.group(2)}/{yyyy}"
     # DD.MM.YYYY → slashes
     m = re.fullmatch(r"(\d{2})\.(\d{2})\.(\d{4})", s)
     if m:

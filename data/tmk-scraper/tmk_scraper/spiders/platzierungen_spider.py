@@ -119,9 +119,11 @@ class PlatzierungenSpider(scrapy.Spider):
         if not head.isdigit():
             return None
         yy = int(head)
-        # Year-2K window: 50+ belongs to 1900s, 00-49 to 2000s. Same convention
-        # the transfers spider uses.
-        return str(1900 + yy if yy >= 50 else 2000 + yy)
+        # Pivot at 30: yy < 30 → 20yy; yy >= 30 → 19yy. HBS's founding-era
+        # seasons require this — "49/50" must bin to 1949, not 2049 (the
+        # §6 ③ corruption from the 2026-06-12 review). Same convention as
+        # the transfers spider; bump down to 25 by 2030.
+        return str(1900 + yy if yy >= 30 else 2000 + yy)
 
     @staticmethod
     def _tier_from_label(label: str) -> int | None:

@@ -8,6 +8,8 @@ from data_pipeline.helpers import (
     parse_countries,
     is_homegrown,
     is_retired,
+    pivot_two_digit_year,
+    to_il_date,
     to_season_display,
 )
 
@@ -250,3 +252,61 @@ class TestIsYouthClubName:
         the club as youth — must be at the end."""
         # Synthetic edge case: 'נוער' not at the end
         assert is_youth_club_name("נוער מועדון") is False
+
+
+class TestPivotTwoDigitYear:
+    """§6 ③ fix from the 2026-06-12 review: the project's standard 2-digit
+    year pivot. Default cutoff = 30. Used by `to_il_date` for the YY date
+    case AND mirrored by the transfers + platzierungen spiders for the
+    season-label pivot."""
+
+    def test_modern_years_pivot_to_2000s(self):
+        assert pivot_two_digit_year(0) == 2000
+        assert pivot_two_digit_year(24) == 2024
+        assert pivot_two_digit_year(29) == 2029  # last 2000s year at default cutoff
+
+    def test_pre_2000_years_pivot_to_1900s(self):
+        """The corruption case: founding-era years must bin into 19XX, not
+        20XX. HBS founded ~1949/50, so 49 is the operative boundary."""
+        assert pivot_two_digit_year(30) == 1930  # first 1900s year at default cutoff
+        assert pivot_two_digit_year(49) == 1949  # the §6 ③ regression case
+        assert pivot_two_digit_year(50) == 1950
+        assert pivot_two_digit_year(87) == 1987  # the to_il_date "25/07/87" regression case
+        assert pivot_two_digit_year(99) == 1999
+
+    def test_already_4digit_passes_through(self):
+        """Idempotency — callers may sometimes have a 4-digit value already."""
+        assert pivot_two_digit_year(2024) == 2024
+        assert pivot_two_digit_year(1949) == 1949
+
+    def test_custom_cutoff(self):
+        """Cutoff can be overridden — by 2030 we'll bump the default to 25."""
+        assert pivot_two_digit_year(29, cutoff=25) == 1929
+        assert pivot_two_digit_year(24, cutoff=25) == 2024
+
+
+class TestToIlDateYearPivot:
+    """The historical-corruption regression test for `to_il_date`. The pre-
+    fix version always prepended '20' to a 2-digit year, so a 1987 birth
+    date came out as 2087 — invisible until anyone tried to render a player
+    born before 2000. Iter-cycle 1 walk would have caught it on the first
+    pre-2000 player imported."""
+
+    def test_pre_2000_yy_pivots_to_1900s(self):
+        assert to_il_date("25/07/87") == "25/07/1987"
+        assert to_il_date("01/01/49") == "01/01/1949"
+
+    def test_modern_yy_pivots_to_2000s(self):
+        assert to_il_date("25/07/24") == "25/07/2024"
+        assert to_il_date("01/01/29") == "01/01/2029"
+
+    def test_yy_pivot_works_under_day_prefix(self):
+        """TM emits "Thu 25/07/87" with a day-of-week prefix. The strip-
+        prefix path feeds the YY pivot — exercise the chain."""
+        assert to_il_date("Thu 25/07/87") == "25/07/1987"
+        assert to_il_date("Sun 25/07/24") == "25/07/2024"
+
+    def test_dd_mm_yyyy_still_passes_through(self):
+        """Regression: the 4-digit-year path is unaffected by the pivot."""
+        assert to_il_date("25/07/1987") == "25/07/1987"
+        assert to_il_date("25/07/2024") == "25/07/2024"
