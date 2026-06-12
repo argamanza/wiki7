@@ -4,6 +4,11 @@
 > [`docs/revival-plan.md`](docs/revival-plan.md). This document is retained as a **detailed
 > task bank** — its Stage 1 infrastructure/security fixes are still a valid checklist for the
 > rebuild. Note that the production stacks have since been torn down (clean-slate rebuild).
+>
+> **Update 2026-06-12:** most Stage 1–2 items (S3 lockdown, SG fix, RDS SNAPSHOT +
+> deletion protection, SQLi/PHP WAF rules, MariaDB 11.4, OIDC, cdk-diff PR comments)
+> were completed during Phases 2/2.5 of the revival (2026-06). Cross-check
+> [`docs/revival-plan.md`](docs/revival-plan.md) before reusing anything from this file.
 
 Comprehensive plan to bring wiki7 from a stale project to a production-grade, scalable community wiki for Hapoel Beer Sheva FC.
 

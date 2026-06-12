@@ -8,15 +8,24 @@ RUN apt-get update && apt-get install -y \
 # Install the PECL redis PHP extension so MediaWiki's RedisBagOStuff can connect
 # to a sidecar Redis container ($wgMainCacheType / $wgParserCacheType in
 # LocalSettings.php). $PHPIZE_DEPS is set by the docker-php base image.
+# Pinned (like every other extension in this file) so the image build is
+# reproducible — an unpinned `pecl install redis` floats to whatever PECL
+# published most recently.
+ARG PHPREDIS_VERSION=6.2.0
 RUN apt-get update \
     && apt-get install -y --no-install-recommends $PHPIZE_DEPS \
-    && pecl install redis \
+    && pecl install "redis-${PHPREDIS_VERSION}" \
     && docker-php-ext-enable redis \
     && apt-get purge -y --auto-remove $PHPIZE_DEPS \
     && rm -rf /var/lib/apt/lists/*
 
-# Download Composer
-RUN wget -cO - https://getcomposer.org/composer-2.phar > composer.phar \
+# Download Composer — versioned URL, not composer-2.phar (a moving "latest 2.x"
+# alias), for the same reproducibility reason. Must be >= 2.9: the
+# `composer config --global audit.block-insecure` call below doesn't exist in
+# earlier releases (2.8.6 failed the image build with "Setting
+# audit.block-insecure does not exist").
+ARG COMPOSER_VERSION=2.10.1
+RUN wget -cO - "https://getcomposer.org/download/${COMPOSER_VERSION}/composer.phar" > composer.phar \
     && mv composer.phar /usr/local/bin/composer \
     && chmod +x /usr/local/bin/composer
 

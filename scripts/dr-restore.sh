@@ -1,27 +1,38 @@
 #!/bin/bash
 set -euo pipefail
 
-# Wiki7 DR Restore Script
-# Restores the RDS database from a snapshot and triggers ECS redeployment.
+# Wiki7 DR Restore Script (EC2 architecture — ADR-0001)
+# Restores the RDS database from a snapshot (or point-in-time) and walks the
+# RENAME DANCE needed to put the restored instance into service.
+#
+# Why a rename dance: the MediaWiki container gets MEDIAWIKI_DB_HOST baked in
+# at EC2 boot from `dbInstance.dbInstanceEndpointAddress` inside CloudFormation.
+# You cannot "point the stack" at an out-of-band restored instance — but the RDS
+# endpoint hostname is derived from the DB instance IDENTIFIER, so renaming the
+# restored instance to the original identifier makes the existing endpoint
+# resolve to the restored data with zero CDK/CFN changes.
+#
+# This script automates the restore + verification; the cutover steps are
+# printed (not executed) because they touch the live instance and deserve a
+# human eyeball per step.
 #
 # Usage:
-#   ./dr-restore.sh                              # Restore from latest automated snapshot
+#   ./dr-restore.sh                               # Restore from latest automated snapshot
 #   ./dr-restore.sh --snapshot SNAPSHOT_ID        # Restore from a specific snapshot
 #   ./dr-restore.sh --pitr "2026-01-15T10:30:00Z" # Point-in-time recovery
 #
 # Prerequisites:
-#   - AWS CLI configured with appropriate permissions (profile: argamanza)
-#   - jq installed
+#   - AWS CLI configured (profile: argamanza)
+#   - Run ./dr-test.sh periodically so this path is known-good before you need it.
 
 AWS_PROFILE="${AWS_PROFILE:-argamanza}"
 REGION="${AWS_REGION:-il-central-1}"
-DB_INSTANCE_ID="wiki7database"
-CLUSTER_NAME="Wiki7Cluster"
-SERVICE_NAME=""
 RESTORE_MODE="snapshot"
 SNAPSHOT_ID=""
 PITR_TIMESTAMP=""
 RESTORED_SUFFIX="-restored-$(date +%Y%m%d%H%M%S)"
+
+aws_cmd() { aws --profile "$AWS_PROFILE" --region "$REGION" "$@"; }
 
 usage() {
   echo "Usage: $0 [--snapshot SNAPSHOT_ID] [--pitr TIMESTAMP]"
@@ -45,53 +56,45 @@ done
 echo "=== Wiki7 DR Restore ==="
 echo "Profile: $AWS_PROFILE | Region: $REGION | Mode: $RESTORE_MODE"
 
-# 1. Find the source DB instance identifier
+# 1. Find the source DB instance
 echo ""
 echo "--- Step 1: Locating source DB instance ---"
-SOURCE_DB=$(aws rds describe-db-instances \
-  --profile "$AWS_PROFILE" --region "$REGION" \
+SOURCE_DB=$(aws_cmd rds describe-db-instances \
   --query "DBInstances[?contains(DBInstanceIdentifier, 'wiki7')].DBInstanceIdentifier" \
   --output text | head -1)
-
-if [ -z "$SOURCE_DB" ]; then
-  echo "ERROR: Could not find Wiki7 RDS instance"
-  exit 1
-fi
+[ -n "$SOURCE_DB" ] || { echo "ERROR: Could not find Wiki7 RDS instance"; exit 1; }
 echo "Source DB: $SOURCE_DB"
 
 RESTORED_DB="${SOURCE_DB}${RESTORED_SUFFIX}"
 echo "Restored DB: $RESTORED_DB"
 
-# 2. Get the DB subnet group and security groups from the source
-SUBNET_GROUP=$(aws rds describe-db-instances \
-  --profile "$AWS_PROFILE" --region "$REGION" \
+SUBNET_GROUP=$(aws_cmd rds describe-db-instances \
   --db-instance-identifier "$SOURCE_DB" \
   --query "DBInstances[0].DBSubnetGroup.DBSubnetGroupName" --output text)
-
-SECURITY_GROUPS=$(aws rds describe-db-instances \
-  --profile "$AWS_PROFILE" --region "$REGION" \
+SECURITY_GROUPS=$(aws_cmd rds describe-db-instances \
   --db-instance-identifier "$SOURCE_DB" \
   --query "DBInstances[0].VpcSecurityGroups[*].VpcSecurityGroupId" --output text)
+INSTANCE_CLASS=$(aws_cmd rds describe-db-instances \
+  --db-instance-identifier "$SOURCE_DB" \
+  --query "DBInstances[0].DBInstanceClass" --output text)
 
-# 3. Restore
+# 2. Restore
 echo ""
 echo "--- Step 2: Restoring database ---"
 if [ "$RESTORE_MODE" = "pitr" ]; then
   echo "Restoring to point-in-time: $PITR_TIMESTAMP"
-  aws rds restore-db-instance-to-point-in-time \
-    --profile "$AWS_PROFILE" --region "$REGION" \
+  aws_cmd rds restore-db-instance-to-point-in-time \
     --source-db-instance-identifier "$SOURCE_DB" \
     --target-db-instance-identifier "$RESTORED_DB" \
     --restore-time "$PITR_TIMESTAMP" \
     --db-subnet-group-name "$SUBNET_GROUP" \
     --vpc-security-group-ids $SECURITY_GROUPS \
-    --no-publicly-accessible
+    --db-instance-class "$INSTANCE_CLASS" \
+    --no-publicly-accessible > /dev/null
 else
-  # Find latest snapshot if not specified
   if [ -z "$SNAPSHOT_ID" ]; then
     echo "Finding latest automated snapshot..."
-    SNAPSHOT_ID=$(aws rds describe-db-snapshots \
-      --profile "$AWS_PROFILE" --region "$REGION" \
+    SNAPSHOT_ID=$(aws_cmd rds describe-db-snapshots \
       --db-instance-identifier "$SOURCE_DB" \
       --snapshot-type automated \
       --query "sort_by(DBSnapshots, &SnapshotCreateTime)[-1].DBSnapshotIdentifier" \
@@ -102,61 +105,70 @@ else
     fi
   fi
   echo "Restoring from snapshot: $SNAPSHOT_ID"
-  aws rds restore-db-instance-from-db-snapshot \
-    --profile "$AWS_PROFILE" --region "$REGION" \
+  aws_cmd rds restore-db-instance-from-db-snapshot \
     --db-instance-identifier "$RESTORED_DB" \
     --db-snapshot-identifier "$SNAPSHOT_ID" \
     --db-subnet-group-name "$SUBNET_GROUP" \
     --vpc-security-group-ids $SECURITY_GROUPS \
-    --no-publicly-accessible
+    --db-instance-class "$INSTANCE_CLASS" \
+    --no-publicly-accessible > /dev/null
 fi
 
-# 4. Wait for restored instance
+# 3. Wait for the restored instance
 echo ""
 echo "--- Step 3: Waiting for restored instance to become available ---"
 echo "This may take 5-15 minutes..."
-aws rds wait db-instance-available \
-  --profile "$AWS_PROFILE" --region "$REGION" \
-  --db-instance-identifier "$RESTORED_DB"
-echo "Restored instance is available."
+aws_cmd rds wait db-instance-available --db-instance-identifier "$RESTORED_DB"
 
-# 5. Get new endpoint
-NEW_ENDPOINT=$(aws rds describe-db-instances \
-  --profile "$AWS_PROFILE" --region "$REGION" \
+NEW_ENDPOINT=$(aws_cmd rds describe-db-instances \
   --db-instance-identifier "$RESTORED_DB" \
   --query "DBInstances[0].Endpoint.Address" --output text)
-echo "New DB endpoint: $NEW_ENDPOINT"
+echo "Restored instance is available at: $NEW_ENDPOINT"
 
-# 6. Force ECS redeployment
-echo ""
-echo "--- Step 4: Forcing ECS redeployment ---"
-echo "NOTE: You need to update the CDK stack to point to the new DB instance."
-echo "  New endpoint: $NEW_ENDPOINT"
-echo ""
-echo "After updating the stack, run:"
-echo "  npx cdk deploy Wiki7CdkStack --profile $AWS_PROFILE"
-echo ""
-echo "Or force a redeployment of the current service:"
+# 4. Cutover instructions (manual, on purpose)
+cat <<EOF
 
-# Find the ECS cluster and service
-ECS_CLUSTER=$(aws ecs list-clusters \
-  --profile "$AWS_PROFILE" --region "$REGION" \
-  --query "clusterArns[?contains(@, 'Wiki7')]" --output text | head -1)
+--- Step 4: Cutover (MANUAL — read each step before running it) ---
 
-if [ -n "$ECS_CLUSTER" ]; then
-  ECS_SERVICE=$(aws ecs list-services \
-    --profile "$AWS_PROFILE" --region "$REGION" \
-    --cluster "$ECS_CLUSTER" \
-    --query "serviceArns[0]" --output text)
-  echo "  aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --force-new-deployment --profile $AWS_PROFILE --region $REGION"
-fi
+The wiki container resolves the DB by the ORIGINAL endpoint hostname, which is
+derived from the identifier '$SOURCE_DB'. To put the restored data in service:
 
-# 7. Health check
-echo ""
-echo "--- Step 5: Verify ---"
-echo "Once ECS is redeployed, verify the wiki is functional:"
-echo "  curl -s 'https://wiki7.co.il/api.php?action=query&meta=siteinfo&format=json' | jq ."
-echo ""
-echo "=== DR Restore complete ==="
-echo "Restored instance: $RESTORED_DB"
-echo "Old instance ($SOURCE_DB) is still running — delete it manually after verification."
+  # 4a. Verify the restored data first (same in-VPC validation dr-test.sh uses):
+  #     run ./dr-test.sh logic against $NEW_ENDPOINT, or spot-check via SSM:
+  #     docker exec wiki7 mysql -h $NEW_ENDPOINT ... 'SELECT COUNT(*) FROM page;'
+
+  # 4b. Take the broken original out of the way (it is NOT deleted):
+  aws rds modify-db-instance --profile $AWS_PROFILE --region $REGION \\
+    --db-instance-identifier $SOURCE_DB \\
+    --new-db-instance-identifier ${SOURCE_DB}-broken-$(date +%Y%m%d) --apply-immediately
+  aws rds wait db-instance-available --profile $AWS_PROFILE --region $REGION \\
+    --db-instance-identifier ${SOURCE_DB}-broken-$(date +%Y%m%d)
+
+  # 4c. Rename the restored instance to the original identifier (this recreates
+  #     the original endpoint hostname, so the running wiki reconnects on its own):
+  aws rds modify-db-instance --profile $AWS_PROFILE --region $REGION \\
+    --db-instance-identifier $RESTORED_DB \\
+    --new-db-instance-identifier $SOURCE_DB --apply-immediately
+
+  # 4d. Re-enable the protections a restored instance does NOT inherit:
+  aws rds modify-db-instance --profile $AWS_PROFILE --region $REGION \\
+    --db-instance-identifier $SOURCE_DB --deletion-protection --apply-immediately
+
+  # 4e. Restart the MW container so it drops stale DB connections:
+  #     (via SSM session or send-command on the wiki7 EC2)
+  docker restart wiki7
+
+  # 4f. Verify the site, then delete the broken instance WITH a final snapshot:
+  curl -s 'https://wiki7.co.il/api.php?action=query&meta=siteinfo&format=json' | jq .
+  aws rds delete-db-instance --profile $AWS_PROFILE --region $REGION \\
+    --db-instance-identifier ${SOURCE_DB}-broken-$(date +%Y%m%d) \\
+    --final-db-snapshot-identifier ${SOURCE_DB}-broken-final-$(date +%Y%m%d)
+
+  # NOTE: CloudFormation now has benign drift (same physical identifier, new
+  # resource attributes like deletionProtection state). The next 'cdk deploy'
+  # reconciles it; run 'cdk diff' first and expect no replacement.
+
+=== DR Restore: restore phase complete ===
+Restored instance: $RESTORED_DB ($NEW_ENDPOINT)
+The original ($SOURCE_DB) is untouched until you run the cutover above.
+EOF

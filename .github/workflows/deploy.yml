@@ -3,6 +3,12 @@ name: Deploy to AWS
 on:
   push:
     branches: [master]
+    # Docs-only commits don't change the image or the infra — skip the ~15 min
+    # qemu ARM64 build + cdk deploy. (paths-ignore skips the run only when ALL
+    # changed files match, so mixed code+docs pushes still deploy.)
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
   workflow_dispatch:
 
 # A failed deploy that's already in flight should finish (rolling it back from
@@ -12,8 +18,9 @@ concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
+# id-token: write is granted per-job below — only `deploy` needs to mint OIDC
+# tokens; the test job shouldn't hold that capability.
 permissions:
-  id-token: write
   contents: read
 
 jobs:
@@ -37,6 +44,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     needs: test
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
@@ -65,18 +75,19 @@ jobs:
       - name: Install CDK dependencies
         run: cd cdk && npm ci
 
-      - name: CDK Diff (preview changes)
-        run: cd cdk && npx cdk diff --all 2>&1 || true
-
       - name: CDK Deploy
         id: cdk-deploy
         run: |
           cd cdk && npx cdk deploy --all --require-approval never --outputs-file cdk-outputs.json
           # Surface the live infra IDs to subsequent steps + the job summary.
-          DIST_ID=$(jq -r '.Wiki7CdkStack.CloudFrontDistributionIdBFB1951A // empty' cdk-outputs.json)
-          DIST_DOMAIN=$(jq -r '.Wiki7CdkStack.CloudFrontDistributionDomainNameFAAF3EEF // empty' cdk-outputs.json)
-          EIP=$(jq -r '.Wiki7CdkStack.ComputeElasticIp204F8FAB // empty' cdk-outputs.json)
-          INSTANCE=$(jq -r '.Wiki7CdkStack.ComputeInstanceId6C549C73 // empty' cdk-outputs.json)
+          # Match output keys by prefix — CDK appends a hash suffix (e.g.
+          # CloudFrontDistributionIdBFB1951A) that silently changes if a construct
+          # path is ever renamed; hardcoding the hash broke the summary once.
+          out() { jq -r --arg p "$1" '.Wiki7CdkStack | to_entries[] | select(.key | startswith($p)) | .value' cdk-outputs.json | head -1; }
+          DIST_ID=$(out CloudFrontDistributionId)
+          DIST_DOMAIN=$(out CloudFrontDistributionDomainName)
+          EIP=$(out ComputeElasticIp)
+          INSTANCE=$(out ComputeInstanceId)
           {
             echo "dist_id=$DIST_ID"
             echo "dist_domain=$DIST_DOMAIN"
@@ -99,11 +110,15 @@ jobs:
           # The 2026-06-06 incident slipped through because an extension was 500'ing
           # the homepage while /api.php kept returning 200; both checks must pass to
           # declare the deploy healthy.
+          # The homepage probe carries a per-deploy cache-buster query param: the
+          # Wiki7DynamicHtml CloudFront policy caches anon HTML (QS is in the cache
+          # key), so a bare "/" can serve a stale edge-cached 200 and false-pass a
+          # deploy that actually broke the origin.
           set -e
           for i in $(seq 1 12); do
-            api=$(curl -sk -o /dev/null -w '%{http_code}' \
+            api=$(curl -s -o /dev/null -w '%{http_code}' \
               "https://wiki7.co.il/api.php?action=query&meta=siteinfo&format=json" || echo 000)
-            home=$(curl -sk -o /dev/null -w '%{http_code}' "https://wiki7.co.il/" || echo 000)
+            home=$(curl -s -o /dev/null -w '%{http_code}' "https://wiki7.co.il/?healthcheck=$GITHUB_SHA" || echo 000)
             if [ "$api" = "200" ] && [ "$home" = "200" ]; then
               echo "OK — wiki healthy on attempt $i (api=$api home=$home)"
               exit 0
@@ -139,6 +154,10 @@ jobs:
           EIP: ${{ steps.cdk-deploy.outputs.eip || 'n/a (deploy failed)' }}
           DIST_ID: ${{ steps.cdk-deploy.outputs.dist_id || 'n/a (deploy failed)' }}
           DIST_DOMAIN: ${{ steps.cdk-deploy.outputs.dist_domain || 'n/a (deploy failed)' }}
+          # env indirection, not inline ${{ }} interpolation in the script body:
+          # ref_name is attacker-influenced text (branch names) and inlining it
+          # into `run:` is the canonical script-injection antipattern.
+          BRANCH: ${{ github.ref_name }}
         run: |
           {
             echo "## Deployment ${{ job.status }}"
@@ -146,7 +165,7 @@ jobs:
             echo "| | |"
             echo "|---|---|"
             echo "| Site | https://wiki7.co.il |"
-            echo "| Branch | \`${{ github.ref_name }}\` |"
+            echo "| Branch | \`$BRANCH\` |"
             echo "| Commit | \`${{ github.sha }}\` |"
             echo "| Instance | \`$INSTANCE\` |"
             echo "| EIP | \`$EIP\` |"

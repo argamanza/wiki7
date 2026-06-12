@@ -1,26 +1,35 @@
 #!/bin/bash
 set -euo pipefail
 
-# Wiki7 DR Test Script
-# Non-destructive test that validates backups are restorable.
-# Restores a snapshot to a temporary RDS instance, validates data, then cleans up.
+# Wiki7 DR Test Script (EC2 architecture — ADR-0001)
+# Non-destructive proof that backups are restorable: restores the latest
+# automated snapshot to a temporary RDS instance, then validates the data
+# FROM INSIDE THE VPC by running mysql via SSM on the wiki7 EC2 instance
+# (the temp instance reuses the prod DB security group, whose only ingress
+# is from the MediaWiki instance SG — a laptop can never reach it, which is
+# why the previous version of this script always false-failed).
+#
+# Mirrors the manual drill executed 2026-06-06 (revival-plan Phase 2 §backup
+# drill) so the drill is repeatable instead of folklore.
 #
 # Usage: ./dr-test.sh
 #
 # Prerequisites:
-#   - AWS CLI configured with appropriate permissions (profile: argamanza)
+#   - AWS CLI configured (profile: argamanza) with rds/ssm/ec2 read + rds restore perms
+#   - The wiki7 EC2 instance running (validation executes there via SSM)
 
 AWS_PROFILE="${AWS_PROFILE:-argamanza}"
 REGION="${AWS_REGION:-il-central-1}"
 TEMP_DB="wiki7-dr-test-$(date +%Y%m%d%H%M%S)"
 CLEANUP_ON_EXIT=true
 
+aws_cmd() { aws --profile "$AWS_PROFILE" --region "$REGION" "$@"; }
+
 cleanup() {
   if [ "$CLEANUP_ON_EXIT" = true ]; then
     echo ""
     echo "--- Cleanup: Deleting temporary instance $TEMP_DB ---"
-    aws rds delete-db-instance \
-      --profile "$AWS_PROFILE" --region "$REGION" \
+    aws_cmd rds delete-db-instance \
       --db-instance-identifier "$TEMP_DB" \
       --skip-final-snapshot \
       --delete-automated-backups 2>/dev/null || true
@@ -33,121 +42,122 @@ echo "=== Wiki7 DR Test ==="
 echo "Profile: $AWS_PROFILE | Region: $REGION"
 echo ""
 
-# 1. Find source DB
+# 1. Find source DB + latest automated snapshot
 echo "--- Step 1: Locating source DB and latest snapshot ---"
-SOURCE_DB=$(aws rds describe-db-instances \
-  --profile "$AWS_PROFILE" --region "$REGION" \
+SOURCE_DB=$(aws_cmd rds describe-db-instances \
   --query "DBInstances[?contains(DBInstanceIdentifier, 'wiki7')].DBInstanceIdentifier" \
   --output text | head -1)
-
-if [ -z "$SOURCE_DB" ]; then
-  echo "ERROR: Could not find Wiki7 RDS instance"
-  exit 1
-fi
+[ -n "$SOURCE_DB" ] || { echo "ERROR: Could not find Wiki7 RDS instance"; exit 1; }
 echo "Source DB: $SOURCE_DB"
 
-# 2. Find latest snapshot
-SNAPSHOT_ID=$(aws rds describe-db-snapshots \
-  --profile "$AWS_PROFILE" --region "$REGION" \
+SNAPSHOT_ID=$(aws_cmd rds describe-db-snapshots \
   --db-instance-identifier "$SOURCE_DB" \
   --snapshot-type automated \
   --query "sort_by(DBSnapshots, &SnapshotCreateTime)[-1].DBSnapshotIdentifier" \
   --output text)
-
 if [ "$SNAPSHOT_ID" = "None" ] || [ -z "$SNAPSHOT_ID" ]; then
   echo "ERROR: No automated snapshots found for $SOURCE_DB"
   exit 1
 fi
 echo "Latest snapshot: $SNAPSHOT_ID"
 
-# Get subnet group from source
-SUBNET_GROUP=$(aws rds describe-db-instances \
-  --profile "$AWS_PROFILE" --region "$REGION" \
+SUBNET_GROUP=$(aws_cmd rds describe-db-instances \
   --db-instance-identifier "$SOURCE_DB" \
   --query "DBInstances[0].DBSubnetGroup.DBSubnetGroupName" --output text)
-
-SECURITY_GROUPS=$(aws rds describe-db-instances \
-  --profile "$AWS_PROFILE" --region "$REGION" \
+SECURITY_GROUPS=$(aws_cmd rds describe-db-instances \
   --db-instance-identifier "$SOURCE_DB" \
   --query "DBInstances[0].VpcSecurityGroups[*].VpcSecurityGroupId" --output text)
 
-# 3. Restore snapshot to temporary instance
+# 2. Find the wiki7 EC2 instance (validation runs there) + the DB secret it can read
 echo ""
-echo "--- Step 2: Restoring snapshot to temporary instance ---"
+echo "--- Step 2: Locating the wiki7 EC2 instance + DB secret ---"
+EC2_ID=$(aws_cmd ec2 describe-instances \
+  --filters "Name=tag:aws:cloudformation:stack-name,Values=Wiki7CdkStack" \
+            "Name=instance-state-name,Values=running" \
+  --query "Reservations[0].Instances[0].InstanceId" --output text)
+if [ -z "$EC2_ID" ] || [ "$EC2_ID" = "None" ]; then
+  echo "ERROR: Could not find a running wiki7 EC2 instance (needed to validate from inside the VPC)"
+  exit 1
+fi
+echo "EC2 instance: $EC2_ID"
+
+SECRET_ARN=$(aws_cmd secretsmanager list-secrets \
+  --query "SecretList[?contains(Name, 'Wiki7DatabaseSecret')].ARN" \
+  --output text | head -1)
+[ -n "$SECRET_ARN" ] || { echo "ERROR: Could not find Wiki7DatabaseSecret"; exit 1; }
+
+# 3. Restore snapshot to temporary instance (Graviton, matching prod's t4g class)
+echo ""
+echo "--- Step 3: Restoring snapshot to temporary instance ---"
 echo "Temporary instance: $TEMP_DB"
-aws rds restore-db-instance-from-db-snapshot \
-  --profile "$AWS_PROFILE" --region "$REGION" \
+aws_cmd rds restore-db-instance-from-db-snapshot \
   --db-instance-identifier "$TEMP_DB" \
   --db-snapshot-identifier "$SNAPSHOT_ID" \
   --db-subnet-group-name "$SUBNET_GROUP" \
   --vpc-security-group-ids $SECURITY_GROUPS \
-  --db-instance-class db.t3.micro \
-  --no-publicly-accessible
+  --db-instance-class db.t4g.micro \
+  --no-publicly-accessible > /dev/null
 
 echo "Waiting for instance to become available (5-15 minutes)..."
-aws rds wait db-instance-available \
-  --profile "$AWS_PROFILE" --region "$REGION" \
-  --db-instance-identifier "$TEMP_DB"
-echo "Temporary instance is available."
+aws_cmd rds wait db-instance-available --db-instance-identifier "$TEMP_DB"
 
-# 4. Get endpoint
-TEMP_ENDPOINT=$(aws rds describe-db-instances \
-  --profile "$AWS_PROFILE" --region "$REGION" \
+TEMP_ENDPOINT=$(aws_cmd rds describe-db-instances \
   --db-instance-identifier "$TEMP_DB" \
   --query "DBInstances[0].Endpoint.Address" --output text)
 echo "Temporary endpoint: $TEMP_ENDPOINT"
 
-# 5. Validate data
+# 4. Validate from inside the VPC via SSM.
+#    The remote script fetches the DB password itself (the instance role has
+#    read on Wiki7DatabaseSecret) so no secret ever appears in SSM command
+#    history, and uses MYSQL_PWD so it never appears on a process command line.
+#    mysql runs inside the wiki7 container, which ships mariadb-client.
 echo ""
-echo "--- Step 3: Validating restored data ---"
+echo "--- Step 4: Validating restored data (via SSM on $EC2_ID) ---"
+REMOTE_SCRIPT=$(cat <<EOF
+set -euo pipefail
+PW=\$(aws secretsmanager get-secret-value --region $REGION --secret-id '$SECRET_ARN' --query SecretString --output text | jq -r .password)
+q() { docker exec -e MYSQL_PWD="\$PW" wiki7 mysql -h '$TEMP_ENDPOINT' -u wikiuser wikidb -sse "\$1"; }
+TABLES=\$(q "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='wikidb';")
+echo "TABLE_COUNT=\$TABLES"
+for t in page revision user text cargo_tables; do
+  E=\$(q "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='wikidb' AND table_name='\$t';")
+  echo "TABLE_\${t}=\$E"
+done
+echo "PAGE_COUNT=\$(q 'SELECT COUNT(*) FROM page;')"
+EOF
+)
+B64=$(printf '%s' "$REMOTE_SCRIPT" | base64 | tr -d '\n')
+CMD_ID=$(aws_cmd ssm send-command \
+  --document-name AWS-RunShellScript \
+  --instance-ids "$EC2_ID" \
+  --comment "wiki7 DR test validation against $TEMP_DB" \
+  --parameters "commands=[\"echo $B64 | base64 -d | bash\"]" \
+  --query "Command.CommandId" --output text)
 
-# Get DB password from Secrets Manager
-SECRET_ARN=$(aws secretsmanager list-secrets \
-  --profile "$AWS_PROFILE" --region "$REGION" \
-  --query "SecretList[?contains(Name, 'Wiki7DatabaseSecret')].ARN" \
-  --output text | head -1)
+STATUS=Pending
+for i in $(seq 1 24); do
+  sleep 5
+  STATUS=$(aws_cmd ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$EC2_ID" \
+    --query Status --output text 2>/dev/null || echo Pending)
+  case "$STATUS" in Success|Failed|Cancelled|TimedOut) break ;; esac
+done
 
-if [ -z "$SECRET_ARN" ]; then
-  echo "WARNING: Could not find DB secret in Secrets Manager. Skipping data validation."
-  echo "DR test PARTIAL — snapshot restored successfully but could not validate data."
-  exit 0
-fi
+OUTPUT=$(aws_cmd ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$EC2_ID" \
+  --query StandardOutputContent --output text)
+ERRORS=$(aws_cmd ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$EC2_ID" \
+  --query StandardErrorContent --output text)
+echo "$OUTPUT"
+[ -n "$ERRORS" ] && echo "stderr: $ERRORS"
 
-DB_PASSWORD=$(aws secretsmanager get-secret-value \
-  --profile "$AWS_PROFILE" --region "$REGION" \
-  --secret-id "$SECRET_ARN" \
-  --query "SecretString" --output text | python3 -c "import sys,json; print(json.load(sys.stdin)['password'])")
-
-# Check table count
-TABLE_COUNT=$(mysql -h "$TEMP_ENDPOINT" -u wikiuser -p"$DB_PASSWORD" wikidb \
-  -sse "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='wikidb';" 2>/dev/null || echo "0")
-
-echo "Tables found in restored DB: $TABLE_COUNT"
-
-if [ "$TABLE_COUNT" -gt 0 ]; then
-  # Check for critical MediaWiki tables
-  for table in page revision user text; do
-    EXISTS=$(mysql -h "$TEMP_ENDPOINT" -u wikiuser -p"$DB_PASSWORD" wikidb \
-      -sse "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='wikidb' AND table_name='$table';" 2>/dev/null || echo "0")
-    if [ "$EXISTS" = "1" ]; then
-      echo "  [OK] Table '$table' exists"
-    else
-      echo "  [FAIL] Table '$table' missing!"
-    fi
-  done
-
-  # Check page count
-  PAGE_COUNT=$(mysql -h "$TEMP_ENDPOINT" -u wikiuser -p"$DB_PASSWORD" wikidb \
-    -sse "SELECT COUNT(*) FROM page;" 2>/dev/null || echo "unknown")
-  echo "  Pages in wiki: $PAGE_COUNT"
-
+TABLE_COUNT=$(echo "$OUTPUT" | sed -n 's/^TABLE_COUNT=//p')
+if [ "$STATUS" = "Success" ] && [ -n "$TABLE_COUNT" ] && [ "$TABLE_COUNT" -gt 0 ]; then
   echo ""
   echo "=== DR Test PASSED ==="
-  echo "Snapshot $SNAPSHOT_ID is restorable and contains valid MediaWiki data."
+  echo "Snapshot $SNAPSHOT_ID is restorable and contains MediaWiki data ($TABLE_COUNT tables)."
   exit 0
 else
   echo ""
-  echo "=== DR Test FAILED ==="
-  echo "Restored database has no tables."
+  echo "=== DR Test FAILED (SSM status: $STATUS) ==="
+  echo "Could not validate the restored database — investigate before trusting backups."
   exit 1
 fi

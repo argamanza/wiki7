@@ -7,6 +7,7 @@ import { DatabaseStack } from '../lib/database-stack';
 import { ComputeStack } from '../lib/compute-stack';
 import { BackupStack } from '../lib/backup-stack';
 import { Wiki7WafStack } from '../lib/wiki7-waf-stack';
+import { GitHubOidcStack } from '../lib/github-oidc-stack';
 import { CloudFrontConstruct } from '../lib/cloudfront-stack';
 
 const TEST_ENV = { account: '111111111111', region: 'il-central-1' };
@@ -416,6 +417,21 @@ describe('Wiki7WafStack', () => {
     expect(allow!.Priority).toBeLessThan(block!.Priority);
   });
 
+  test('RateLimitPerIP priority < AllowLegitimateBot priority (UA spoof must not bypass rate limit)', () => {
+    // AllowLegitimateBot is a TERMINATING allow: anything matching it skips every
+    // later rule. If the rate limit ran after it, any client sending a crawler UA
+    // (e.g. "Googlebot") would be exempt from rate limiting entirely. The rate
+    // limit must therefore be evaluated first; the allow rule's only job is to
+    // shield real crawlers from the generic bot-UA heuristic block at priority 8.
+    const acls = template.findResources('AWS::WAFv2::WebACL');
+    const webacl = Object.values(acls)[0] as { Properties: { Rules: Array<{ Name: string; Priority: number }> } };
+    const rate = webacl.Properties.Rules.find(r => r.Name === 'RateLimitPerIP');
+    const allow = webacl.Properties.Rules.find(r => r.Name === 'AllowLegitimateBot');
+    expect(rate).toBeDefined();
+    expect(allow).toBeDefined();
+    expect(rate!.Priority).toBeLessThan(allow!.Priority);
+  });
+
   test('includes SQLi managed rule set', () => {
     const acls = template.findResources('AWS::WAFv2::WebACL');
     const webacl = Object.values(acls)[0] as { Properties: { Rules: Array<{ Name: string }> } };
@@ -435,6 +451,63 @@ describe('Wiki7WafStack', () => {
       'twitterbot', 'slackbot', 'discordbot',
     ]) {
       expect(synthJson).toContain(term);
+    }
+  });
+});
+
+// =========================================================================================
+describe('GitHubOidcStack', () => {
+  // The trust policies are the security boundary between GitHub Actions and the AWS
+  // account: the deploy role can pass the admin cfn-exec role to CloudFormation, so a
+  // regression back to `repo:argamanza/wiki7:*` would let ANY branch or PR workflow
+  // deploy as effectively admin. These tests lock the tightened claims in.
+  let template: Template;
+  beforeAll(() => {
+    const app = new cdk.App();
+    const stack = new GitHubOidcStack(app, 'TestOidcStack', { env: TEST_ENV });
+    template = Template.fromStack(stack);
+  });
+
+  function roleByName(name: string) {
+    const roles = template.findResources('AWS::IAM::Role');
+    const role = Object.values(roles).find(
+      (r) => (r as { Properties: { RoleName?: string } }).Properties.RoleName === name,
+    ) as { Properties: { AssumeRolePolicyDocument: { Statement: Array<{ Condition: Record<string, Record<string, unknown>> }> } } } | undefined;
+    expect(role).toBeDefined();
+    return role!;
+  }
+
+  test('deploy role trusts only master pushes + the production environment', () => {
+    const role = roleByName('Wiki7GitHubActionsDeployRole');
+    const cond = role.Properties.AssumeRolePolicyDocument.Statement[0].Condition;
+    expect(cond.StringLike['token.actions.githubusercontent.com:sub']).toEqual([
+      'repo:argamanza/wiki7:ref:refs/heads/master',
+      'repo:argamanza/wiki7:environment:production',
+    ]);
+    // The wildcard claim must never come back.
+    expect(JSON.stringify(cond)).not.toContain('repo:argamanza/wiki7:*');
+  });
+
+  test('diff role trusts only pull_request workflows', () => {
+    const role = roleByName('Wiki7GitHubActionsDiffRole');
+    const cond = role.Properties.AssumeRolePolicyDocument.Statement[0].Condition;
+    expect(cond.StringEquals['token.actions.githubusercontent.com:sub']).toEqual(
+      'repo:argamanza/wiki7:pull_request',
+    );
+  });
+
+  test('diff role may assume ONLY the read-only bootstrap lookup roles', () => {
+    const policies = template.findResources('AWS::IAM::Policy');
+    const diffPolicy = Object.values(policies).find((p) =>
+      JSON.stringify(p).includes('AssumeLookupRoleOnly'),
+    ) as { Properties: { PolicyDocument: { Statement: Array<{ Resource: string[] }> } } } | undefined;
+    expect(diffPolicy).toBeDefined();
+    const resources = diffPolicy!.Properties.PolicyDocument.Statement[0].Resource;
+    expect(resources).toHaveLength(2); // lookup role in each of the two regions
+    for (const arn of resources) {
+      expect(arn).toContain('-lookup-role-');
+      expect(arn).not.toContain('cfn-exec');
+      expect(arn).not.toContain('deploy-role');
     }
   });
 });

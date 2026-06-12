@@ -1,6 +1,21 @@
 #!/bin/bash
 set -e
 
+# Safety net: whatever happens below (install.php dying midway, set -e abort),
+# the container must never be left running — or restarting — with the
+# installer-generated LocalSettings.php instead of our custom one. The trap
+# restores the custom file on every exit path; on the success path the exec
+# at the end replaces the shell so the trap never fires (the custom file is
+# already in place by then). The cp at boot also self-heals a previous crash
+# that stranded the wrong config.
+restore_custom_localsettings() {
+  if [ -f /var/www/html/LocalSettings.php.custom ]; then
+    cp /var/www/html/LocalSettings.php.custom /var/www/html/LocalSettings.php
+  fi
+}
+trap restore_custom_localsettings EXIT
+restore_custom_localsettings
+
 # 1. Wait for DB to be reachable (max 60s)
 echo "Waiting for database..."
 for i in $(seq 1 30); do

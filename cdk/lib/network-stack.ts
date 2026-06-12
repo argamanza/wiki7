@@ -10,7 +10,7 @@ export class NetworkStack extends Construct {
     super(scope, id);
 
     // Create the VPC — no NAT Gateway (saves ~$35/mo)
-    // ECS tasks and RDS run in public subnets; RDS publiclyAccessible=false + SG restricts access
+    // The EC2 instance and RDS run in public subnets; RDS publiclyAccessible=false + SG restricts access
     this.vpc = new ec2.Vpc(this, 'Wiki7Vpc', {
       maxAzs: 2,
       natGateways: 0,
@@ -28,7 +28,10 @@ export class NetworkStack extends Construct {
       service: ec2.GatewayVpcEndpointAwsService.S3,
     });
 
-    // MediaWiki ECS security group
+    // MediaWiki EC2 security group. (The `description` string below still says
+    // ALB/containers from the Fargate era — GroupDescription is immutable in
+    // CloudFormation, so correcting it would REPLACE the security group. Not
+    // worth the disruption; the comment here is the source of truth.)
     this.mediawikiSecurityGroup = new ec2.SecurityGroup(this, 'MediaWikiSecurityGroup', {
       vpc: this.vpc,
       description: 'Allow inbound traffic from ALB to MediaWiki containers',
@@ -42,7 +45,8 @@ export class NetworkStack extends Construct {
       allowAllOutbound: true,
     });
 
-    // Allow MediaWiki ECS service to connect to RDS
+    // Allow the MediaWiki EC2 instance to connect to RDS (rule description kept
+    // verbatim from the ECS era — see the immutability note above).
     this.databaseSecurityGroup.addIngressRule(
       this.mediawikiSecurityGroup,
       ec2.Port.tcp(3306),
