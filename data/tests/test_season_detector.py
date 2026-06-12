@@ -6,6 +6,7 @@ import pytest
 import requests
 
 from data_pipeline.season_detector import (
+    SeasonDetectionFailure,
     _count_squad_rows,
     detect_latest_populated_season,
     resolve_season_arg,
@@ -112,6 +113,38 @@ class TestDetectLatestPopulatedSeason:
         # First 2 probes succeed (populated for 2024 + 2025); 3rd fails.
         # Last populated = 2025.
         assert result == 2025
+
+    def test_first_probe_blocked_raises_not_silent_2020(self):
+        """§6 high #7 fix (2026-06-12 review): when the very FIRST probe
+        fails (e.g. ScraperAPI bypassed + TM blocking direct requests),
+        the detector used to silently return `start_year` (which means
+        --season=latest resolved to 2020 on every blocked run). Now it
+        raises SeasonDetectionFailure so the operator sees the actual
+        failure."""
+        session = MagicMock(spec=requests.Session)
+        session.get.side_effect = requests.ConnectionError("blocked")
+        with pytest.raises(SeasonDetectionFailure) as exc:
+            detect_latest_populated_season(
+                session=session, start_year=2020, end_year=2030,
+            )
+        assert "no successful probe" in str(exc.value)
+        # The error must explain the recovery action (pass --season=<year>).
+        assert "--season" in str(exc.value)
+
+    def test_first_probe_sparse_raises_not_silent_start_year(self):
+        """Edge: TM IS reachable but the first probe (e.g. 2020) returns
+        sparse data — old code silently returned 2020. The new code
+        treats this as 'cannot confidently identify latest' and raises."""
+        sparse = "\n".join(['<a class="hauptlink">X</a>'] * 4)
+        session = MagicMock(spec=requests.Session)
+        session.get.return_value = _mock_response(sparse)
+        with pytest.raises(SeasonDetectionFailure) as exc:
+            detect_latest_populated_season(
+                session=session, start_year=2020, end_year=2030,
+            )
+        # The error mentions the row count + threshold so the operator can
+        # decide whether to lower the threshold or fix TM.
+        assert "sparse" in str(exc.value)
 
     def test_threshold_boundary(self):
         """Edge case: a season has exactly _MIN_SQUAD_ROWS rows. Should be

@@ -55,6 +55,14 @@ _TIMEOUT_S = 15.0
 _USER_AGENT = "wiki7-pipeline/1.0 season-detector (no scraping; lightweight probe)"
 
 
+class SeasonDetectionFailure(RuntimeError):
+    """Raised when the season detector cannot confidently identify the
+    latest populated season — either because every probe failed or
+    because the first probe returned sparse data. Surfaces the failure
+    instead of silently returning the start-year sentinel (the §6 high
+    #7 fix from the 2026-06-12 review)."""
+
+
 def _count_squad_rows(html: str) -> int:
     """Count squad-row entries on a TM kader page. TM puts every player
     row's main link in a `class="hauptlink"` cell; counting these is a
@@ -84,7 +92,14 @@ def detect_latest_populated_season(
         session = requests.Session()
         session.headers.update({"User-Agent": _USER_AGENT})
 
-    last_populated = start_year
+    # §6 high #7 fix (2026-06-12 review): `last_populated` previously
+    # initialized to `start_year` so that a probe failure on the FIRST
+    # year silently returned `start_year` (which historically meant
+    # `--season=latest` resolved to 2020 whenever TM was unreachable).
+    # Track via Optional[int] so we can distinguish "no successful probe
+    # at all" from "first sparse year hit"; raise on the former rather
+    # than fabricate a return value.
+    last_populated: Optional[int] = None
     for year in range(start_year, end_year + 1):
         url = _HBS_KADER_URL.format(year=year)
         try:
@@ -104,11 +119,27 @@ def detect_latest_populated_season(
         # First sparse year — assume everything after is also sparse, stop.
         logger.info(
             "season detector: saison_id=%d is sparse (%d rows < %d threshold); "
-            "latest populated = %d",
-            year, rows, min_squad_rows, last_populated,
+            "latest populated = %s",
+            year, rows, min_squad_rows,
+            last_populated if last_populated is not None else "<none yet>",
         )
+        if last_populated is None:
+            raise SeasonDetectionFailure(
+                f"season detector: first probe at saison_id={start_year} returned "
+                f"sparse ({rows} rows < {min_squad_rows} threshold). Cannot "
+                "confidently resolve --season=latest. Either pass an explicit "
+                "--season=<year> or investigate why the modern current season "
+                "looks unpopulated to TM."
+            )
         return last_populated
 
+    if last_populated is None:
+        raise SeasonDetectionFailure(
+            f"season detector: no successful probe in range {start_year}-{end_year}. "
+            "TM may be unreachable, ScraperAPI key may be unconfigured for this "
+            "code path, or every year in range returned sparse. Pass --season=<year> "
+            "explicitly instead of relying on --season=latest."
+        )
     return last_populated
 
 

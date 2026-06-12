@@ -341,7 +341,7 @@ def run_hebrew_enrichment(data_dir: Path, seasons: list[str] | None = None, revi
     try:
         from data_pipeline.generate_mapping_stub import generate_stub
         from data_pipeline.auto_translate_hebrew import auto_translate
-        from data_pipeline.apply_hebrew_mapping import apply_mappings, apply_hebrew_matches, load_mapping
+        from data_pipeline.apply_hebrew_mapping import apply_mappings, apply_hebrew_fixtures, apply_hebrew_matches, load_mapping
 
         players_path = data_dir / "players.jsonl"
         transfers_path = data_dir / "transfers.jsonl"
@@ -376,6 +376,15 @@ def run_hebrew_enrichment(data_dir: Path, seasons: list[str] | None = None, revi
                 if matches_in.exists():
                     logger.info("Applying Hebrew mappings to matches for season %s...", season)
                     apply_hebrew_matches(matches_in, matches_out, mapping, players_he)
+                # §6 high #9 fix (2026-06-12 review): fixtures must also be
+                # translated so competition_season.j2's per-row match links
+                # resolve to the Hebrew-titled match pages. Pre-fix the
+                # English fixtures + Hebrew match titles never matched.
+                fixtures_in = SCRAPER_OUTPUT_DIR / season / "fixtures.json"
+                fixtures_out = SCRAPER_OUTPUT_DIR / season / "fixtures.he.json"
+                if fixtures_in.exists():
+                    logger.info("Applying Hebrew mappings to fixtures for season %s...", season)
+                    apply_hebrew_fixtures(fixtures_in, fixtures_out, mapping)
 
         logger.info("Hebrew enrichment completed")
         return True

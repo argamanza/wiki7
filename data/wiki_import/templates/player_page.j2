@@ -85,7 +85,12 @@
 {% endfor %}
 
 |-
-! סה"כ !! {{ stats | sum(attribute='appearances') }} !! {{ stats | sum(attribute='goals') }} !! {{ stats | sum(attribute='assists') }} !! {{ stats | sum(attribute='yellow_cards') }} !! {{ stats | map(attribute='second_yellow_cards') | map('default', 0) | sum }} !! {{ stats | sum(attribute='red_cards') }} !! {{ stats | sum(attribute='minutes_played') }}
+{# §6 medium fix (2026-06-12 review): direct `sum(attribute='X')` raises
+   TypeError on any stats row with `X=None`. Real corpus has None values
+   for historical-era rows where TM doesn't expose all per-season fields.
+   Funnel through `map(attribute=...) | map('default', 0) | sum` so a
+   missing value bins to 0 instead of crashing the entire player page. #}
+! סה"כ !! {{ stats | map(attribute='appearances') | map('default', 0) | sum }} !! {{ stats | map(attribute='goals') | map('default', 0) | sum }} !! {{ stats | map(attribute='assists') | map('default', 0) | sum }} !! {{ stats | map(attribute='yellow_cards') | map('default', 0) | sum }} !! {{ stats | map(attribute='second_yellow_cards') | map('default', 0) | sum }} !! {{ stats | map(attribute='red_cards') | map('default', 0) | sum }} !! {{ stats | map(attribute='minutes_played') | map('default', 0) | sum }}
 |}
 {# Cargo storage — one row per season's stats. Mainspace-only gate. #}
 {% for s in stats %}

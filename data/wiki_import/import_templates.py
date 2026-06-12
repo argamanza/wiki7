@@ -758,8 +758,18 @@ def import_season_overview(
     top_appearances = sorted(season_stats, key=lambda s: s.get("appearances", 0), reverse=True)
     top_assists = sorted(season_stats, key=lambda s: s.get("assists", 0), reverse=True)
 
-    # Load fixtures if available
-    resolved_fixtures = fixtures_path or DEFAULT_SCRAPER_OUTPUT_DIR / season / "fixtures.json"
+    # Load fixtures if available. §6 high #9 fix (2026-06-12 review): prefer
+    # the Hebrew-translated `fixtures.he.json` when present so the per-row
+    # match-page links in competition_season.j2 resolve to the actual
+    # Hebrew-titled match pages. Falls back to English fixtures.json on
+    # pre-Hebrew-enrichment runs.
+    season_dir_for_fix = DEFAULT_SCRAPER_OUTPUT_DIR / season
+    if fixtures_path is not None:
+        resolved_fixtures = fixtures_path
+    elif (season_dir_for_fix / "fixtures.he.json").exists():
+        resolved_fixtures = season_dir_for_fix / "fixtures.he.json"
+    else:
+        resolved_fixtures = season_dir_for_fix / "fixtures.json"
     fixtures = _load_json(resolved_fixtures) if resolved_fixtures.exists() else []
     fixtures_by_competition = {}
     for f in fixtures:

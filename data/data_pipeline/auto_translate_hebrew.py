@@ -300,6 +300,12 @@ def _resolve_anthropic_api_key() -> str | None:
     )
 
 
+class BatchTruncatedError(RuntimeError):
+    """Claude hit `stop_reason='max_tokens'` mid-response. The JSON is
+    cut and parsing would silently lose entries. Surface to the caller so
+    it can halve the batch and retry. §6 medium fix (2026-06-12 review)."""
+
+
 def _translate_batch_via_claude(category: str, items: list[str]) -> list[dict]:
     """Translate one batch via Anthropic API. Returns a list of dicts:
         [{"en": ..., "he": ..., "confidence": "high|low"}]
@@ -330,6 +336,21 @@ def _translate_batch_via_claude(category: str, items: list[str]) -> list[dict]:
         ],
         messages=[{"role": "user", "content": user_prompt}],
     )
+
+    # §6 medium fix (2026-06-12 review): truncation guard. A batch of 200
+    # entries at max_tokens=8000 sits at the safety boundary — a long
+    # category response can hit `stop_reason='max_tokens'` and the JSON
+    # gets cut mid-array. Pre-fix the JSONDecodeError below would have
+    # swallowed the whole batch and the caller falls back to Google
+    # Translate, silently degrading the quality the overhaul exists to
+    # avoid. Surface the truncation as a recoverable error so the caller
+    # can halve the batch and retry.
+    stop_reason = getattr(response, "stop_reason", None)
+    if stop_reason == "max_tokens":
+        raise BatchTruncatedError(
+            f"Claude truncated the response for category={category!r} "
+            f"(batch size={len(items)}). Halve the batch and retry."
+        )
 
     text = response.content[0].text if response.content else ""
     # Defensive parsing: some Claude responses wrap JSON in ```json blocks
@@ -513,9 +534,36 @@ def _fill_section(
             return filled
 
     if backend == "claude":
-        for chunk in _chunked(empty_keys, CLAUDE_BATCH_SIZE):
+        chunks_to_process = list(_chunked(empty_keys, CLAUDE_BATCH_SIZE))
+        while chunks_to_process:
+            chunk = chunks_to_process.pop(0)
             try:
                 results = _translate_batch_via_claude(category, chunk)
+            except BatchTruncatedError as exc:
+                # §6 medium fix (2026-06-12 review): Claude truncated the
+                # response. Halve the batch and retry — recursively if
+                # needed. Avoids the silent degradation-to-Google path
+                # that the whole Claude backend exists to prevent.
+                if len(chunk) > 1:
+                    mid = len(chunk) // 2
+                    logger.warning(
+                        "%s — halving (%d -> %d + %d) and retrying.",
+                        exc, len(chunk), mid, len(chunk) - mid,
+                    )
+                    chunks_to_process.insert(0, chunk[mid:])
+                    chunks_to_process.insert(0, chunk[:mid])
+                    continue
+                # Singleton chunk still truncates → genuinely too big,
+                # fall through to the generic Google fallback below.
+                logger.error("Singleton batch still truncated for '%s': %s", category, exc)
+                google_results = _translate_batch_via_google(chunk)
+                for key, he in zip(chunk, google_results):
+                    section[key] = {
+                        "he": he, "src": "auto-google", "confidence": "low",
+                        "wikidata_qid": "", "note": "truncated-by-claude",
+                    }
+                    filled += 1
+                continue
             except Exception as exc:
                 logger.error(
                     "Claude batch failed for '%s' (%d items): %s — falling back to Google",

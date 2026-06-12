@@ -98,19 +98,41 @@ class PageIndexState:
 
     def save(self) -> None:
         """Persist the YAML file if any upserts changed anything. Idempotent
-        if no changes were made since load."""
+        if no changes were made since load.
+
+        §6 medium fix (2026-06-12 review): write atomically via tmp + rename.
+        Pre-fix the file was opened in `"w"` mode and truncated immediately,
+        so an interruption mid-write left a partial / empty file on disk.
+        Next run loaded the partial file (or hit a YAML parse error,
+        triggered the "start fresh" path) and the duplicate-draft problem
+        the state file exists to prevent came back. The tmp + os.replace
+        sequence is atomic on POSIX — readers either see the old file or
+        the new file, never a partial.
+        """
         if not self._dirty:
             logger.debug("Page index clean; skipping save")
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # sort_keys=True so diffs are stable across runs
-        with open(self.path, "w", encoding="utf-8") as f:
+        tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
             yaml.dump(
                 self._data, f,
                 allow_unicode=True,
                 sort_keys=True,
                 default_flow_style=False,
             )
+            f.flush()
+            try:
+                import os
+                os.fsync(f.fileno())
+            except OSError:
+                # Non-POSIX filesystem (e.g. some bind-mounted FUSE) may
+                # refuse fsync — accept the slightly weaker durability.
+                pass
+        # Atomic on POSIX (and on Windows via Python 3.3+'s os.replace).
+        import os
+        os.replace(tmp_path, self.path)
         logger.info(
             "Saved page index: %d entries -> %s",
             len(self._data), self.path,

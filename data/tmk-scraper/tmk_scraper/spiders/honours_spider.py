@@ -6,15 +6,22 @@ class HonoursSpider(scrapy.Spider):
     (German "successes / honours")."""
 
     name = "honours"
-    allowed_domains = ["transfermarkt.com"]
+    # §6 high #7 fix (2026-06-12 review): route through ScraperAPI.
+    allowed_domains = ["transfermarkt.com", "api.scraperapi.com"]
 
     def __init__(self, season="2024", *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.season = season
         self.base_url = "https://www.transfermarkt.com"
-        self.start_urls = [
-            f"{self.base_url}/hapoel-beer-sheva/erfolge/verein/2976"
-        ]
+        self.target_url = f"{self.base_url}/hapoel-beer-sheva/erfolge/verein/2976"
+
+    def start_requests(self):
+        from tmk_scraper.scraperapi_proxy import validate_key, wrap
+
+        use_scraperapi = self.settings.getbool("USE_SCRAPERAPI", False)
+        api_key = validate_key(self.settings.get("SCRAPERAPI_KEY")) if use_scraperapi else None
+        url = wrap(self.target_url, api_key) if use_scraperapi else self.target_url
+        yield scrapy.Request(url=url, callback=self.parse)
 
     # Phase 3a R2 fix: the erfolge page no longer uses table.items rows for
     # each trophy. Each trophy is a pair of:

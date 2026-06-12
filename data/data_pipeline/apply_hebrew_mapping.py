@@ -251,6 +251,46 @@ def _translate_match(match: dict, club_map: dict, comp_map: dict, name_lookup: d
     return match
 
 
+def apply_hebrew_fixtures(
+    fixtures_input: Path,
+    fixtures_output: Path,
+    mapping: dict,
+):
+    """Translate opponent + competition on each fixture record. §6 high #9
+    fix from the 2026-06-12 review: competition_season.j2 builds match-
+    page links from `fixtures` data (`{{ f.date }} נגד {{ f.opponent }}
+    ({{ competition }})`), but match pages themselves are titled from
+    Hebrew-enriched `matches.he.json` data. Without translating fixtures
+    too, every link broke as soon as the Hebrew mapping ran.
+
+    Output goes to `fixtures.he.json` alongside the existing
+    `matches.he.json`. Consumers should prefer `.he.json` when present.
+    """
+    if not fixtures_input.exists():
+        logger.debug("No fixture file at %s, skipping", fixtures_input)
+        return
+    club_map = mapping.get("clubs", {})
+    comp_map = mapping.get("competitions", {})
+
+    with open(fixtures_input, "r", encoding="utf-8") as f:
+        fixtures = json.load(f)
+
+    for fixture in fixtures:
+        if fixture.get("opponent"):
+            fixture["opponent"] = _lookup(club_map, fixture["opponent"]) or fixture["opponent"]
+        if fixture.get("competition"):
+            fixture["competition"] = (
+                _lookup(comp_map, fixture["competition"]) or fixture["competition"]
+            )
+
+    with open(fixtures_output, "w", encoding="utf-8") as f:
+        json.dump(fixtures, f, ensure_ascii=False, indent=2)
+
+    logger.info(
+        "Applied Hebrew mappings to %d fixtures -> %s", len(fixtures), fixtures_output,
+    )
+
+
 def apply_hebrew_matches(
     matches_input: Path,
     matches_output: Path,
