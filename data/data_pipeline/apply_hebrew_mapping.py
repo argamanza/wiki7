@@ -56,6 +56,7 @@ def apply_hebrew(player: dict, mapping: dict) -> dict:
     pos_map = mapping.get("positions", {})
     nationality_map = mapping.get("nationalities", {})
     names_map = mapping.get("names", {})
+    birth_place_map = mapping.get("birth_places", {})
 
     if player.get("main_position"):
         translated = _lookup(pos_map, player["main_position"])
@@ -71,6 +72,19 @@ def apply_hebrew(player: dict, mapping: dict) -> dict:
         translated_name = _lookup(names_map, player["name_english"])
         if translated_name:
             player["name_hebrew"] = translated_name
+
+    # birth_place — new translation in iter-cycle 1 review walk (2026-06-12).
+    # See generate_mapping_stub.py for the corpus build.
+    if player.get("birth_place"):
+        translated = _lookup(birth_place_map, player["birth_place"])
+        if translated:
+            player["birth_place"] = translated
+
+    # other_positions — translate each entry via the positions map.
+    if player.get("other_positions"):
+        player["other_positions"] = [
+            _lookup(pos_map, p) or p for p in player["other_positions"]
+        ]
 
     return player
 

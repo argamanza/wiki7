@@ -10,7 +10,7 @@ import jinja2
 import mwclient
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from data_pipeline.helpers import to_season_display
+from data_pipeline.helpers import to_il_date, to_il_fee, to_season_display
 from wiki_import import review_gate
 
 logger = logging.getLogger(__name__)
@@ -215,6 +215,10 @@ def _render_template(template_name: str, **kwargs) -> str:
     # each row's bare-integer season to the slash display without inlining
     # the format math. Usage: `{{ s.season | season_display }}`.
     env.filters["season_display"] = to_season_display
+    # Iter-cycle 1 (2026-06-12): Israeli DD/MM/YYYY date format + Hebrew
+    # transfer-fee translation. Used in match_report.j2 etc.
+    env.filters["il_date"] = to_il_date
+    env.filters["il_fee"] = to_il_fee
     template = env.get_template(template_name)
     return template.render(**kwargs)
 

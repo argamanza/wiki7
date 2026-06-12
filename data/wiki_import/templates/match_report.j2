@@ -24,7 +24,7 @@
 {{"{{"}}Match infobox
 | competition = {{ match.competition or '' }}
 | matchday = {{ match.matchday or '' }}
-| date = {{ match.date or '' }}
+| date = {{ match.date | il_date }}
 | time = {{ match.time or '' }}
 | venue = {{ match.venue or '' }}
 | opponent = {{ match.opponent or '' }}

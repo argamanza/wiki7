@@ -2,14 +2,20 @@
 | name_english = {{ player.name_english }}
 | name_hebrew = {{ player.name_hebrew or '' }}
 | tmk_id = {{ player.id }}
-| birth_date = {{ player.birth_date or '' }}
+| birth_date = {{ player.birth_date | il_date }}
 | birth_place = {{ player.birth_place or '' }}
 | nationality = {{ player.nationality | join(', ') if player.nationality else '' }}
 | position = {{ player.main_position or '' }}
+| other_positions = {{ player.other_positions | join(', ') if player.other_positions else '' }}
 | jersey_number = {{ player.current_jersey_number or '' }}
 | current_squad = {{ 'Yes' if player.current_squad else 'No' }}
 | homegrown = {{ 'Yes' if player.homegrown else 'No' }}
 | retired = {{ 'Yes' if player.retired else 'No' }}
+| is_captain = {{ 'Yes' if player.is_captain else 'No' }}
+| height_cm = {{ player.height_cm or '' }}
+| preferred_foot = {{ player.preferred_foot or '' }}
+| contract_expires = {{ player.contract_expires | il_date }}
+| current_market_value = {{ player.current_market_value or '' }}
 {{"}}"}}
 
 == קריירה ==
@@ -18,7 +24,7 @@
 ! עונה !! תאריך !! מ !! אל !! עלות !! השאלה
 {% for t in transfers %}
 |-
-| {{ t.season }} || {{ t.transfer_date }} || {{ t.from_club }} || {{ t.to_club }} || {{ t.fee }} || {{ '&#x2705;' if t.loan else '' }}
+| {{ t.season }} || {{ t.transfer_date | il_date }} || {{ t.from_club }} || {{ t.to_club }} || {{ t.fee | il_fee }} || {{ '&#x2705;' if t.loan else '' }}
 {% endfor %}
 
 |}
@@ -76,7 +82,7 @@
 ! תאריך !! שווי !! קבוצה
 {% for mv in market_values %}
 |-
-| {{ mv.value_date }} || {{ mv.value }} || {{ mv.team }}
+| {{ mv.value_date | il_date }} || {{ mv.value }} || {{ mv.team }}
 {% endfor %}
 
 |}

@@ -164,12 +164,33 @@ def generate_stub(
 
     # Extract unique values
     unique_positions = sorted({p["main_position"] for p in players if p.get("main_position")})
+    # Clubs corpus: transfers' from_club/to_club + match-data opponents PLUS
+    # every distinct `team` from market_value_history. The MV teams catch
+    # the long tail of foreign clubs a player has been at across his whole
+    # career — without this, the player's market-value-history table renders
+    # half-Hebrew half-English (e.g. Ofir Marciano's Mouscron-Péruwelz,
+    # Feyenoord Rotterdam stayed untranslated through iter-cycle 1).
+    # Discovered iter-cycle 1 review walk 2026-06-12.
     unique_clubs = sorted(
         {t["from_club"] for t in transfers if t.get("from_club")}
         | {t["to_club"] for t in transfers if t.get("to_club")}
     )
+    mv_teams = {
+        mv.get("team", "")
+        for p in players
+        for mv in p.get("market_value_history") or []
+        if mv.get("team")
+    }
     unique_nationalities = sorted({
         nat for p in players for nat in p.get("nationality", []) or []
+    })
+    # birth_places: a new mapping category surfaced during iter-cycle 1 review
+    # walk. Player infoboxes show `Petah Tikva`, `Sde Warburg` etc. in English
+    # because the field was never run through translation. Wikidata has clean
+    # Hebrew labels for nearly every Israeli locality + most European cities,
+    # so the existing Wikidata-first chain handles it.
+    unique_birth_places = sorted({
+        p["birth_place"] for p in players if p.get("birth_place")
     })
     missing_name_he = sorted({
         p["name_english"] for p in players if not p.get("name_hebrew")
@@ -188,11 +209,12 @@ def generate_stub(
     nationality_map = existing.get("nationalities", {})
     names_map = existing.get("names", {})
     competition_map = existing.get("competitions", {})
+    birth_place_map = existing.get("birth_places", {})
 
     # Update only missing keys
     for pos in unique_positions:
         position_map.setdefault(pos, FOOTBALL_POSITIONS.get(pos, ""))
-    for club in sorted(set(unique_clubs) | match_opponents):
+    for club in sorted(set(unique_clubs) | match_opponents | mv_teams):
         club_map.setdefault(club, "")
     for nat in unique_nationalities:
         nationality_map.setdefault(nat, "")
@@ -202,6 +224,8 @@ def generate_stub(
         names_map.setdefault(name, "")
     for comp in unique_competitions:
         competition_map.setdefault(comp, "")
+    for bp in unique_birth_places:
+        birth_place_map.setdefault(bp, "")
 
     # Combine and write
     updated = {
@@ -210,6 +234,7 @@ def generate_stub(
         "nationalities": nationality_map,
         "competitions": competition_map,
         "names": names_map,
+        "birth_places": birth_place_map,
     }
 
     resolved_mapping.parent.mkdir(parents=True, exist_ok=True)

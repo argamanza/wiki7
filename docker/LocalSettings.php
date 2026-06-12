@@ -206,6 +206,14 @@ $wgGroupPermissions['bot']['noratelimit']            = true;
 $wgGroupPermissions['*']['runcargoqueries']          = false;
 $wgGroupPermissions['reviewer']['runcargoqueries']   = true;
 $wgGroupPermissions['sysop']['runcargoqueries']      = true;
+
+// === External links open in a new tab ============================================
+// Iter-cycle 1 review walk (2026-06-12): reviewer flagged the Transfermarkt link
+// on player infoboxes as needing target="_blank" so readers don't get pulled out
+// of the wiki. Site-wide setting affects every external link emitted via the
+// [https://... Display Text] wiki syntax. Internal wiki links (NS links, draft
+// links) are unaffected. `noreferrer noopener` is auto-added by MW on these links.
+$wgExternalLinkTarget = '_blank';
 # sysop can grant/revoke 'reviewer'; reviewers can self-remove.
 $wgAddGroups['sysop'][]       = 'reviewer';
 $wgRemoveGroups['sysop'][]    = 'reviewer';

@@ -129,6 +129,18 @@ _P31_BY_TYPE = {
         "Q7275",         # state
         "Q185086",       # constitutional state
     },
+    "city": {
+        "Q515",          # city
+        "Q3957",         # town
+        "Q486972",       # human settlement
+        "Q1549591",      # big city
+        "Q1093829",      # city in the United States
+        "Q15284",        # municipality (broad, includes Israeli towns)
+        "Q532",          # village
+        "Q5084",         # hamlet
+        "Q15078955",     # populated place in Israel
+        "Q1907114",      # metropolitan area
+    },
 }
 
 # Sport claim (P641) — used as a secondary filter for `player` to weed out
@@ -289,6 +301,10 @@ def _get_entities(session: requests.Session, qids: list[str]) -> dict[str, dict]
 
     Caller may pass up to 50 Q-IDs per call (Wikidata limit). We always
     pass <= _SEARCH_LIMIT (10) since that's the search-step ceiling.
+
+    Includes `sitelinks` so the resolver can prefer Hebrew Wikipedia article
+    titles over `labels.he` for the common-form name selection. See
+    `_resolve_one` for the rationale.
     """
     if not qids:
         return {}
@@ -296,7 +312,8 @@ def _get_entities(session: requests.Session, qids: list[str]) -> dict[str, dict]
         "action": "wbgetentities",
         "ids": "|".join(qids),
         "languages": "he|en",
-        "props": "labels|descriptions|claims",
+        "props": "labels|descriptions|claims|sitelinks",
+        "sitefilter": "hewiki",
         "format": "json",
     }
     data = _api_call(session, params, op=f"wbgetentities {qids}")
@@ -337,14 +354,37 @@ def _resolve_one(
             continue
         if not _matches_type(entity, entity_type):
             continue
+        # Sitelinks-first: prefer the Hebrew Wikipedia article TITLE over
+        # Wikidata's free-form `labels.he`. Rationale:
+        #
+        # Wikidata's `labels.he` is a free-form field that anyone can edit and
+        # can drift to either the official full-canonical form ("בן אנריקה
+        # גורדין ענברי") or a stale/vandalised value ("הלדר לפופסיק" — Hélder
+        # Lopes Q5964151 actually carries this gibberish today). The Hebrew
+        # Wikipedia sitelink, in contrast, is the actual article name on
+        # he.wikipedia.org — much higher friction to edit, curated by a real
+        # community of editors. For Hebrew football coverage specifically,
+        # the hewiki article title is what readers expect ("בן גורדין" not
+        # "בן אנריקה גורדין ענברי"; "הלדר לופש" not "הלדר לפופסיק").
+        #
+        # Discovered iter-cycle 1 review walk (2026-06-12); v2 of the lookup
+        # chain that was deferred from the original 0003 plan.
+        sitelinks = entity.get("sitelinks", {}) or {}
+        hewiki_title = sitelinks.get("hewiki", {}).get("title") or ""
+        if hewiki_title.strip():
+            he_label = _BIDI_MARKS_RE.sub("", hewiki_title).strip()
+            if he_label:
+                return he_label, qid
+        # Fallback to labels.he when no hewiki sitelink (common for foreign
+        # players without a Hebrew Wikipedia article).
         labels = entity.get("labels", {})
         raw_he = labels.get("he", {}).get("value") or ""
         he_label = _BIDI_MARKS_RE.sub("", raw_he).strip()
         if not he_label:
-            # Entity matches the type filter but has no Hebrew label.
-            # Don't keep scanning — the first type-match IS the canonical
-            # entity for this query, and a missing Hebrew label means
-            # Wikidata doesn't have a translation. Fall through to Claude.
+            # Entity matches the type filter but has neither sitelink nor
+            # Hebrew label. Don't keep scanning — the first type-match IS
+            # the canonical entity for this query, and a missing Hebrew
+            # form means Wikidata can't help. Fall through to Claude.
             return None
         return he_label, qid
     return None

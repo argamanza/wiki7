@@ -243,6 +243,34 @@ class ResetContent extends Maintenance {
 			}
 			$this->output( "  cleared " . count( $cargoTables ) . " cargo_*_data tables.\n" );
 
+			// Iter-cycle 1 (2026-06-12): also clear the Cargo registry tables AND
+			// drop every cargo__* data table. Without this, cargoRecreateData on
+			// the next pipeline run errors with "Duplicate entry 'X' for key
+			// 'cargo_tables_main_table'" — because the old template page IDs
+			// are stale (templates were deleted above) but the cargo_tables rows
+			// still point to them. Dropping the data tables + truncating the
+			// registry forces a clean re-create on next pipeline run.
+			$this->output( "Clearing Cargo registry + dropping data tables...\n" );
+			$registryTables = [ 'cargo_tables', 'cargo_pages', 'cargo_backlinks' ];
+			foreach ( $registryTables as $t ) {
+				if ( $dbw->tableExists( $t, __METHOD__ ) ) {
+					$dbw->query( "TRUNCATE TABLE `$t`", __METHOD__ );
+				}
+			}
+			// Discover + drop every cargo__* data table (DOUBLE underscore is
+			// Cargo's data-table convention; single underscore is registry).
+			$res = $dbw->query(
+				"SHOW TABLES LIKE 'cargo\\_\\_%'",
+				__METHOD__
+			);
+			$dropped = 0;
+			foreach ( $res as $row ) {
+				$tname = array_values( (array)$row )[0];
+				$dbw->query( "DROP TABLE IF EXISTS `$tname`", __METHOD__ );
+				$dropped++;
+			}
+			$this->output( "  truncated cargo_tables + cargo_pages + cargo_backlinks; dropped $dropped cargo__* data tables.\n" );
+
 			$this->output( "Clearing Approved Revs...\n" );
 			if ( $dbw->tableExists( 'approved_revs', __METHOD__ ) ) {
 				$dbw->newDeleteQueryBuilder()->deleteFrom( 'approved_revs' )->where( '1=1' )->caller( __METHOD__ )->execute();

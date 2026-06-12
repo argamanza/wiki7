@@ -71,7 +71,7 @@ MAX_WORKERS = 5
 # Categories the mapping YAML carries. Claude is given a different system-
 # prompt-flavour hint per category (e.g. "this is a club name" vs "this is
 # a player name") so transliteration quality is calibrated.
-CATEGORIES = ("positions", "nationalities", "clubs", "competitions", "names")
+CATEGORIES = ("positions", "nationalities", "clubs", "competitions", "names", "birth_places")
 
 # Wikidata entity type per category. Categories absent from this map skip
 # the Wikidata pass and go straight to Claude (positions are too generic
@@ -81,6 +81,7 @@ _WIKIDATA_ENTITY_TYPE = {
     "clubs": "club",
     "competitions": "competition",
     "nationalities": "country",
+    "birth_places": "city",
 }
 
 # Chunk size for the Anthropic API calls — keeps each request well inside
@@ -257,6 +258,14 @@ _CATEGORY_HINTS = {
         "confidence=low for non-Latin-source names (Russian, Greek, Arabic, "
         "African languages) where multiple acceptable transliterations "
         "exist."
+    ),
+    "birth_places": (
+        "City / town / village names where football players were born. "
+        "Use the standard Hebrew Wikipedia name when known (e.g. 'Petah "
+        "Tikva' → 'פתח תקווה', 'Tel Aviv' → 'תל אביב', 'Buenos Aires' → "
+        "'בואנוס איירס'). For Israeli localities, use the canonical "
+        "Hebrew spelling. For obscure foreign localities, transliterate "
+        "phonetically. Mark confidence=low when uncertain."
     ),
 }
 

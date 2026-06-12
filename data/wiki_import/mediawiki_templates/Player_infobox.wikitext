@@ -1,14 +1,19 @@
 <includeonly>
 {| class="infobox" style="width:22em; font-size:88%; direction:rtl; text-align:right;"
 |-
-! colspan="2" style="background:#cc0000; color:white; font-size:120%; text-align:center;" | {{{name_english|}}}
-{{#if:{{{name_hebrew|}}}|
+! colspan="2" style="background:#cc0000; color:white; font-size:120%; text-align:center;" | {{{name_hebrew|{{{name_english|}}}}}}
+{{#if:{{{name_english|}}}|
 {{!}}-
-! colspan="2" style="background:#cc0000; color:white; font-size:110%; text-align:center;" {{!}} {{{name_hebrew|}}}
+! colspan="2" style="background:#cc0000; color:white; font-size:95%; text-align:center;" {{!}} {{{name_english|}}}
 }}
 |-
 ! style="width:35%;" | עמדה
 | {{{position|}}}
+{{#if:{{{other_positions|}}}|
+{{!}}-
+! עמדות נוספות
+{{!}} {{{other_positions|}}}
+}}
 |-
 ! מספר חולצה
 | {{{jersey_number|}}}
@@ -27,9 +32,24 @@
 ! אזרחות
 {{!}} {{{nationality|}}}
 }}
+{{#if:{{{height_cm|}}}|
+{{!}}-
+! גובה
+{{!}} {{{height_cm|}}} ס"מ
+}}
+{{#if:{{{preferred_foot|}}}|
+{{!}}-
+! רגל חזקה
+{{!}} {{{preferred_foot|}}}
+}}
 |-
 ! בסגל הנוכחי
 | {{#ifeq:{{{current_squad|}}}|Yes|&#x2705;|&#x274C;}}
+{{#ifeq:{{{is_captain|}}}|Yes|
+{{!}}-
+! קפטן
+{{!}} &#x2705;
+}}
 {{#ifeq:{{{homegrown|}}}|Yes|
 {{!}}-
 ! חניך המועדון
@@ -39,6 +59,16 @@
 {{!}}-
 ! פרש
 {{!}} &#x2705;
+}}
+{{#if:{{{current_market_value|}}}|
+{{!}}-
+! שווי שוק
+{{!}} {{{current_market_value|}}}
+}}
+{{#if:{{{contract_expires|}}}|
+{{!}}-
+! חוזה עד
+{{!}} {{{contract_expires|}}}
 }}
 {{#if:{{{tmk_id|}}}|
 {{!}}-
@@ -68,9 +98,15 @@
 | birth_place = {{{birth_place|}}}
 | nationality = {{{nationality|}}}
 | main_position = {{{position|}}}
+| other_positions = {{{other_positions|}}}
 | current_jersey_number = {{{jersey_number|}}}
 | current_squad = {{{current_squad|}}}
 | homegrown = {{{homegrown|}}}
 | retired = {{{retired|}}}
+| is_captain = {{{is_captain|}}}
+| height_cm = {{{height_cm|}}}
+| preferred_foot = {{{preferred_foot|}}}
+| contract_expires = {{{contract_expires|}}}
+| current_market_value = {{{current_market_value|}}}
 }}|}}
 </includeonly>

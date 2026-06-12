@@ -5,6 +5,48 @@ from typing import List, Optional, Set
 import pycountry
 
 
+# Iter-cycle 1 review walk (2026-06-12): TM emits transfer-fee values as
+# free-text strings rather than structured types. The fixed-vocab strings
+# below leak into Hebrew transfer tables in their English form unless
+# translated. Numeric values (€350k, €1.20m) pass through unchanged — the
+# € symbol is football-fan convention.
+_TRANSFER_FEE_HEBREW = {
+    "free transfer": "העברה חופשית",
+    "loan transfer": "השאלה",
+    "end of loan": "סוף השאלה",
+    "loan fee": "דמי השאלה",
+    "?": "",
+    "-": "",
+}
+
+
+def to_il_fee(raw: str | None) -> str:
+    """Translate a TM transfer-fee string to Hebrew form, or pass numeric
+    values through unchanged.
+
+    TM emits a small fixed vocabulary for non-numeric fees ("free transfer",
+    "loan transfer", "End of loan") plus the special-cased `Loan fee:<br/>
+    <i>€X</i>` HTML shape for loan-with-fee deals. Numeric € values stay
+    in original form (football convention; localising to ₪ would add
+    FX-rate noise).
+    """
+    if not raw or not isinstance(raw, str):
+        return ""
+    s = raw.strip()
+    if not s:
+        return ""
+    # Loan-fee HTML shape: extract the inner €X amount.
+    m = re.match(r"Loan fee:.*?<i[^>]*>(€[^<]+)</i>", s, re.IGNORECASE)
+    if m:
+        return f"דמי השאלה: {m.group(1)}"
+    # Bare lookup against fixed vocab (case-insensitive).
+    he = _TRANSFER_FEE_HEBREW.get(s.lower())
+    if he is not None:
+        return he
+    # Numeric € amounts + everything else: pass through.
+    return s
+
+
 def is_all_hebrew(text: str) -> bool:
     return bool(re.fullmatch(r'[\u0590-\u05FF\s]+', text))
 
@@ -124,6 +166,62 @@ def is_retired(player: dict) -> bool:
         if "retired" in to_club:
             return True
     return False
+
+
+def to_il_date(raw: str | None) -> str:
+    """Convert a date string to Israeli DD/MM/YYYY format.
+
+    Tolerates several common input shapes seen on TM:
+      - ISO `YYYY-MM-DD`             → `DD/MM/YYYY`
+      - Already-Israeli `DD/MM/YYYY` → pass through unchanged
+      - Dot format `DD.MM.YYYY`      → normalised to slashes
+      - TM match-date `Thu 25/07/24` → `25/07/2024` (strip day prefix,
+                                        expand 2-digit year)
+      - Bare `DD/MM/YY`              → `DD/MM/YYYY` (expand 2-digit year)
+      - Empty / `?` / `-` / None    → empty string
+
+    Iter-cycle 1 review walk (2026-06-12): Israeli convention is
+    DD/MM/YYYY with slashes. Used on government forms, banks, sports
+    media. The pipeline previously rendered ISO `YYYY-MM-DD` on every
+    date surface (birth_date, transfer_date, market-value date) which
+    reviewers flagged as non-idiomatic. Day-of-week prefix on match
+    dates is stripped to keep the output uniform — the date itself is
+    the canonical thing readers reference; the day-of-week can be
+    derived if needed.
+
+    Returns the original string if parsing fails (defensive — don't
+    blank a date the user might still want to see, even if oddly formed).
+    """
+    if not raw or not isinstance(raw, str):
+        return ""
+    s = raw.strip()
+    if not s or s in ("?", "-"):
+        return ""
+    # Strip TM's day-of-week prefix ("Thu 25/07/24" → "25/07/24"). The day-
+    # name is English; in a Hebrew-target wiki it'd be jarring. The date is
+    # the canonical thing readers care about.
+    s = re.sub(r"^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+", "", s, flags=re.IGNORECASE)
+    # Already DD/MM/YYYY?
+    if re.fullmatch(r"\d{2}/\d{2}/\d{4}", s):
+        return s
+    # DD/MM/YY → expand 2-digit year (assume 20XX for now; revisit if pre-2000
+    # data starts flowing through this filter).
+    m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{2})", s)
+    if m:
+        return f"{m.group(1)}/{m.group(2)}/20{m.group(3)}"
+    # DD.MM.YYYY → slashes
+    m = re.fullmatch(r"(\d{2})\.(\d{2})\.(\d{4})", s)
+    if m:
+        return f"{m.group(1)}/{m.group(2)}/{m.group(3)}"
+    # ISO YYYY-MM-DD
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(3)}/{m.group(2)}/{m.group(1)}"
+    # Permissive parse via dateutil — handles less-common shapes
+    try:
+        return parse(s).date().strftime("%d/%m/%Y")
+    except Exception:
+        return s
 
 
 def to_season_display(season: str | int) -> str:

@@ -62,6 +62,10 @@ def _render_template(template_name: str, **kwargs) -> str:
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    # Iter-cycle 1 (2026-06-12): Israeli DD/MM/YYYY date format on match
+    # report pages. Match dates render via `{{ match.date | il_date }}`.
+    from data_pipeline.helpers import to_il_date
+    env.filters["il_date"] = to_il_date
     template = env.get_template(template_name)
     return template.render(**kwargs)
 

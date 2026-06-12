@@ -26,9 +26,11 @@ def _entity(
     en_desc: str = "",
     p31: list[str] | None = None,
     p641: list[str] | None = None,
+    hewiki_title: str | None = None,
 ) -> dict:
     """Build a single entity dict in the shape Wikidata returns from
-    wbgetentities."""
+    wbgetentities. `hewiki_title` populates the `sitelinks.hewiki.title`
+    field which the resolver prefers over `labels.he`."""
     labels = {"en": {"value": en_label}}
     if he_label is not None:
         labels["he"] = {"value": he_label}
@@ -42,7 +44,15 @@ def _entity(
         claims["P641"] = [
             {"mainsnak": {"datavalue": {"value": {"id": q}}}} for q in p641
         ]
-    return {"labels": labels, "descriptions": descriptions, "claims": claims}
+    sitelinks = {}
+    if hewiki_title is not None:
+        sitelinks["hewiki"] = {"site": "hewiki", "title": hewiki_title}
+    return {
+        "labels": labels,
+        "descriptions": descriptions,
+        "claims": claims,
+        "sitelinks": sitelinks,
+    }
 
 
 def _entities_payload(entities: dict[str, dict]) -> dict:
@@ -309,6 +319,64 @@ class TestLookupHebrewLabel:
             ])
             assert wikidata_lookup.lookup_hebrew_label("Israel", "country") \
                 == ("ישראל", "Q801")
+
+    def test_sitelinks_hewiki_title_preferred_over_labels_he(self):
+        """Iter-cycle 1 review-walk finding (2026-06-12): Wikidata's
+        free-form `labels.he` can drift to either full-canonical names
+        ("בן אנריקה גורדין ענברי") or stale/vandalised values
+        ("הלדר לפופסיק"). The Hebrew Wikipedia sitelink title is the
+        community-curated article name — better signal for the common-form
+        name. Resolver must prefer it over `labels.he`."""
+        with patch.object(wikidata_lookup.requests, "Session") as mock_cls:
+            mock_cls.return_value = _patched_session_with([
+                _search_payload(["Q_BEN_GORDIN"]),
+                _entities_payload({
+                    "Q_BEN_GORDIN": _entity(
+                        he_label="בן אנריקה גורדין ענברי",   # full-canonical
+                        hewiki_title="בן גורדין",            # common-form
+                        en_label="Ben Gordin",
+                        p31=["Q5"], p641=["Q2736"],
+                    ),
+                }),
+            ])
+            result = wikidata_lookup.lookup_hebrew_label("Ben Gordin", "player")
+            assert result == ("בן גורדין", "Q_BEN_GORDIN")
+
+    def test_falls_back_to_labels_he_when_no_hewiki_sitelink(self):
+        """Common for foreign players without a Hebrew Wikipedia article —
+        `sitelinks.hewiki` is absent; fall back to `labels.he`."""
+        with patch.object(wikidata_lookup.requests, "Session") as mock_cls:
+            mock_cls.return_value = _patched_session_with([
+                _search_payload(["Q_ASEN_DONCHEV"]),
+                _entities_payload({
+                    "Q_ASEN_DONCHEV": _entity(
+                        he_label="אסן דונצ'ב",
+                        hewiki_title=None,            # no hewiki article
+                        en_label="Asen Donchev",
+                        p31=["Q5"], p641=["Q2736"],
+                    ),
+                }),
+            ])
+            result = wikidata_lookup.lookup_hebrew_label("Asen Donchev", "player")
+            assert result == ("אסן דונצ'ב", "Q_ASEN_DONCHEV")
+
+    def test_sitelinks_strips_bidi_marks_too(self):
+        """The bidi-strip normalisation applies to sitelink titles same as
+        labels (defensive — sitelinks shouldn't have them, but if they
+        ever do, the cleanup must be uniform)."""
+        with patch.object(wikidata_lookup.requests, "Session") as mock_cls:
+            mock_cls.return_value = _patched_session_with([
+                _search_payload(["Q_X"]),
+                _entities_payload({
+                    "Q_X": _entity(
+                        he_label="ignored",
+                        hewiki_title="אליאל פרץ‎‎",  # trailing LRMs
+                        p31=["Q5"], p641=["Q2736"],
+                    ),
+                }),
+            ])
+            result = wikidata_lookup.lookup_hebrew_label("Eliel Peretz", "player")
+            assert result == ("אליאל פרץ", "Q_X")
 
     def test_unicode_bidi_marks_stripped(self):
         """Wikidata Hebrew labels occasionally have trailing LRM (U+200E)

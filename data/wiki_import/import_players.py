@@ -8,7 +8,7 @@ from typing import Optional
 
 import jinja2
 
-from data_pipeline.helpers import to_season_display
+from data_pipeline.helpers import to_il_date, to_il_fee, to_season_display
 import mwclient
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
@@ -49,6 +49,11 @@ def _render_template(template_name: str, **kwargs) -> str:
     # exposes. Player pages render per-row season labels in the stats table
     # via `{{ s.season | season_display }}`.
     env.filters["season_display"] = to_season_display
+    # Iter-cycle 1 (2026-06-12): Israeli DD/MM/YYYY date format + Hebrew
+    # transfer-fee translation. Used on birth_date, transfer dates, market
+    # value dates throughout player_page.j2.
+    env.filters["il_date"] = to_il_date
+    env.filters["il_fee"] = to_il_fee
     template = env.get_template(template_name)
     return template.render(**kwargs)
 
