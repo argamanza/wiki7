@@ -64,8 +64,9 @@ require_once "$IP/maintenance/Maintenance.php";
  *     no side-effects.
  *   - --confirm performs the actual deletion. Idempotent — safe to re-run.
  *   - --deep is OPT-IN (default: off). When given, also requires
- *     --allow-prod-deep on production environments (detected via $wgServer
- *     matching the prod domain, or WIKI_ENV=prod). This prevents an
+ *     --allow-prod-deep on production environments (detected via
+ *     fail-closed WIKI_ENV check: unset / empty / anything not in
+ *     {dev, development, local} flags as prod). This prevents an
  *     accidental SSM invocation from wiping prod audit history.
  *
  * INVOCATION (after CDK deploy of this script):
@@ -356,28 +357,32 @@ class ResetContent extends Maintenance {
 
 	/**
 	 * Detect whether this script is running against the production wiki.
-	 * Two signals, either is sufficient:
-	 *   1. `$wgServer` (set by LocalSettings.php from the WIKI_SERVER env var)
-	 *      contains the prod domain.
-	 *   2. `WIKI_ENV` env var is set to "prod" or "production".
 	 *
-	 * Defaults to FALSE only when neither signal trips — so a misconfigured
-	 * local that forgot to set WIKI_ENV and accidentally uses a prod-looking
-	 * $wgServer would still flag as prod (safe default).
+	 * Reviewer-pass fix (2026-06-13): the prior version checked
+	 * `$wgServer contains wiki7.co.il` OR `WIKI_ENV in {prod, production}`
+	 * and returned FALSE if neither tripped. That was fail-OPEN: stripping
+	 * `WIKI_ENV` killed both signals at once, since `$wgServer` is only set
+	 * to `https://wiki7.co.il` inside the `if (getenv('WIKI_ENV') ===
+	 * 'production')` block in LocalSettings.php:542. A misconfigured /
+	 * unset env then ran `--deep` unguarded against prod.
 	 *
-	 * Added 2026-06-12 (§6 ④ fix). Used to gate --deep behind --allow-prod-deep
-	 * on production.
+	 * The new contract is fail-CLOSED: assume prod unless WIKI_ENV is
+	 * explicitly one of the dev sentinels (`dev`, `development`, `local`).
+	 * Compose / Docker / local install scripts ALL set this; the only way
+	 * to land in the prod branch is to genuinely be on prod (or to have
+	 * forgotten to set WIKI_ENV, which still flags as prod — exactly the
+	 * conservative behavior we want for an audit-log-destroying flag).
+	 *
+	 * Used to gate `--deep` behind `--allow-prod-deep`.
 	 */
 	private function isProductionEnvironment(): bool {
-		global $wgServer;
-		if ( is_string( $wgServer ) && strpos( $wgServer, 'wiki7.co.il' ) !== false ) {
-			return true;
-		}
 		$env = getenv( 'WIKI_ENV' );
-		if ( is_string( $env ) && in_array( strtolower( $env ), [ 'prod', 'production' ], true ) ) {
+		if ( !is_string( $env ) || $env === '' ) {
+			// Unset / empty → assume prod (fail-closed).
 			return true;
 		}
-		return false;
+		$dev_sentinels = [ 'dev', 'development', 'local' ];
+		return !in_array( strtolower( $env ), $dev_sentinels, true );
 	}
 
 	// ===========================================================================

@@ -192,14 +192,32 @@ $wgGroupPermissions['bot']['noratelimit']            = true;
 // Pattern A's auto-MovePage (Draft:X → Draft:Y on title drift, see
 // data/wiki_import/page_router.py) is the bot's flagship correctness
 // mechanism — without it, a reviewer-corrected mapping override produces a
-// silent duplicate-draft rather than a clean rename. But `bot` doesn't carry
-// the `move` right by default (MediaWiki grants `move` to the `user` group),
-// so Wiki7Bot's MovePage calls would have permission-failed if exercised —
-// the Phase 3a R2 PR A "117/117 verified" run was creation-only, so the bug
-// was latent. Grant the bot the same `move` right reviewers already have on
-// line 178. The bot only ever operates in NS_DRAFT for moves (per the
-// router's "never cross namespaces" invariant from §6 ①), so this is
-// effectively scoped to draft-space movement.
+// silent duplicate-draft rather than a clean rename. The blocking factor was
+// the per-namespace Lockdown line below (NS_DRAFT['move'] = ['reviewer']),
+// not the global group permission — Wiki7Bot is in the `user` group too, and
+// MediaWiki grants `move` globally to `user`. The line below is therefore a
+// no-op (verified during the reviewer-pass on 2026-06-13) but documents the
+// intent and acts as belt-and-suspenders against a future LocalSettings edit
+// that strips the user-level grant.
+//
+// Reviewer-pass orange #10 corrections (2026-06-13):
+//  - The previous comment claimed "bot doesn't carry the `move` right by
+//    default" — wrong; the inherited `user` group grant covers it. The real
+//    fix is the Lockdown line.
+//  - The previous comment claimed "the bot only ever operates in NS_DRAFT
+//    for moves (per the router's never-cross-namespaces invariant)". The
+//    router invariant is genuine, but `$wgGroupPermissions['bot']['move']`
+//    itself is NOT namespace-scoped, so a future bug could move outside
+//    NS_DRAFT. Queued for Phase 3b: a `getUserPermissionsErrors` hook that
+//    denies Wiki7Bot moves outside NS_DRAFT at the MW layer.
+//  - The §6 ④ safety rationale on resetContent.php previously implied
+//    ApprovedRevs holds renames + the gate notifies on moves. NEITHER is
+//    true. ApprovedRevs gates revision approvals, not page moves — renames
+//    are publicly visible immediately. And Wiki7ReviewGate only registers
+//    PageSaveComplete (not PageMoveComplete), so reviewer-side notifications
+//    don't fire for moves. Open decision pre-Pattern-B: should
+//    PageMoveComplete also trigger a notification? Tzahi to decide; either
+//    answer is consistent.
 $wgGroupPermissions['bot']['move']                   = true;
 
 // === Cargo anon-read revocation (iter-cycle 1, 2026-06-11) =========================

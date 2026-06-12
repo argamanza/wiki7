@@ -53,11 +53,25 @@ class FixturesSpider(scrapy.Spider):
             system_of_play = columns[7].xpath("normalize-space()").get()
             attendance = columns[8].xpath("normalize-space()").get()
 
+            # Reviewer-pass orange #8 (2026-06-13): pre-fix this raised
+            # IndexError on old-era match rows where the result cell has
+            # no `<a span>` markup (TM started using that shape ~2009;
+            # pre-2009 rows have the result inline as plain text or no
+            # markup at all). With `allow_empty=True` upstream, the
+            # whole season then silently yielded zero fixtures, which the
+            # caller treated as "TM doesn't carry this era" — masking a
+            # real spider crash. Now we fall back to plain text on the
+            # cell when the structured selector yields nothing, and emit
+            # an empty result string only when there's genuinely no data.
             result_element = columns[9].css("a span::text").getall()
-            if len(result_element) == 1:
+            if len(result_element) >= 2:
+                result = result_element[0].strip() + " (penalties)"
+            elif len(result_element) == 1:
                 result = result_element[0].strip()
             else:
-                result = result_element[0].strip() + " (penalties)"
+                # Old-era fallback: result lives as plain cell text, or
+                # not at all.
+                result = columns[9].xpath("normalize-space()").get() or ""
 
             match_report_relative = columns[9].css("a::attr(href)").get()
             match_report = urljoin(self.base_url, match_report_relative) if match_report_relative else None

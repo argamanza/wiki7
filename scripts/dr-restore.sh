@@ -57,11 +57,23 @@ echo "=== Wiki7 DR Restore ==="
 echo "Profile: $AWS_PROFILE | Region: $REGION | Mode: $RESTORE_MODE"
 
 # 1. Find the source DB instance
+#
+# Filter exclusions (same fix as dr-test.sh, reviewer-pass orange #9
+# 2026-06-13):
+#   - dr-test-*  : transient temp instances from an in-progress drill
+#   - restore-*  : the rename-dance target of THIS script — if a prior
+#                  run failed mid-rename, both the original and the
+#                  restored-* instance can be present at once, and the
+#                  pre-fix `head -1` against text-output multi-row
+#                  returned the entire tab-joined string. Filtering them
+#                  out keeps the lookup robust during messy recoveries.
+# `awk 'NR==1'` (not `head -1`) extracts the first row even when AWS CLI
+# text-output uses tabs as field separators on a single line.
 echo ""
 echo "--- Step 1: Locating source DB instance ---"
 SOURCE_DB=$(aws_cmd rds describe-db-instances \
-  --query "DBInstances[?contains(DBInstanceIdentifier, 'wiki7')].DBInstanceIdentifier" \
-  --output text | head -1)
+  --query "DBInstances[?contains(DBInstanceIdentifier, 'wiki7') && !contains(DBInstanceIdentifier, 'dr-test') && !contains(DBInstanceIdentifier, 'restore')].DBInstanceIdentifier" \
+  --output text | tr '\t' '\n' | awk 'NF{print; exit}')
 [ -n "$SOURCE_DB" ] || { echo "ERROR: Could not find Wiki7 RDS instance"; exit 1; }
 echo "Source DB: $SOURCE_DB"
 

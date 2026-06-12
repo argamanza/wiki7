@@ -34,6 +34,44 @@ from data_pipeline.pipeline_state import PageIndexState
 logger = logging.getLogger(__name__)
 
 
+def resolve_redirect(site: mwclient.Site, full_title: str) -> tuple[str, bool]:
+    """Resolve a page title through redirects to its real content target.
+
+    Returns `(final_title, was_redirect)`.
+
+    Reviewer-pass orange #7 (2026-06-13): the router's bare `.exists`
+    checks treated redirect pages as authoritative content. A reviewer
+    mainspace rename `X → Y` leaves redirect-`X` in the wiki; the next
+    bot run saw `X` exist, treated it as the canonical location, and
+    overwrote the redirect with bot content — producing duplicate
+    public pages. This helper closes that gap by walking the redirect
+    chain to the actual content page.
+
+    Used by both `resolve_target_title` (NOW) and Pattern B's surgical
+    wikitext merger (when it lands): surgical-merging onto a redirect
+    is nonsense — the merger always wants the real content page.
+
+    Returns:
+        (full_title, False) when the page doesn't exist or isn't a
+        redirect (caller uses full_title as-is).
+        (final_title, True) when full_title was a redirect; final_title
+        is the title the chain resolves to (caller uses that as the
+        authoritative location).
+
+    Single-step resolution only: if a chain has multiple hops, we
+    follow the first. mwclient's `redirects_to()` already returns the
+    ultimate target in one call (it uses the API's redirect-resolution),
+    so this is sufficient in practice.
+    """
+    page = site.pages[full_title]
+    if not page.exists:
+        return full_title, False
+    target = page.redirects_to()
+    if target is None:
+        return full_title, False
+    return target.name, True
+
+
 def format_title(bare_title: str, namespace: int) -> str:
     """Compose a full page title from bare title + namespace number.
 
@@ -105,15 +143,24 @@ def resolve_target_title(
     #  - reviewer promoted Draft:X -> X BEFORE we ever recorded state for X
     #  - reviewer promoted between our last state save and now (state still
     #    says ns=3000 but mainspace is now authoritative)
+    #  - reviewer renamed in mainspace X -> Y, leaving X as a redirect
+    #    (reviewer-pass orange #7, 2026-06-13: resolve through the
+    #    redirect so the bot writes to Y, not over the redirect)
     main_full = format_title(want_title, 0)
-    if site.pages[main_full].exists:
+    main_final, main_was_redirect = resolve_redirect(site, main_full)
+    if main_was_redirect or site.pages[main_full].exists:
+        if main_was_redirect:
+            logger.info(
+                "TM ID %s: %s is a redirect to %s; treating %s as authoritative.",
+                tm_id_str, main_full, main_final, main_final,
+            )
         logger.info(
             "TM ID %s: page found in mainspace at %s; treating mainspace as "
             "authoritative and syncing state (ns=0). Was: %s",
-            tm_id_str, main_full,
+            tm_id_str, main_final,
             stored if stored else "<no state record>",
         )
-        return main_full, "update", 0
+        return main_final, "update", 0
 
     if not stored:
         # First time we've seen this TM ID, and mainspace probe already
@@ -144,7 +191,19 @@ def resolve_target_title(
 
     # No drift — page is at the stored title (which equals want_title) in
     # the same namespace as before. Verify it still exists, then update.
+    # Reviewer-pass orange #7 (2026-06-13): if it's been renamed within
+    # the same namespace (e.g. reviewer renamed Draft:Old → Draft:New
+    # leaving Draft:Old as a redirect), resolve through the redirect so
+    # we update the actual content page, not the redirect itself.
     if stored_title == want_title:
+        stored_final, was_redirect = resolve_redirect(site, stored_full)
+        if was_redirect:
+            logger.info(
+                "TM ID %s: stored page %s is now a redirect to %s; "
+                "updating content target.",
+                tm_id_str, stored_full, stored_final,
+            )
+            return stored_final, "update", stored_ns
         if site.pages[stored_full].exists:
             return stored_full, "update", stored_ns
         # Stranded: state said the page lives at stored_full but it's gone

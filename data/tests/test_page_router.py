@@ -7,11 +7,21 @@ import mwclient
 import pytest
 
 from data_pipeline.pipeline_state import PageIndexState
-from wiki_import.page_router import format_title, resolve_target_title
+from wiki_import.page_router import format_title, resolve_redirect, resolve_target_title
 
 
-def _make_site(pages: dict[str, bool]) -> MagicMock:
-    """Build a mock mwclient.Site where `pages` is {title: exists}."""
+def _make_site(pages: dict[str, bool], redirects: dict[str, str] | None = None) -> MagicMock:
+    """Build a mock mwclient.Site.
+
+    `pages` is `{title: exists}`. `redirects` is an optional `{from_title:
+    to_title}` map: when present, `pages[from_title]` reports a
+    `redirects_to()` that returns a stand-in Page for `to_title`.
+
+    Reviewer-pass orange #7 (2026-06-13): redirects are now first-class
+    in the mock so the router's `resolve_redirect` calls in production-
+    shape paths have something to walk.
+    """
+    redirects = redirects or {}
     site = MagicMock(spec=mwclient.Site)
 
     class _PagesAccessor:
@@ -19,7 +29,16 @@ def _make_site(pages: dict[str, bool]) -> MagicMock:
             page = MagicMock()
             page.exists = pages.get(title, False)
             page.move = MagicMock()
+            page.name = title
             page._title = title
+            # If this title is a redirect source, redirects_to() returns
+            # a Page-shaped mock whose `.name` is the target.
+            if title in redirects:
+                target_mock = MagicMock()
+                target_mock.name = redirects[title]
+                page.redirects_to = MagicMock(return_value=target_mock)
+            else:
+                page.redirects_to = MagicMock(return_value=None)
             # Track moves on the parent so tests can assert
             site._moves_done.append((title, page))
             return page
@@ -261,3 +280,75 @@ class TestPromoteSyncProdShape:
             "NOT a Draft: variant"
         )
         assert kwargs.get("no_redirect") is True
+
+
+class TestResolveRedirectHelper:
+    """Reviewer-pass orange #7 (2026-06-13): the resolve_redirect helper
+    is shared between the router NOW and Pattern B's surgical merger
+    LATER. Pin its contract."""
+
+    def test_nonexistent_page_returns_input_unchanged(self):
+        site = _make_site({})
+        assert resolve_redirect(site, "Draft:X") == ("Draft:X", False)
+
+    def test_non_redirect_existing_page_returns_input(self):
+        site = _make_site({"Draft:X": True})
+        assert resolve_redirect(site, "Draft:X") == ("Draft:X", False)
+
+    def test_redirect_returns_target_with_was_redirect_True(self):
+        site = _make_site({"X": True, "Y": True}, redirects={"X": "Y"})
+        assert resolve_redirect(site, "X") == ("Y", True)
+
+
+class TestRedirectAwareProbe:
+    """Reviewer-pass orange #7 (2026-06-13): a reviewer mainspace rename
+    X → Y leaves redirect-X. Pre-fix the router's bare `.exists` check
+    treated the redirect as authoritative content and the bot overwrote
+    it, producing duplicate public pages. These tests pin that the router
+    resolves through redirects to the actual content target.
+
+    This is ALSO a Pattern B prerequisite — surgical-merging onto a
+    redirect is nonsense. The shared `resolve_redirect` helper means
+    Pattern B inherits the behavior automatically."""
+
+    def test_mainspace_probe_follows_redirect(self, tmp_path: Path):
+        """No state record; mainspace X is a redirect to mainspace Y.
+        The router must return Y (the content page), not X (the redirect).
+        Otherwise the bot would overwrite the reviewer's redirect."""
+        state = PageIndexState(tmp_path / "state.yaml")
+        # X exists as a redirect to Y; Y exists as content.
+        site = _make_site(
+            {"ניב אליאסי": True, "ניב אליאסי הצעיר": True},
+            redirects={"ניב אליאסי": "ניב אליאסי הצעיר"},
+        )
+        title, action, ns = resolve_target_title(
+            site, state, "912586", "ניב אליאסי", 3000,  # prod shape
+        )
+        # Must point at the redirect target Y, not the redirect source X.
+        assert (title, action, ns) == ("ניב אליאסי הצעיר", "update", 0)
+
+    def test_stored_title_follows_intra_namespace_redirect(self, tmp_path: Path):
+        """Reviewer renamed Draft:Old → Draft:New, leaving Draft:Old as
+        a redirect. State still says Draft:Old. The router must resolve
+        through the redirect and update Draft:New, not blast the redirect."""
+        state = PageIndexState(tmp_path / "state.yaml")
+        state.upsert("171068", "OldTitle", 3000)
+        site = _make_site(
+            {"Draft:OldTitle": True, "Draft:NewTitle": True},
+            redirects={"Draft:OldTitle": "Draft:NewTitle"},
+        )
+        title, action, ns = resolve_target_title(
+            site, state, "171068", "OldTitle", 3000,
+        )
+        assert (title, action, ns) == ("Draft:NewTitle", "update", 3000)
+
+    def test_no_redirect_preserves_old_behavior(self, tmp_path: Path):
+        """Regression guard: when there's no redirect, the router must
+        still produce the same result as before."""
+        state = PageIndexState(tmp_path / "state.yaml")
+        state.upsert("999", "Stable Title", 3000)
+        site = _make_site({"Draft:Stable Title": True})  # no redirects
+        title, action, ns = resolve_target_title(
+            site, state, "999", "Stable Title", 3000,
+        )
+        assert (title, action, ns) == ("Draft:Stable Title", "update", 3000)
