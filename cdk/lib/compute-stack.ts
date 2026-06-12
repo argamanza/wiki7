@@ -7,8 +7,6 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as logs from 'aws-cdk-lib/aws-logs';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as cr from 'aws-cdk-lib/custom-resources';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
@@ -142,7 +140,12 @@ export class ComputeStack extends Construct {
         {
           id: 'ExpireOldVersions',
           enabled: true,
-          noncurrentVersionExpiration: cdk.Duration.days(7),
+          // 30 days, not 7: this is the only undelete window for user uploads
+          // (no AWS Backup coverage on S3). The DB side keeps a 1-year monthly
+          // snapshot precisely for the ">7 days before anyone noticed" scenario;
+          // uploads deserve at least a month of the same grace. Cost is pennies
+          // at this bucket's size.
+          noncurrentVersionExpiration: cdk.Duration.days(30),
           expiredObjectDeleteMarker: true,
         },
       ],
@@ -159,53 +162,12 @@ export class ComputeStack extends Construct {
       cacheControl: [s3deploy.CacheControl.fromString('public, max-age=86400')],
     });
 
-    // Seed the bucket with `images/` and `assets/` prefixes the AWS S3 ext expects.
-    const seedFn = new lambda.Function(this, 'S3DirectoriesLambda', {
-      runtime: lambda.Runtime.PYTHON_3_11,
-      handler: 's3_directories.lambda_handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/s3-directories')),
-      timeout: cdk.Duration.seconds(30),
-    });
-    this.mediawikiStorageBucket.grantPut(seedFn);
-
-    new cr.AwsCustomResource(this, 'CreateS3Directories', {
-      onCreate: {
-        service: 'Lambda',
-        action: 'invoke',
-        parameters: {
-          FunctionName: seedFn.functionName,
-          Payload: JSON.stringify({
-            RequestType: 'Create',
-            ResourceProperties: {
-              BucketName: this.mediawikiStorageBucket.bucketName,
-              Directories: ['assets', 'images'],
-            },
-          }),
-        },
-        physicalResourceId: cr.PhysicalResourceId.of('S3DirectoriesResource'),
-      },
-      onUpdate: {
-        service: 'Lambda',
-        action: 'invoke',
-        parameters: {
-          FunctionName: seedFn.functionName,
-          Payload: JSON.stringify({
-            RequestType: 'Update',
-            ResourceProperties: {
-              BucketName: this.mediawikiStorageBucket.bucketName,
-              Directories: ['assets', 'images'],
-            },
-          }),
-        },
-        physicalResourceId: cr.PhysicalResourceId.of('S3DirectoriesResource'),
-      },
-      policy: cr.AwsCustomResourcePolicy.fromStatements([
-        new iam.PolicyStatement({
-          actions: ['lambda:InvokeFunction'],
-          resources: [seedFn.functionArn],
-        }),
-      ]),
-    });
+    // NOTE: an earlier revision seeded zero-byte `assets/` + `images/` prefix markers
+    // here via a Lambda + AwsCustomResource. Removed: S3 has no real directories, the
+    // AWS S3 MW extension doesn't need prefix markers, BucketDeployment populates
+    // `assets/` anyway — and the Lambda's cfnresponse call crashed on every invocation
+    // (no ResponseURL in a direct invoke payload), succeeding only because
+    // AwsCustomResource ignores Lambda FunctionErrors.
 
     // === Container log group (Docker writes here via the awslogs driver) =======================
     // Holds two streams: 'mediawiki' (MW container) and 'redis' (sidecar). Same retention
@@ -295,15 +257,9 @@ export class ComputeStack extends Construct {
       `systemctl enable --now crond`,
       `# SSM Agent is preinstalled on AL2023; nothing to do.`,
       ``,
-      `# 2. Self-attach the Elastic IP so this instance has a stable public address.`,
-      `INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $(curl -sX PUT \\`,
-      `  -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token)" \\`,
-      `  http://169.254.169.254/latest/meta-data/instance-id)`,
-      `aws ec2 associate-address \\`,
-      `  --region ${region} \\`,
-      `  --instance-id "$INSTANCE_ID" \\`,
-      `  --allocation-id ${eipAllocId} \\`,
-      `  --allow-reassociation`,
+      `# 2. (Elastic IP self-attach moved to step 7 — see note there. Doing it here,`,
+      `#    before the image pulls and container start, used to steal the EIP from the`,
+      `#    old, still-healthy instance minutes before this one could serve traffic.)`,
       ``,
       `# 3. Authenticate the Docker daemon to CDK's ECR repo and pull the image.`,
       `#    Retry both pulls — il-central-1 ECR endpoint occasionally resets the`,
@@ -407,6 +363,27 @@ export class ComputeStack extends Construct {
       `* * * * * root /usr/bin/docker exec wiki7 php maintenance/run.php runJobs --maxtime=55 >/dev/null 2>>/var/log/wiki7-jobrunner.err`,
       `EOF`,
       `chmod 0644 /etc/cron.d/wiki7-jobrunner`,
+      ``,
+      `# 7. Self-attach the Elastic IP — LAST, once the container actually serves HTTP.`,
+      `#    During an instance replacement the old instance keeps receiving CloudFront`,
+      `#    origin traffic until this exact moment, so the cutover gap is seconds, not`,
+      `#    the minutes the dnf update + image pulls take. The wait loop tolerates the`,
+      `#    MW entrypoint's DB-wait + first-boot install (up to ~5 min) before giving up`,
+      `#    and attaching anyway (an unreachable origin behind the EIP beats an instance`,
+      `#    that never takes over).`,
+      `for i in $(seq 1 60); do`,
+      `  if curl -sf -o /dev/null --max-time 5 http://localhost:80/; then break; fi`,
+      `  echo "Waiting for MediaWiki to serve HTTP (attempt $i)..."`,
+      `  sleep 5`,
+      `done`,
+      `INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $(curl -sX PUT \\`,
+      `  -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token)" \\`,
+      `  http://169.254.169.254/latest/meta-data/instance-id)`,
+      `aws ec2 associate-address \\`,
+      `  --region ${region} \\`,
+      `  --instance-id "$INSTANCE_ID" \\`,
+      `  --allocation-id ${eipAllocId} \\`,
+      `  --allow-reassociation`,
     );
 
     // === The instance ==========================================================================
