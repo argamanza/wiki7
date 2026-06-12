@@ -32,22 +32,18 @@ require_once "$IP/maintenance/Maintenance.php";
  *     approval state — appropriate for a clean slate).
  *   - All rows from echo_event + echo_notification where event_agent_id is
  *     the bot's user_id (bot-generated review-pending notifications).
- *   - **Phase 3a R2 deep-truncation** (added 2026-06-10): every row in the
- *     audit-trail tables `archive`, `recentchanges`, `logging`, `change_tag`
- *     — and recalculates `site_stats` so `ss_total_edits` reflects the live
- *     revision count instead of the monotonic lifetime counter. The pre-R2
- *     script left ~9k rows in these tables after a bulk-import reset, which
- *     didn't actually feel like a clean slate (Special:RecentChanges still
- *     showed every delete; Special:Log carried the full audit; lifetime
- *     edit counter kept climbing). After this change, `--scope=all` produces
- *     a state as close to "fresh install" as the maintenance side can
- *     achieve without dropping the database.
- *
- *     Note: this also wipes the audit log of user-creation + group-promotion
- *     actions. The users themselves (Wiki7Bot, Admin, reviewer membership)
- *     are preserved — only the audit trail is cleared. On a dev/iteration
- *     environment this is desired; on prod, `--scope=all` carries the same
- *     destructive semantics it has always had.
+ *   - **`--deep` deep-truncation** (was the silent default 2026-06-10 to
+ *     2026-06-12; gated behind an explicit flag after the 2026-06-12 full-
+ *     project review §6 ④): every row in the audit-trail tables `archive`,
+ *     `recentchanges`, `logging`, `change_tag` — and recalculates
+ *     `site_stats` so `ss_total_edits` reflects the live revision count
+ *     instead of the monotonic lifetime counter. This destroys the human
+ *     undelete history AND the entire audit log — including user-creation
+ *     and group-promotion actions — so it's no longer the default. On dev/
+ *     iteration environments where the "fresh install" appearance is the
+ *     goal, pass `--deep`. On production, the script REFUSES `--deep`
+ *     unless `--allow-prod-deep` is ALSO given (an explicit double opt-in,
+ *     because losing prod audit history is unrecoverable).
  *
  * WHAT IT PRESERVES
  *   - Users + groups (Admin, Wiki7Bot, reviewer membership).
@@ -57,6 +53,9 @@ require_once "$IP/maintenance/Maintenance.php";
  *   - The docker-install seed homepage עמוד ראשי + its sub-templates.
  *   - Any pages whose first revision was NOT authored by Wiki7Bot.
  *   - Cargo table SCHEMAS — only the data rows are cleared.
+ *   - **DEFAULT** (no `--deep`): the audit-trail tables (`archive`,
+ *     `recentchanges`, `logging`, `change_tag`) — undelete + audit log
+ *     are preserved.
  *
  * SAFETY
  *   - Requires either --dry-run OR --confirm. Refuses if neither is given.
@@ -64,6 +63,10 @@ require_once "$IP/maintenance/Maintenance.php";
  *   - --dry-run prints a summary of what *would* be deleted and exits with
  *     no side-effects.
  *   - --confirm performs the actual deletion. Idempotent — safe to re-run.
+ *   - --deep is OPT-IN (default: off). When given, also requires
+ *     --allow-prod-deep on production environments (detected via $wgServer
+ *     matching the prod domain, or WIKI_ENV=prod). This prevents an
+ *     accidental SSM invocation from wiping prod audit history.
  *
  * INVOCATION (after CDK deploy of this script):
  *   # dry-run
@@ -93,6 +96,18 @@ class ResetContent extends Maintenance {
 		$this->addOption( 'dry-run', 'Print what would be deleted without doing it.', false, false );
 		$this->addOption( 'confirm', 'Required for actual deletion. Mutually exclusive with --dry-run.', false, false );
 		$this->addOption( 'scope', 'Scope: "all" (default) or "drafts-only".', false, true );
+		$this->addOption(
+			'deep',
+			'OPT-IN: also TRUNCATE the audit-trail tables (archive, recentchanges, logging, change_tag) '
+			. 'and recalculate site_stats. DESTROYS UNDELETE HISTORY + AUDIT LOG. Required on prod.',
+			false, false
+		);
+		$this->addOption(
+			'allow-prod-deep',
+			'Required alongside --deep when running on production. Without this flag, --deep refuses '
+			. 'to run on prod (detected via $wgServer or WIKI_ENV).',
+			false, false
+		);
 		$this->requireExtension( 'Wiki7ReviewGate' );
 	}
 
@@ -100,6 +115,8 @@ class ResetContent extends Maintenance {
 		$dryRun = $this->hasOption( 'dry-run' );
 		$confirm = $this->hasOption( 'confirm' );
 		$scope = $this->getOption( 'scope', 'all' );
+		$deep = $this->hasOption( 'deep' );
+		$allowProdDeep = $this->hasOption( 'allow-prod-deep' );
 
 		if ( !$dryRun && !$confirm ) {
 			$this->fatalError(
@@ -112,6 +129,21 @@ class ResetContent extends Maintenance {
 		}
 		if ( !in_array( $scope, [ 'all', 'drafts-only' ], true ) ) {
 			$this->fatalError( "Invalid --scope: '$scope'. Use 'all' or 'drafts-only'." );
+		}
+
+		// Safety: --deep on production requires --allow-prod-deep. The deep-
+		// truncation wipes the audit log + undelete history; on prod that's
+		// unrecoverable. Two-flag opt-in prevents accidental SSM invocations
+		// from doing irreversible damage. The §6 ④ fix from the 2026-06-12
+		// full-project review.
+		if ( $deep && $this->isProductionEnvironment() && !$allowProdDeep ) {
+			$this->fatalError(
+				"Refusing to run --deep on production without --allow-prod-deep.\n"
+				. "--deep wipes archive + recentchanges + logging + change_tag site-wide;\n"
+				. "on prod this destroys the undelete history AND the entire audit log,\n"
+				. "with no recovery path short of the daily RDS snapshot.\n"
+				. "If you genuinely intend this, pass --allow-prod-deep alongside --deep + --confirm."
+			);
 		}
 
 		$services = MediaWikiServices::getInstance();
@@ -134,6 +166,7 @@ class ResetContent extends Maintenance {
 		$this->output( "=== Wiki7ReviewGate:resetContent ===\n" );
 		$this->output( 'Mode:  ' . ( $dryRun ? 'DRY RUN (no changes)' : 'LIVE (--confirm)' ) . "\n" );
 		$this->output( "Scope: $scope\n" );
+		$this->output( 'Deep:  ' . ( $deep ? "YES (audit/undelete history WILL be wiped)" : "no (preserved)" ) . "\n" );
 		$this->output( 'Bot:   ' . self::BOT_USERNAME . " (actor_id=$botActorId, user_id={$botUser->getId()})\n\n" );
 
 		// === Survey: pages to delete ===
@@ -201,18 +234,25 @@ class ResetContent extends Maintenance {
 			}
 			$this->output( "[tables] echo_event (bot-agent): $echoEventCount rows; echo_notification (joined): $echoNotificationCount rows\n" );
 
-			// Phase 3a R2 deep-truncation survey — the audit-trail tables that
-			// the pre-R2 script left untouched. Reported in dry-run so the
-			// operator can see what will be wiped before confirming.
-			$historyCounts = $this->countHistoryTables( $dbr );
-			$this->output(
-				"[tables] history (deep-truncate): "
-				. "archive=" . $historyCounts['archive'] . " rows; "
-				. "recentchanges=" . $historyCounts['recentchanges'] . " rows; "
-				. "logging=" . $historyCounts['logging'] . " rows; "
-				. "change_tag=" . $historyCounts['change_tag'] . " rows; "
-				. "ss_total_edits=" . $historyCounts['ss_total_edits'] . "\n"
-			);
+			// Deep-truncation survey — only relevant when --deep is set. Show
+			// the row counts so the operator sees exactly what would be wiped
+			// before they confirm. When --deep is NOT set, the script will
+			// PRESERVE these tables, so we report that instead.
+			if ( $deep ) {
+				$historyCounts = $this->countHistoryTables( $dbr );
+				$this->output(
+					"[tables] history (--deep TRUNCATE): "
+					. "archive=" . $historyCounts['archive'] . " rows; "
+					. "recentchanges=" . $historyCounts['recentchanges'] . " rows; "
+					. "logging=" . $historyCounts['logging'] . " rows; "
+					. "change_tag=" . $historyCounts['change_tag'] . " rows; "
+					. "ss_total_edits=" . $historyCounts['ss_total_edits'] . "\n"
+				);
+			} else {
+				$this->output(
+					"[tables] history: PRESERVED (audit-trail tables left alone — pass --deep to TRUNCATE)\n"
+				);
+			}
 		}
 
 		$this->output( "\n" );
@@ -296,16 +336,48 @@ class ResetContent extends Maintenance {
 			}
 			$this->output( "  cleared bot-agent rows from echo_event + echo_notification.\n" );
 
-			// Phase 3a R2 deep-truncation — wipe audit-trail tables that the
-			// page-delete cycle leaves behind, and recalculate site_stats so
+			// Deep-truncation — wipe audit-trail tables that the per-page-
+			// delete cycle leaves behind, and recalculate site_stats so
 			// ss_total_edits reflects the live revision count instead of the
-			// monotonic lifetime counter.
-			$this->output( "Deep-truncating history tables...\n" );
-			$this->deepTruncateHistory( $dbw );
-			$this->output( "  truncated archive + recentchanges + logging + change_tag; recalculated site_stats.\n" );
+			// monotonic lifetime counter. Gated behind explicit --deep (with
+			// --allow-prod-deep on prod) since this destroys undelete history
+			// and the audit log.
+			if ( $deep ) {
+				$this->output( "Deep-truncating history tables (--deep)...\n" );
+				$this->deepTruncateHistory( $dbw );
+				$this->output( "  truncated archive + recentchanges + logging + change_tag; recalculated site_stats.\n" );
+			} else {
+				$this->output( "Skipping audit-trail truncation (no --deep): archive/recentchanges/logging/change_tag preserved.\n" );
+			}
 		}
 
 		$this->output( "\nDone.\n" );
+	}
+
+	/**
+	 * Detect whether this script is running against the production wiki.
+	 * Two signals, either is sufficient:
+	 *   1. `$wgServer` (set by LocalSettings.php from the WIKI_SERVER env var)
+	 *      contains the prod domain.
+	 *   2. `WIKI_ENV` env var is set to "prod" or "production".
+	 *
+	 * Defaults to FALSE only when neither signal trips — so a misconfigured
+	 * local that forgot to set WIKI_ENV and accidentally uses a prod-looking
+	 * $wgServer would still flag as prod (safe default).
+	 *
+	 * Added 2026-06-12 (§6 ④ fix). Used to gate --deep behind --allow-prod-deep
+	 * on production.
+	 */
+	private function isProductionEnvironment(): bool {
+		global $wgServer;
+		if ( is_string( $wgServer ) && strpos( $wgServer, 'wiki7.co.il' ) !== false ) {
+			return true;
+		}
+		$env = getenv( 'WIKI_ENV' );
+		if ( is_string( $env ) && in_array( strtolower( $env ), [ 'prod', 'production' ], true ) ) {
+			return true;
+		}
+		return false;
 	}
 
 	// ===========================================================================
