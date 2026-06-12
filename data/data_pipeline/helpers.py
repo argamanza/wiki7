@@ -20,6 +20,51 @@ _TRANSFER_FEE_HEBREW = {
 }
 
 
+# Iter-cycle 1 review walk (2026-06-12): TM emits youth-team tenures with
+# age-group / academy suffixes ("Benfica U17", "Sporting Yth.", etc). The
+# player_page transfers table previously listed these inline with senior
+# transfers — Wikipedia-style infoboxes typically split "Youth career"
+# (U-teams + academies) from senior career to make the pro debut visible.
+# B-teams / II / Reserves are NOT classified here as youth — they're a
+# senior reserve tier and the player on them is already professional.
+# English youth markers — TM-supplied form, present before Hebrew mapping.
+_YOUTH_SUFFIX_RE_EN = re.compile(
+    r"\b(?:U\d{2}|Sub-?\d{2}|Yth|Youth|Juvenil|Junior|Cadete)\.?\s*$",
+    flags=re.IGNORECASE,
+)
+
+# Hebrew youth markers — present AFTER apply_hebrew_mapping has rewritten
+# the club names. "תחת N" literally "under N" is the Hebrew rendering of
+# "U-N"; "נוער" is the Hebrew word for "youth". TM-translation pipeline
+# emits "Benfica U17" → "בנפיקה תחת 17" and "Sporting Yth" → "ספורטינג
+# נוער", so the youth classifier must recognise both forms — it's called
+# on whichever stage of the data the renderer sees. Iter-cycle 1 walk
+# (2026-06-12) surfaced this when 53 Hebrew-form youth transfers were
+# being silently bucketed as senior.
+_YOUTH_SUFFIX_RE_HE = re.compile(
+    r"(?:תחת\s+\d{2}|נוער)\s*$",
+)
+
+
+def is_youth_club_name(name: str | None) -> bool:
+    """True iff this club name names a youth / academy team.
+
+    Matches youth markers as a TRAILING token in either English (TM raw
+    form: "Benfica U17", "Sporting Yth.", "Sporting Sub-15") or Hebrew
+    (post-translation form: "בנפיקה תחת 17", "ספורטינג נוער"). Tolerates
+    the trailing-dot variant and case-insensitive matches for English.
+
+    Returns False for empty / None inputs — those are senior-by-default
+    so a missing club name doesn't accidentally bucket the transfer into
+    "Youth career".
+    """
+    if not name:
+        return False
+    if _YOUTH_SUFFIX_RE_EN.search(name):
+        return True
+    return bool(_YOUTH_SUFFIX_RE_HE.search(name))
+
+
 def to_il_fee(raw: str | None) -> str:
     """Translate a TM transfer-fee string to Hebrew form, or pass numeric
     values through unchanged.

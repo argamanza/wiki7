@@ -114,6 +114,11 @@ _P31_BY_TYPE = {
         "Q15942466",     # men's football club (rare)
         "Q15944511",     # football academy
         "Q11410",        # sports club (broadest)
+        "Q103229495",    # men's association football team (split-entity
+                         # pattern Wikidata now uses for the on-pitch team
+                         # vs. the parent club. iter-cycle 1 walk caught
+                         # "1. FC Nürnberg (football)" Q97905881 falling
+                         # through because we only had the parent-club class.)
     },
     "competition": {
         "Q500834",       # football tournament
@@ -161,6 +166,70 @@ _PLAYER_DESC_KEYWORDS = (
 _COMPETITION_DESC_KEYWORDS = (
     "football", "soccer", "association football",
 )
+
+# ---------------------------------------------------------------------------
+# Hebrew label post-processing
+# ---------------------------------------------------------------------------
+
+# Football-disambiguation parenthetical Wikidata sometimes appends to club /
+# competition Hebrew labels (e.g. "מנצ'סטר יונייטד (כדורגל)"). It's noise for
+# our purposes — the entity-type filter already guarantees the result is a
+# football entity, so the suffix is redundant. Strip only the football-
+# specific suffix; leave non-football disambiguation alone (e.g. "אל-נסר
+# (דובאי)" is a meaningful city disambiguator). Iter-cycle 1 walk 2026-06-12.
+_PAREN_FOOTBALL_SUFFIX_RE = re.compile(r"\s*\(כדורגל[^)]*\)\s*$")
+
+
+def _clean_he_label(raw: str) -> str:
+    """Apply bidi-mark stripping + football-suffix trimming to a Hebrew label.
+
+    The two passes commute (bidi marks won't appear inside the paren suffix
+    in practice, but the ordering would be safe either way). Used by both
+    the sitelink and labels.he paths.
+    """
+    cleaned = _BIDI_MARKS_RE.sub("", raw)
+    cleaned = _PAREN_FOOTBALL_SUFFIX_RE.sub("", cleaned)
+    return cleaned.strip()
+
+
+# ---------------------------------------------------------------------------
+# Search-term variant generation
+# ---------------------------------------------------------------------------
+
+# Patterns that turn a single TM-style English name into multiple Wikidata
+# search variants. wbsearchentities is largely prefix-based — small spacing
+# differences cause complete miss. Iter-cycle 1 walk surfaced "1.FC
+# Nuremberg" returning ZERO hits while "1. FC Nuremberg" / "1. FC Nürnberg"
+# both resolve cleanly. We trial multiple variants, in order, and accept
+# the first type-matching one.
+_DIGIT_DOT_LETTER_RE = re.compile(r"(\d\.)([A-Z])")
+
+
+def _search_variants(query: str) -> list[str]:
+    """Build an ordered list of query variants to try against Wikidata.
+
+    The original query is always first — most names resolve on it directly.
+    Variants come after, deduplicated. The set is intentionally small and
+    syntactic (no domain-specific abbreviation expansion, no diacritic
+    transliteration). Brittle expansions belong in the manual override
+    layer, not here.
+
+    Variants:
+      - Insert space after compact "<digit>.<UPPER>" patterns ("1.FC" →
+        "1. FC") — TM emits the compact form, Wikidata canonicalises the
+        spaced form.
+      - Collapse double-spaces.
+    """
+    variants = [query]
+    spaced = _DIGIT_DOT_LETTER_RE.sub(r"\1 \2", query)
+    if spaced != query:
+        variants.append(spaced)
+    # Defensive whitespace collapse after substitutions — a no-op for the
+    # common case, but cheap.
+    collapsed = re.sub(r"\s+", " ", query).strip()
+    if collapsed and collapsed not in variants:
+        variants.append(collapsed)
+    return variants
 
 
 def _matches_type(entity: dict, entity_type: str) -> bool:
@@ -322,24 +391,16 @@ def _get_entities(session: requests.Session, qids: list[str]) -> dict[str, dict]
     return data.get("entities") or {}
 
 
-def _resolve_one(
+def _resolve_with_variant(
     session: requests.Session,
     query: str,
     entity_type: str,
 ) -> Optional[tuple[str, str]]:
-    """Full pipeline for one query: search → batched entity-fetch →
-    type filter → first matching entity's Hebrew label.
+    """Search + entity-fetch + type-filter for a single concrete query
+    string. Returns the first type-matching (he_label, qid) tuple, or None.
 
-    Returns:
-        (hebrew_label, qid)  — on success
-        None                 — when no candidate matched the type filter,
-                               when the matched candidate has no `labels.he`,
-                               or when the search returned nothing.
-
-    The Hebrew-label-missing case is treated as "Wikidata can't help" —
-    caller falls back to Claude, which can transliterate. This is
-    intentional: we don't want to half-fill with an English fallback when
-    the next backend can produce a real Hebrew form.
+    Split out from `_resolve_one` so the variant loop can call it once per
+    candidate query.
     """
     qids = _search(session, query)
     if not qids:
@@ -372,14 +433,14 @@ def _resolve_one(
         sitelinks = entity.get("sitelinks", {}) or {}
         hewiki_title = sitelinks.get("hewiki", {}).get("title") or ""
         if hewiki_title.strip():
-            he_label = _BIDI_MARKS_RE.sub("", hewiki_title).strip()
+            he_label = _clean_he_label(hewiki_title)
             if he_label:
                 return he_label, qid
         # Fallback to labels.he when no hewiki sitelink (common for foreign
         # players without a Hebrew Wikipedia article).
         labels = entity.get("labels", {})
         raw_he = labels.get("he", {}).get("value") or ""
-        he_label = _BIDI_MARKS_RE.sub("", raw_he).strip()
+        he_label = _clean_he_label(raw_he)
         if not he_label:
             # Entity matches the type filter but has neither sitelink nor
             # Hebrew label. Don't keep scanning — the first type-match IS
@@ -387,6 +448,36 @@ def _resolve_one(
             # form means Wikidata can't help. Fall through to Claude.
             return None
         return he_label, qid
+    return None
+
+
+def _resolve_one(
+    session: requests.Session,
+    query: str,
+    entity_type: str,
+) -> Optional[tuple[str, str]]:
+    """Resolve `query` to a (he_label, qid) tuple via Wikidata.
+
+    Generates a small ordered list of query variants from the input (see
+    `_search_variants`) and returns the first variant that yields a type-
+    matching entity. Most names resolve on the original; the variants
+    catch TM's spacing artefacts (compact "1.FC" vs canonical "1. FC").
+
+    Returns:
+        (hebrew_label, qid)  — on success
+        None                 — when no variant produced a candidate that
+                               matched the type filter, or when the matched
+                               candidate has no `labels.he` / hewiki title.
+
+    The Hebrew-label-missing case is treated as "Wikidata can't help" —
+    caller falls back to Claude, which can transliterate. This is
+    intentional: we don't want to half-fill with an English fallback when
+    the next backend can produce a real Hebrew form.
+    """
+    for variant in _search_variants(query):
+        result = _resolve_with_variant(session, variant, entity_type)
+        if result is not None:
+            return result
     return None
 
 

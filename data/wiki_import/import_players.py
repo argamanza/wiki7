@@ -8,7 +8,7 @@ from typing import Optional
 
 import jinja2
 
-from data_pipeline.helpers import to_il_date, to_il_fee, to_season_display
+from data_pipeline.helpers import is_youth_club_name, to_il_date, to_il_fee, to_season_display
 import mwclient
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
@@ -94,10 +94,24 @@ def _build_player_page(player: dict, transfers: list, market_values: list, stats
         [s for s in (stats or []) if s.get("player_id") == player["id"]],
         key=lambda s: s.get("season", ""),
     )
+    # Iter-cycle 1 walk (2026-06-12): bucket transfers by destination-club
+    # youth marker. A transfer is "youth" iff its `to_club` carries a
+    # youth-team suffix ("Benfica U17", "Sporting Yth."). The pro-debut
+    # transfer (youth → senior) lands in `transfers_senior` because its
+    # destination is the senior club. Order within each bucket follows
+    # the input order, which the upstream sort already places chronologically.
+    transfers_youth = [
+        t for t in player_transfers if is_youth_club_name(t.get("to_club"))
+    ]
+    transfers_senior = [
+        t for t in player_transfers if not is_youth_club_name(t.get("to_club"))
+    ]
     return _render_template(
         "player_page.j2",
         player=player,
         transfers=player_transfers,
+        transfers_youth=transfers_youth,
+        transfers_senior=transfers_senior,
         market_values=player_mvs,
         stats=player_stats,
     )

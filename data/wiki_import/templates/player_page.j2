@@ -18,20 +18,40 @@
 | current_market_value = {{ player.current_market_value or '' }}
 {{"}}"}}
 
-== קריירה ==
-{% if transfers %}
+{% if transfers_youth %}
+== קריירת נוער ==
+{# Iter-cycle 1 walk (2026-06-12): transfers where the destination club is
+   a youth / academy team. The pro-debut transfer (youth → senior) lives in
+   the senior section below since its destination is the senior club. #}
 {| class="wikitable sortable" style="direction:rtl; text-align:right;"
 ! עונה !! תאריך !! מ !! אל !! עלות !! השאלה
-{% for t in transfers %}
+{% for t in transfers_youth %}
 |-
 | {{ t.season }} || {{ t.transfer_date | il_date }} || {{ t.from_club }} || {{ t.to_club }} || {{ t.fee | il_fee }} || {{ '&#x2705;' if t.loan else '' }}
 {% endfor %}
 
 |}
-{# Cargo storage — one row per transfer. Invisible (the wikitext above
-   renders the user-facing table; this is data-only for queries). Wrapped
-   in {{#ifeq:{{NAMESPACENUMBER}}|0|...|}} so drafts (NS=3000) skip the
-   store. See Player_infobox.wikitext for the gating rationale. #}
+{% endif %}
+
+== קריירה ==
+{% if transfers_senior %}
+{| class="wikitable sortable" style="direction:rtl; text-align:right;"
+! עונה !! תאריך !! מ !! אל !! עלות !! השאלה
+{% for t in transfers_senior %}
+|-
+| {{ t.season }} || {{ t.transfer_date | il_date }} || {{ t.from_club }} || {{ t.to_club }} || {{ t.fee | il_fee }} || {{ '&#x2705;' if t.loan else '' }}
+{% endfor %}
+
+|}
+{% endif %}
+
+{% if transfers %}
+{# Cargo storage — one row per transfer (youth + senior, in chronological
+   order). Invisible: the wikitext tables above render the user-facing view;
+   this is data-only for Cargo queries. A single store covers both buckets
+   so aggregations across a player's whole career stay accurate. Wrapped in
+   {{#ifeq:{{NAMESPACENUMBER}}|0|...|}} so drafts (NS=3000) skip the store.
+   See Player_infobox.wikitext for the gating rationale. #}
 {% for t in transfers %}
 {{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/Transfer
 | player_id = {{ player.id }}

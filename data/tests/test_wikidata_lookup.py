@@ -80,6 +80,45 @@ def _patched_session_with(responses: list[dict]):
 
 
 # ---------------------------------------------------------------------------
+# Search-term variant generator — direct unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestSearchVariants:
+    def test_original_query_always_first(self):
+        variants = wikidata_lookup._search_variants("Hapoel Beer Sheva")
+        assert variants[0] == "Hapoel Beer Sheva"
+
+    def test_compact_digit_dot_letter_gets_spaced_variant(self):
+        """TM emits "1.FC Nuremberg"; Wikidata canonicalises "1. FC Nürnberg".
+        Insert a space after digit-dot-uppercase patterns so the spaced
+        variant ranks among the queries we try."""
+        variants = wikidata_lookup._search_variants("1.FC Nuremberg")
+        assert "1.FC Nuremberg" in variants
+        assert "1. FC Nuremberg" in variants
+
+    def test_already_spaced_no_extra_variant(self):
+        """Idempotency: a query that's already spaced shouldn't grow extra
+        duplicates."""
+        variants = wikidata_lookup._search_variants("1. FC Köln")
+        # Original + (maybe collapsed whitespace) — no duplicates
+        assert variants.count("1. FC Köln") == 1
+
+    def test_no_compact_pattern_no_variant(self):
+        """Names without the digit-dot-letter compact pattern produce no
+        extra variant (just the original)."""
+        variants = wikidata_lookup._search_variants("Hapoel Beer Sheva")
+        # Could be 1 (just original) or 2 if whitespace-collapse differs;
+        # since the input is well-formed, the collapsed form equals the
+        # original and is deduplicated out.
+        assert variants == ["Hapoel Beer Sheva"]
+
+    def test_collapses_double_space(self):
+        variants = wikidata_lookup._search_variants("Real  Madrid")
+        assert "Real Madrid" in variants
+
+
+# ---------------------------------------------------------------------------
 # Type filter — direct unit tests on _matches_type
 # ---------------------------------------------------------------------------
 
@@ -307,6 +346,26 @@ class TestLookupHebrewLabel:
             result = wikidata_lookup.lookup_hebrew_label("Hapoel Beer Sheva", "club")
             assert result == ("הפועל באר שבע", "Q_FOOTBALL_CLUB")
 
+    def test_variant_fallback_when_original_empty(self):
+        """When the original query returns no Wikidata search hits, the
+        resolver retries with normalized variants. "1.FC Nuremberg" returns
+        empty; "1. FC Nuremberg" resolves to Q15786 (the parent club).
+        Iter-cycle 1 walk 2026-06-12."""
+        with patch.object(wikidata_lookup.requests, "Session") as mock_cls:
+            mock_cls.return_value = _patched_session_with([
+                _search_payload([]),                 # "1.FC Nuremberg" — empty
+                _search_payload(["Q15786"]),         # "1. FC Nuremberg" — hit
+                _entities_payload({
+                    "Q15786": _entity(
+                        he_label="ignored",
+                        hewiki_title="נירנברג",
+                        p31=["Q476028"],
+                    ),
+                }),
+            ])
+            result = wikidata_lookup.lookup_hebrew_label("1.FC Nuremberg", "club")
+            assert result == ("נירנברג", "Q15786")
+
     def test_country_lookup(self):
         with patch.object(wikidata_lookup.requests, "Session") as mock_cls:
             mock_cls.return_value = _patched_session_with([
@@ -359,6 +418,88 @@ class TestLookupHebrewLabel:
             ])
             result = wikidata_lookup.lookup_hebrew_label("Asen Donchev", "player")
             assert result == ("אסן דונצ'ב", "Q_ASEN_DONCHEV")
+
+    def test_sitelink_strips_football_paren_suffix(self):
+        """Wikidata's hewiki title often carries a "(כדורגל)" disambiguator
+        for clubs that share a name with a non-football entity (the Israeli
+        Wikipedia convention). The type filter already guarantees football,
+        so the suffix is redundant noise. Strip it. Iter-cycle 1, 2026-06-12."""
+        with patch.object(wikidata_lookup.requests, "Session") as mock_cls:
+            mock_cls.return_value = _patched_session_with([
+                _search_payload(["Q_GENOA"]),
+                _entities_payload({
+                    "Q_GENOA": _entity(
+                        he_label="ignored",
+                        hewiki_title="ג'נואה (כדורגל)",
+                        p31=["Q476028"],
+                    ),
+                }),
+            ])
+            result = wikidata_lookup.lookup_hebrew_label("Genoa", "club")
+            assert result == ("ג'נואה", "Q_GENOA")
+
+    def test_strips_football_with_year_suffix(self):
+        """Variant: "(כדורגל, 2018)" — football + year disambiguator. The
+        regex must match the leading 'כדורגל' prefix and consume the rest
+        of the parens too."""
+        with patch.object(wikidata_lookup.requests, "Session") as mock_cls:
+            mock_cls.return_value = _patched_session_with([
+                _search_payload(["Q_SOCHI"]),
+                _entities_payload({
+                    "Q_SOCHI": _entity(
+                        he_label="ignored",
+                        hewiki_title="סוצ'י (כדורגל, 2018)",
+                        p31=["Q476028"],
+                    ),
+                }),
+            ])
+            result = wikidata_lookup.lookup_hebrew_label("FK Sochi", "club")
+            assert result == ("סוצ'י", "Q_SOCHI")
+
+    def test_does_not_strip_non_football_paren(self):
+        """City disambiguators ("(דובאי)") and other non-football parens are
+        meaningful — must NOT be stripped. The example is Al-Nasr Dubai,
+        where the city paren distinguishes it from other Al-Nasr clubs."""
+        with patch.object(wikidata_lookup.requests, "Session") as mock_cls:
+            mock_cls.return_value = _patched_session_with([
+                _search_payload(["Q_NASR"]),
+                _entities_payload({
+                    "Q_NASR": _entity(
+                        he_label="ignored",
+                        hewiki_title="אל-נסר (דובאי)",
+                        p31=["Q476028"],
+                    ),
+                }),
+            ])
+            result = wikidata_lookup.lookup_hebrew_label("Al-Nasr Dubai", "club")
+            assert result == ("אל-נסר (דובאי)", "Q_NASR")
+
+    def test_labels_he_also_strips_football_suffix(self):
+        """The label cleaner runs on both paths — sitelink (above) AND the
+        labels.he fallback. Foreign clubs without a hewiki article still
+        get the suffix stripped from labels.he."""
+        with patch.object(wikidata_lookup.requests, "Session") as mock_cls:
+            mock_cls.return_value = _patched_session_with([
+                _search_payload(["Q_X"]),
+                _entities_payload({
+                    "Q_X": _entity(
+                        he_label="ניס (כדורגל)",
+                        hewiki_title=None,  # no sitelink → falls to labels.he
+                        p31=["Q476028"],
+                    ),
+                }),
+            ])
+            result = wikidata_lookup.lookup_hebrew_label("OGC Nice", "club")
+            assert result == ("ניס", "Q_X")
+
+    def test_q103229495_mens_team_accepted_as_club(self):
+        """Wikidata's split-entity pattern: the parent club is one Q-ID and
+        the on-pitch men's football team is another (P31=Q103229495). Both
+        must satisfy the "club" type filter — iter-cycle 1 walk surfaced
+        "1. FC Nürnberg (football)" Q97905881 falling through because we
+        only had the parent-club class."""
+        e = _entity(he_label="X", p31=["Q103229495"])
+        assert wikidata_lookup._matches_type(e, "club") is True
 
     def test_sitelinks_strips_bidi_marks_too(self):
         """The bidi-strip normalisation applies to sitelink titles same as

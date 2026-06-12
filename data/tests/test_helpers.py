@@ -3,6 +3,7 @@
 from datetime import date
 from data_pipeline.helpers import (
     is_all_hebrew,
+    is_youth_club_name,
     parse_birth_date,
     parse_countries,
     is_homegrown,
@@ -165,3 +166,87 @@ class TestToSeasonDisplay:
         keeps the helper safe to use at every render site without try/except.
         """
         assert to_season_display("not-a-year") == "not-a-year"
+
+
+class TestIsYouthClubName:
+    """Iter-cycle 1 walk (2026-06-12): TM emits youth/academy team labels with
+    distinct suffixes. The player_page template buckets transfers into "Youth
+    career" and senior "Career" based on the destination club's classification."""
+
+    def test_u_age_groups_classified_youth(self):
+        for suffix in ("U15", "U17", "U19", "U20", "U21", "U23"):
+            assert is_youth_club_name(f"Some Club {suffix}") is True, suffix
+
+    def test_yth_marker_with_trailing_dot(self):
+        # Real corpus has both "Sporting Yth" and "Sporting Yth." — the
+        # trailing dot must not break the match.
+        assert is_youth_club_name("Sporting Yth") is True
+        assert is_youth_club_name("Sporting Yth.") is True
+
+    def test_youth_word_form(self):
+        assert is_youth_club_name("Real Madrid Youth") is True
+
+    def test_spanish_portuguese_youth_words(self):
+        assert is_youth_club_name("Real Madrid Juvenil") is True
+        assert is_youth_club_name("Real Madrid Cadete") is True
+        assert is_youth_club_name("Some Club Junior") is True
+
+    def test_sub_pattern_classified_youth(self):
+        # Real corpus has "Sporting Sub-15"; the dash is part of the marker.
+        assert is_youth_club_name("Sporting Sub-15") is True
+        assert is_youth_club_name("Sporting Sub15") is True
+
+    def test_b_team_NOT_youth(self):
+        """B-teams / II / Reserves are senior reserve tiers — the player on
+        them is already professional. Wikipedia infobox convention places
+        them in senior career."""
+        assert is_youth_club_name("Benfica B") is False
+        assert is_youth_club_name("Chaves B") is False
+        assert is_youth_club_name("1. FC Nürnberg II") is False
+
+    def test_senior_clubs_NOT_youth(self):
+        assert is_youth_club_name("Hapoel Beer Sheva") is False
+        assert is_youth_club_name("1.FC Nuremberg") is False
+        assert is_youth_club_name("FC Rapid 1923") is False  # year suffix isn't age group
+        assert is_youth_club_name("Real Madrid") is False
+
+    def test_marker_only_matches_as_suffix(self):
+        """'U19' embedded mid-name (rare) isn't a youth classification.
+        '#U19 Cup' style hashtag-form etc — must be at the end only."""
+        assert is_youth_club_name("Sub-15 Club Madrid") is False
+        assert is_youth_club_name("U17 Olympics") is False
+
+    def test_empty_and_none(self):
+        assert is_youth_club_name("") is False
+        assert is_youth_club_name(None) is False
+
+    def test_case_insensitive(self):
+        assert is_youth_club_name("Some Club u19") is True
+        assert is_youth_club_name("Some Club YTH") is True
+
+    def test_hebrew_under_n_marker(self):
+        """Iter-cycle 1 walk: apply_hebrew_mapping rewrites "Benfica U17"
+        to "בנפיקה תחת 17". The classifier runs on Hebrew-mapped data in
+        the import_players path — must recognise the Hebrew form too,
+        otherwise 53 transfers in the 2024/25 corpus would be silently
+        misbucketed as senior."""
+        assert is_youth_club_name("בנפיקה תחת 17") is True
+        assert is_youth_club_name("הפועל באר שבע תחת 19") is True
+        assert is_youth_club_name("קרוזיירו תחת 20") is True
+
+    def test_hebrew_noar_marker(self):
+        """'נוער' = 'youth' in Hebrew. Used for academy / Yth labels post-
+        translation ('Sporting Yth' → 'ספורטינג נוער')."""
+        assert is_youth_club_name("ספורטינג נוער") is True
+        assert is_youth_club_name("בנפיקה נוער") is True
+
+    def test_hebrew_senior_clubs_NOT_youth(self):
+        assert is_youth_club_name("הפועל באר שבע") is False
+        assert is_youth_club_name("מכבי תל אביב") is False
+        assert is_youth_club_name("בנפיקה") is False
+
+    def test_hebrew_marker_only_as_suffix(self):
+        """If 'תחת' or 'נוער' appears mid-name (rare), it doesn't classify
+        the club as youth — must be at the end."""
+        # Synthetic edge case: 'נוער' not at the end
+        assert is_youth_club_name("נוער מועדון") is False
