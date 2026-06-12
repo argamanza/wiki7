@@ -1,5 +1,3 @@
-from urllib.parse import quote
-
 import scrapy
 from scrapy.http import Request
 
@@ -39,21 +37,22 @@ class StatsSpider(scrapy.Spider):
         self.base_url = "https://www.transfermarkt.com"
 
     async def start(self):
+        from tmk_scraper.scraperapi_proxy import validate_key, wrap
+
         use_scraperapi = self.settings.getbool("USE_SCRAPERAPI", False)
-        api_key = self.settings.get("SCRAPERAPI_KEY")
+        api_key = validate_key(self.settings.get("SCRAPERAPI_KEY")) if use_scraperapi else None
 
         target_url = (
             f"{self.base_url}/hapoel-beer-sheva/leistungsdaten/verein/2976"
             f"/plus/1?saison_id={self.season}"
         )
 
-        if use_scraperapi:
-            url = (
-                f"http://api.scraperapi.com/?api_key={api_key}"
-                f"&url={quote(target_url, safe='')}&country_code=us&render=false"
-            )
-        else:
-            url = target_url
+        # urlencode_target=True because target has a `?saison_id=…` query
+        # string — unencoded `?` would land in the proxy URL's own params.
+        url = (
+            wrap(target_url, api_key, urlencode_target=True)
+            if use_scraperapi else target_url
+        )
 
         yield Request(url=url, callback=self.parse)
 

@@ -13,8 +13,10 @@ class PlayerSpider(scrapy.Spider):
         self.season = season
 
     async def start(self):
+        from tmk_scraper.scraperapi_proxy import validate_key, wrap
+
         use_scraperapi = self.settings.getbool("USE_SCRAPERAPI", False)
-        api_key = self.settings.get("SCRAPERAPI_KEY")
+        api_key = validate_key(self.settings.get("SCRAPERAPI_KEY")) if use_scraperapi else None
 
         # Load player URLs from output of squad spider (season-specific dir)
         squad_path = f"output/{self.season}/squad.json"
@@ -23,18 +25,18 @@ class PlayerSpider(scrapy.Spider):
 
         for player in players:
             target_url = player["profile_url"]
-            if use_scraperapi:
-                url = (
-                    f"http://api.scraperapi.com/?api_key={api_key}"
-                    f"&url={target_url}&country_code=us&render=false"
-                )
-            else:
-                url = target_url
+            url = wrap(target_url, api_key) if use_scraperapi else target_url
 
             yield Request(
                 url=url,
                 callback=self.parse_profile,
-                meta={"player_data": player, "use_scraperapi": use_scraperapi, "api_key": api_key}
+                meta={
+                    "player_data": player,
+                    "use_scraperapi": use_scraperapi,
+                    "api_key": api_key,
+                    # §6 ② fix: thread target_url for non-leaking persistence.
+                    "target_url": target_url,
+                },
             )
 
     def parse_profile(self, response):
@@ -57,19 +59,22 @@ class PlayerSpider(scrapy.Spider):
         # Extract player ID from profile URL (last numeric segment)
         player_id = player["profile_url"].split("/")[-1]
 
+        from tmk_scraper.scraperapi_proxy import wrap
+
         # Construct AJAX request for market value history
-        mv_url = f"https://www.transfermarkt.com/ceapi/marketValueDevelopment/graph/{player_id}"
-        if use_scraperapi:
-            mv_url = (
-                f"http://api.scraperapi.com/?api_key={api_key}"
-                f"&url={mv_url}&country_code=us&render=false"
-            )
+        mv_target_url = f"https://www.transfermarkt.com/ceapi/marketValueDevelopment/graph/{player_id}"
+        mv_url = wrap(mv_target_url, api_key) if use_scraperapi else mv_target_url
 
         # Store interim player object in meta and call market value endpoint
         meta = {
             "player_data": {
                 **player,
-                "profile_scraped_from": response.url,
+                # §6 ② fix (2026-06-12 review): persist the TM target URL,
+                # NOT response.url — the latter carries the ScraperAPI
+                # api_key when proxied, leaking it into output records on
+                # disk. The target was threaded through `target_url` meta
+                # from the original start() call.
+                "profile_scraped_from": response.meta.get("target_url") or response.url,
                 "facts": facts,
                 "positions": {
                     "main": main_position.strip() if main_position else None,
@@ -78,7 +83,7 @@ class PlayerSpider(scrapy.Spider):
             },
             "player_id": player_id,
             "use_scraperapi": use_scraperapi,
-            "api_key": api_key
+            "api_key": api_key,
         }
 
         yield Request(url=mv_url, callback=self.parse_market_value, meta=meta)
@@ -118,13 +123,11 @@ class PlayerSpider(scrapy.Spider):
             self.logger.warning(f"Failed to parse market value history: {e}")
             player["market_value_history"] = []
 
+        from tmk_scraper.scraperapi_proxy import wrap
+
         # Proceed to transfer history
-        transfer_url = f"https://www.transfermarkt.com/ceapi/transferHistory/list/{player_id}"
-        if use_scraperapi:
-            transfer_url = (
-                f"http://api.scraperapi.com/?api_key={api_key}"
-                f"&url={transfer_url}&country_code=us&render=false"
-            )
+        transfer_target_url = f"https://www.transfermarkt.com/ceapi/transferHistory/list/{player_id}"
+        transfer_url = wrap(transfer_target_url, api_key) if use_scraperapi else transfer_target_url
 
         yield Request(url=transfer_url, callback=self.parse_transfer_history, meta={"player_data": player})
 

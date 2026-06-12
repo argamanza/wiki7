@@ -48,8 +48,10 @@ class MatchSpider(scrapy.Spider):
         self.season = season
 
     async def start(self):
+        from tmk_scraper.scraperapi_proxy import validate_key, wrap
+
         use_scraperapi = self.settings.getbool("USE_SCRAPERAPI", False)
-        api_key = self.settings.get("SCRAPERAPI_KEY")
+        api_key = validate_key(self.settings.get("SCRAPERAPI_KEY")) if use_scraperapi else None
 
         # Load fixtures from season-specific dir
         fixtures_path = f"output/{self.season}/fixtures.json"
@@ -58,14 +60,14 @@ class MatchSpider(scrapy.Spider):
 
         for match in fixtures:
             target_url = match["match_report_url"]
-            url = (
-                f"http://api.scraperapi.com/?api_key={api_key}&url={target_url}&country_code=us&render=false"
-                if use_scraperapi else target_url
-            )
+            url = wrap(target_url, api_key) if use_scraperapi else target_url
             yield Request(
                 url=url,
                 callback=self.parse_match_report,
-                meta={"match_data": match}
+                # §6 ② fix: thread target_url through meta so the output
+                # record can persist the TM URL instead of response.url
+                # (which contains the proxy api_key).
+                meta={"match_data": match, "target_url": target_url},
             )
 
     def parse_match_report(self, response):
@@ -80,7 +82,10 @@ class MatchSpider(scrapy.Spider):
         data = {
             "season": self.season,
             **match,
-            "report_scraped_from": response.url,
+            # §6 ② fix (2026-06-12 review): persist the TM target URL, NOT
+            # response.url — the latter contains the ScraperAPI api_key
+            # when proxied, which leaks into ~70 seasons of output records.
+            "report_scraped_from": response.meta.get("target_url") or response.url,
             "home_lineup": graphic_lineups.get("home") or table_lineups.get("home"),
             "away_lineup": graphic_lineups.get("away") or table_lineups.get("away"),
             "goals": goals,

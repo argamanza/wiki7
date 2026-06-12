@@ -36,13 +36,12 @@ class PlatzierungenSpider(scrapy.Spider):
         self.base_url = "https://www.transfermarkt.com"
 
     def start_requests(self):
+        from tmk_scraper.scraperapi_proxy import validate_key, wrap
+
         target = f"{self.base_url}/hapoel-beer-sheva/platzierungen/verein/2976"
         use_scraperapi = self.settings.getbool("USE_SCRAPERAPI", False)
-        api_key = self.settings.get("SCRAPERAPI_KEY")
-        url = (
-            f"http://api.scraperapi.com/?api_key={api_key}&url={target}&country_code=us&render=false"
-            if use_scraperapi else target
-        )
+        api_key = validate_key(self.settings.get("SCRAPERAPI_KEY")) if use_scraperapi else None
+        url = wrap(target, api_key) if use_scraperapi else target
         yield Request(url=url, callback=self.parse)
 
     def parse(self, response: scrapy.http.Response, **kwargs):

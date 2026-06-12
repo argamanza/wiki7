@@ -10,7 +10,12 @@ USE_SCRAPERAPI = True
 SCRAPERAPI_KEY = os.environ.get("SCRAPERAPI_KEY", "")
 
 # === Logging ===
-LOG_LEVEL = "DEBUG"
+# §6 ② fix (2026-06-12 review): DEBUG-level scrapy logging emits the
+# fully-constructed proxy URL on every request, including `api_key=…`.
+# INFO is verbose enough for normal operations; flip to DEBUG temporarily
+# (and only when SCRAPERAPI_KEY is rotated immediately after) for any
+# real debugging session.
+LOG_LEVEL = "INFO"
 
 # === Concurrency ===
 CONCURRENT_REQUESTS = 20
