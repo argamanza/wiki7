@@ -28,7 +28,8 @@ const ALLOWED_BOT_TERMS = [
   //   "Mozilla/5.0+(compatible; UptimeRobot/2.0; http://www.uptimerobot.com/)"
   // which contains "bot" and would otherwise trip the priority-8 bot-heuristic
   // block. UA-spoofing is theoretically possible but bounded by the per-IP rate
-  // limit (priority 7) and the short, fixed request shape (GET /).
+  // limit (priority 6, evaluated BEFORE this allow) and the short, fixed
+  // request shape (GET /).
   'uptimerobot',
 ];
 
@@ -157,27 +158,13 @@ export class Wiki7WafStack extends cdk.Stack {
             metricName: 'AWS-AWSManagedRulesPHPRuleSet',
           },
         },
-        // 6. Allow legitimate crawlers BEFORE the bot-heuristic block at priority 8.
-        //    Allow is terminating — matching requests skip the remaining custom rules.
-        {
-          name: 'AllowLegitimateBot',
-          priority: 6,
-          action: { allow: {} },
-          statement: {
-            orStatement: {
-              statements: ALLOWED_BOT_TERMS.map(botUserAgentMatch),
-            },
-          },
-          visibilityConfig: {
-            sampledRequestsEnabled: true,
-            cloudWatchMetricsEnabled: true,
-            metricName: 'AllowLegitimateBot',
-          },
-        },
-        // 7. Rate limit — 2000 requests / 5 min per IP.
+        // 6. Rate limit — 2000 requests / 5 min per IP. Evaluated BEFORE the
+        //    crawler allow rule: a terminating allow skips every later rule, so
+        //    if this ran after AllowLegitimateBot, anyone spoofing a crawler UA
+        //    (e.g. "Googlebot") would be exempt from rate limiting entirely.
         {
           name: 'RateLimitPerIP',
-          priority: 7,
+          priority: 6,
           action: { block: {} },
           statement: {
             rateBasedStatement: {
@@ -189,6 +176,24 @@ export class Wiki7WafStack extends cdk.Stack {
             sampledRequestsEnabled: true,
             cloudWatchMetricsEnabled: true,
             metricName: 'RateLimitPerIP',
+          },
+        },
+        // 7. Allow legitimate crawlers BEFORE the bot-heuristic block at priority 8.
+        //    Allow is terminating — its only job is to shield real crawlers from
+        //    rule 8's generic "bot" UA heuristic; rate limiting already happened.
+        {
+          name: 'AllowLegitimateBot',
+          priority: 7,
+          action: { allow: {} },
+          statement: {
+            orStatement: {
+              statements: ALLOWED_BOT_TERMS.map(botUserAgentMatch),
+            },
+          },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: 'AllowLegitimateBot',
           },
         },
         // 8. Heuristic block: anything with /../ in the path, or generic bot-like UA.

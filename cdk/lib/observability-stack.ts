@@ -28,10 +28,9 @@ interface ObservabilityStackProps {
  *   - CloudFront 5xx rate spike (origin or distribution misconfig)
  *   - MW container emitting Redis / Fatal / DB-connection errors
  *
- * Alarms have no actions wired up by default — they show as state changes in
- * the CloudWatch console and (when an SNS topic is added later) can notify.
- * Wiring email/Slack notifications is a Phase 4 follow-up; the alarms
- * themselves cost ~$0.30 each-per-month at most.
+ * All alarms notify the `wiki7-alarms` SNS topic, which delivers to the email
+ * address from the `alarmEmail` cdk.json context (wired in Phase 2.5, PR #38).
+ * The alarms themselves cost ~$0.30 each-per-month at most.
  */
 export class ObservabilityStack extends Construct {
   constructor(scope: Construct, id: string, props: ObservabilityStackProps) {

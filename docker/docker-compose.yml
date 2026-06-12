@@ -15,11 +15,18 @@ services:
       - MEDIAWIKI_DB_NAME=wikidb
       - MEDIAWIKI_ADMIN_PASSWORD=AdminPass1234
       - WIKI_ENV=dev
+    restart: unless-stopped
     depends_on:
       - db
 
   db:
-    image: mariadb:10.5
+    # Match prod: RDS runs MariaDB 11.4.x (cdk/lib/database-stack.ts VER_11_4_9).
+    # The old mariadb:10.5 pin meant local dev never exercised 11.x behavior —
+    # exactly the class of gap that produced the Cargo `matches` reserved-word
+    # surprise. NOTE: an existing local db_data volume created under 10.5 needs
+    # `make docker-reset` (or `docker compose down -v`) after this bump; local
+    # data is disposable by design.
+    image: mariadb:11.4
     restart: always
     environment:
       - MYSQL_DATABASE=wikidb

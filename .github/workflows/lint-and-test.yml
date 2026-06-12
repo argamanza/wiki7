@@ -13,6 +13,10 @@ concurrency:
   group: lint-and-test-${{ github.ref }}
   cancel-in-progress: true
 
+# Lint + test only read the repo; never grant the default (potentially write) token.
+permissions:
+  contents: read
+
 jobs:
   lint-php:
     name: PHP Lint
@@ -22,7 +26,9 @@ jobs:
         with:
           submodules: recursive
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        # Third-party action — pinned to a commit SHA so a moving tag can't ship
+        # different code into a workflow run.
+        uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
         with:
           php-version: '8.2'
           tools: composer
@@ -59,6 +65,9 @@ jobs:
 
   test-cdk:
     name: CDK Tests
+    # On master pushes deploy.yml runs the exact same suite as its deploy gate —
+    # running it here too is a duplicate. PRs are where this job earns its keep.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -83,7 +92,8 @@ jobs:
       - name: Install uv
         # Pre-built binary install (no `pip install uv`) — faster + avoids a Python ↔ uv
         # bootstrap cycle on the runner. Caches uv's own download for the runner.
-        uses: astral-sh/setup-uv@v3
+        # Third-party action — pinned to a commit SHA (see setup-php note above).
+        uses: astral-sh/setup-uv@8d55fbecc275b1c35dbe060458839f8d30439ccf # v3
       - name: Install dependencies
         run: cd data && uv sync
       - name: Run linter
