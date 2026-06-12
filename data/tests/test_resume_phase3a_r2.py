@@ -1,11 +1,9 @@
 """Tests for Phase 3a R2 resume + idempotency semantics."""
 
 import json
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 import run_pipeline
 

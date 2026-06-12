@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
 
 from wiki_import.import_templates import (
     import_derbies_page,

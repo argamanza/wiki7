@@ -340,7 +340,7 @@ class TestMediaWikiTemplates:
             assert filepath.exists(), f"Template file missing for {title}: {filepath}"
 
     def test_template_file_contents(self):
-        from wiki_import.import_templates import MEDIAWIKI_TEMPLATES, MEDIAWIKI_TEMPLATE_DIR
+        from wiki_import.import_templates import MEDIAWIKI_TEMPLATE_DIR
 
         tooltip = (MEDIAWIKI_TEMPLATE_DIR / "Tooltip.wikitext").read_text(encoding="utf-8")
         assert "<includeonly>" in tooltip

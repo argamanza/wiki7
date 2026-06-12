@@ -4,10 +4,8 @@ Live HTTP is mocked via `requests-mock` style monkeypatching on the
 session object so tests stay offline + fast.
 """
 
-import json
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from data_pipeline import wikipedia_lookup
 

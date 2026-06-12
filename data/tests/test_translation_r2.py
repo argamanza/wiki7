@@ -19,7 +19,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 import yaml
 
 from data_pipeline import auto_translate_hebrew as att

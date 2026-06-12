@@ -4,7 +4,6 @@ import re
 from pathlib import Path
 
 import pytest
-import yaml
 
 from data_pipeline.pipeline_state import PageIndexState, _now_iso
 

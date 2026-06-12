@@ -26,7 +26,6 @@ Iter-cycle 1 (2026-06-12): Pattern A.2 of the v1+ re-import architecture.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import mwclient
 

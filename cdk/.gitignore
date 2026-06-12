@@ -6,3 +6,10 @@ node_modules
 # CDK asset staging directory
 .cdk.staging
 cdk.out
+
+# §6 ⑦ + 1a-finding fix (2026-06-12 review): tsconfig.json now sets
+# outDir: dist so compiled .js / .d.ts files no longer shadow .ts
+# sources. The existing *.js + *.d.ts rules already covered the trap,
+# but dist/ itself should be ignored to keep the build dir from
+# leaking into git.
+dist

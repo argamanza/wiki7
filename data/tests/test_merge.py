@@ -1,7 +1,6 @@
 """Tests for data_pipeline.merge_seasons module."""
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest

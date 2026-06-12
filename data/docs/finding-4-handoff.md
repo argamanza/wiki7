@@ -384,7 +384,7 @@ docker compose up -d
 # Adminer at http://localhost:8081
 ```
 
-Wiki login: `Admin / Wiki7Admin!23`.
+Wiki login: `Admin / AdminPass1234` (verified against `docker/docker-compose.yml`; an earlier revision of this brief incorrectly listed `Wiki7Admin!23` — corrected per the 2026-06-12 full-project review).
 
 ### ScraperAPI key
 

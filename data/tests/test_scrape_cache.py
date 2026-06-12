@@ -3,7 +3,6 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 import requests
 
 from data_pipeline.scrape_cache import (

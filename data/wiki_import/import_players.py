@@ -4,7 +4,10 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from data_pipeline.pipeline_state import PageIndexState
 
 import jinja2
 
@@ -142,8 +145,7 @@ def import_players(
     Returns:
         A summary dict with counts of created, updated, skipped, and failed pages.
     """
-    from data_pipeline.pipeline_state import PageIndexState
-    from wiki_import.page_router import format_title, resolve_target_title
+    from wiki_import.page_router import resolve_target_title
 
     resolved_players = players_path or DEFAULT_PLAYERS_PATH
     resolved_transfers = transfers_path or DEFAULT_TRANSFERS_PATH
