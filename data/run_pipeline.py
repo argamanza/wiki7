@@ -723,16 +723,36 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
     # Pattern A.4 (iter-cycle 1): if --check-changes is set, probe TM's
     # squad page first. If nothing changed since the last run, skip the
     # full scrape (saves ScraperAPI + Anthropic credits).
+    #
+    # §6 ⑥ fix (2026-06-12 review): the cache invariant changed.
+    # Pre-fix the cache was `.save()`d immediately after the probe, BEFORE
+    # the scrape ran — so a failed scrape permanently recorded "unchanged"
+    # for the new hash, and the next invocation would skip the scrape
+    # entirely (forever). Additionally, when "changed" was detected, the
+    # season's output dir was not cleared, so the merge step saw a mix of
+    # stale and fresh records.
+    #
+    # The new invariants:
+    #   - cache is loaded + updated in-memory during the probe, but ONLY
+    #     saved at the end of the pipeline run AND only if no scrape step
+    #     produced errors;
+    #   - any season whose probe detected "changed" has its output dir
+    #     purged before scraping, so the next merge sees only fresh data.
     scrape_cache_module = None
+    changed_seasons: list[str] = []
     if check_changes and not skip_scrape:
         from data_pipeline.scrape_cache import ScrapeHashCache, squad_page_unchanged
 
         scrape_cache_module = ScrapeHashCache().load()
-        all_unchanged = all(
-            squad_page_unchanged(s, cache=scrape_cache_module)
+        per_season_unchanged = [
+            (s, squad_page_unchanged(s, cache=scrape_cache_module))
             for s in season_list
-        )
-        scrape_cache_module.save()
+        ]
+        changed_seasons = [s for s, u in per_season_unchanged if not u]
+        all_unchanged = not changed_seasons
+        # DO NOT save the cache here. Defer to the end of the run, after
+        # scrape + import have actually succeeded. Otherwise a failed scrape
+        # permanently records "unchanged" → next run skips → wedged.
         if all_unchanged:
             logger.info(
                 "--check-changes: all %d season(s) unchanged since last probe. "
@@ -740,6 +760,24 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
                 len(season_list),
             )
             skip_scrape = True
+        else:
+            # §6 ⑥ fix: a "changed" season must have its output dir purged
+            # before re-scraping. Without this, the next merge sees a mix
+            # of stale records (left from a previous run) and fresh records
+            # (from the current run), even though the operator intended a
+            # full refresh of those seasons. Other seasons (that came back
+            # "unchanged") are left intact — their cached output stays.
+            logger.info(
+                "--check-changes: %d season(s) changed since last probe (%s). "
+                "Purging their output dirs before re-scraping.",
+                len(changed_seasons), ", ".join(changed_seasons),
+            )
+            for s in changed_seasons:
+                season_out = PIPELINE_OUTPUT_DIR / s
+                if season_out.exists():
+                    import shutil
+                    shutil.rmtree(season_out)
+                    logger.info("  purged %s", season_out)
 
     # Step 1: Scrape (per season + club-level). Resume by default; opt out
     # with --force-rescrape for an explicit full re-fetch. allow_empty is
@@ -846,6 +884,24 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
             errors.append("Wiki import had failures")
     else:
         logger.info("Skipping import step (--skip-import)")
+
+    # §6 ⑥ fix (2026-06-12 review): persist the scrape-cache hashes ONLY
+    # after the pipeline succeeded end-to-end. A failure anywhere upstream
+    # (scrape / merge / Hebrew enrichment / import) means we should re-run
+    # next time, so the cache must stay at its previous value — that's
+    # what produces the right "still needs scraping" answer on the next
+    # probe. The cache state was updated in-memory by squad_page_unchanged
+    # earlier; we just commit it (or not) here.
+    if scrape_cache_module is not None:
+        if errors:
+            logger.warning(
+                "scrape-cache: NOT saving updated hashes — pipeline had %d error(s). "
+                "Next run will re-probe and (likely) re-scrape these seasons.",
+                len(errors),
+            )
+        else:
+            scrape_cache_module.save()
+            logger.info("scrape-cache: saved updated hashes after successful run.")
 
     # Final summary
     elapsed = time.time() - start_time

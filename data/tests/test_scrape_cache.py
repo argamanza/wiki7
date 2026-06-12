@@ -169,3 +169,46 @@ class TestSquadPageUnchanged:
             ),
         )
         assert result is False
+
+
+class TestScrapeCacheSaveOnlyAfterSuccess:
+    """§6 ⑥ fix from the 2026-06-12 review: the cache must NOT be persisted
+    until the pipeline has succeeded end-to-end. Pre-fix, run_pipeline.py
+    saved the new hash immediately after the probe, BEFORE the scrape ran.
+    A failed scrape then permanently recorded "unchanged" — next invocation
+    saw the same hash, skipped scrape, never recovered without
+    `--force-rescrape`. These tests cover the cache-layer behavior; the
+    save-deferral happens in run_pipeline.py and is tested separately by
+    convention.
+    """
+
+    def test_update_mutates_in_memory_without_writing(self, tmp_path: Path):
+        """The probe mutates the cache in memory (so subsequent probes
+        in the same run see the new hash) but only `save()` writes to
+        disk. Caller can choose to skip save() if the run failed."""
+        path = tmp_path / "x.yaml"
+        cache = ScrapeHashCache(path)
+        cache.update("2024", "newhash", changed=True)
+        # In-memory state has the new hash
+        assert cache.get_stored_hash("2024") == "newhash"
+        # But nothing on disk yet
+        assert not path.exists()
+
+    def test_skipping_save_after_failure_preserves_prior_state(self, tmp_path: Path):
+        """The §6 ⑥ wedge regression: simulate a failed scrape by
+        updating the in-memory cache then NOT calling save(). The on-disk
+        cache must still reflect the previous successful run."""
+        path = tmp_path / "x.yaml"
+        # Successful prior run
+        cache_run1 = ScrapeHashCache(path)
+        cache_run1.update("2024", "good_hash", changed=True)
+        cache_run1.save()
+        # Pipeline run 2: probe detects "changed", updates in-memory cache,
+        # but scrape fails → operator (or run_pipeline) does NOT call save()
+        cache_run2 = ScrapeHashCache(path).load()
+        cache_run2.update("2024", "would_be_new_hash", changed=True)
+        # save() NOT called
+        # Run 3: cache reload sees the PRE-failure hash, NOT the wedge value
+        cache_run3 = ScrapeHashCache(path).load()
+        assert cache_run3.get_stored_hash("2024") == "good_hash"
+        assert cache_run3.get_stored_hash("2024") != "would_be_new_hash"
