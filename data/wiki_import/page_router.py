@@ -58,95 +58,150 @@ def resolve_target_title(
     tm_id: str | int,
     want_title: str,
     want_namespace: int = 3000,
-) -> tuple[str, str]:
+) -> tuple[str, str, int]:
     """Determine where to actually write this entity's page, MovePaging the
     existing wiki page if its current location differs from where the
     pipeline wants to write next.
 
-    Returns (final_full_title, action) where action is one of:
+    Returns `(final_full_title, action, final_namespace)` where action is
+    one of:
       - "create"   : no existing page; bot will create at final_title
-      - "update"   : existing page is already at final_title; bot updates it
-      - "moved"    : existing page was at a different title; we just
-                     MovePaged it to final_title; bot then updates it
-      - "stranded" : state file said a page exists at title X but the wiki
-                     no longer has it (e.g. deleted by reviewer); falls
-                     back to fresh-create at final_title
+      - "update"   : existing page is already at final_full_title; bot updates
+      - "moved"    : router just MovePaged the existing page (within the
+                     same namespace) to final_full_title; bot updates
+      - "stranded" : state record was wrong (page deleted or move-target
+                     conflict); bot falls back to a fresh create
+
+    `final_namespace` is the ACTUAL namespace the page lives in (0 or 3000),
+    not necessarily `want_namespace` — the caller MUST use it when calling
+    `state.upsert()` so the state file records ground truth instead of an
+    inferred-from-prefix guess.
+
+    ## Invariants (the §6 ① fix from the 2026-06-12 review)
+
+    1. **Never auto-promote `Draft:X → X` (cross-namespace move).** Only the
+       human reviewer decides when a page is ready to publish.
+    2. **Never auto-demote `X → Draft:X` (cross-namespace move).** This was
+       the latent landmine the review caught: production calls with
+       `want_namespace=3000` unconditionally, and the old code, on seeing
+       stored_ns=0 vs want_ns=3000, would have MovePaged the live public
+       page back into Draft — instantly making the page invisible.
+    3. **Mainspace-first probe.** Before generating a new Draft target,
+       check whether the page already lives in mainspace at `want_title`.
+       If so, the reviewer promoted it (possibly between runs); treat
+       mainspace as authoritative and sync state. This is how a
+       reviewer's `Draft:X → X` move propagates into the state file
+       without us scanning the move log.
+    4. **Title drift moves stay within the stored namespace.** A reviewer
+       rename `Draft:Old → Draft:New` (or `Old → New` in mainspace) is
+       recorded by MovePaging within the same namespace.
 
     Side effect: nothing (state file is updated by the caller AFTER the
     save succeeds, so a save-time failure doesn't poison the state file).
     """
     tm_id_str = str(tm_id)
-    final_full = format_title(want_title, want_namespace)
     stored = state.get(tm_id_str)
 
+    # Mainspace-first probe — always. Covers:
+    #  - reviewer promoted Draft:X -> X BEFORE we ever recorded state for X
+    #  - reviewer promoted between our last state save and now (state still
+    #    says ns=3000 but mainspace is now authoritative)
+    main_full = format_title(want_title, 0)
+    if site.pages[main_full].exists:
+        logger.info(
+            "TM ID %s: page found in mainspace at %s; treating mainspace as "
+            "authoritative and syncing state (ns=0). Was: %s",
+            tm_id_str, main_full,
+            stored if stored else "<no state record>",
+        )
+        return main_full, "update", 0
+
     if not stored:
-        # First time we've seen this TM ID
-        # Check whether the desired title is already taken (e.g. created by
-        # a previous run that crashed before state was saved). If so, treat
-        # as update; otherwise create.
-        existing_at_target = site.pages[final_full]
-        if existing_at_target.exists:
+        # First time we've seen this TM ID, and mainspace probe already
+        # confirmed no mainspace page exists. Check the Draft target —
+        # a previous run may have created it before crashing.
+        want_full = format_title(want_title, want_namespace)
+        if site.pages[want_full].exists:
             logger.debug(
-                "TM ID %s: no state record but page already at %s -> treating as update",
-                tm_id_str, final_full,
+                "TM ID %s: no state but page exists at %s -> treating as update",
+                tm_id_str, want_full,
             )
-            return final_full, "update"
-        return final_full, "create"
+            return want_full, "update", want_namespace
+        return want_full, "create", want_namespace
 
     stored_title = stored["he_title"]
     stored_ns = int(stored["namespace"])
+
+    # Honor stored namespace. The router NEVER crosses namespace boundaries
+    # with a move (see invariants 1 + 2 above). If the state says the page
+    # is in mainspace, write to mainspace — the mainspace-first probe above
+    # already confirmed it doesn't exist there, so it must have been
+    # deleted; fall through to stranded handling. If state says Draft, the
+    # write namespace is Draft — even though the caller passed
+    # want_namespace=3000, we ignore that for a stored mainspace record.
+    write_ns = stored_ns
+    write_full = format_title(want_title, write_ns)
     stored_full = format_title(stored_title, stored_ns)
 
-    # Did the title or namespace change?
-    if stored_title == want_title and stored_ns == want_namespace:
-        # No drift — just update in place
-        return final_full, "update"
-
-    # Drift detected. Verify the page is actually at the stored location
-    # (it might have been deleted, MovePaged manually since last run, etc).
-    stored_page = site.pages[stored_full]
-    if not stored_page.exists:
-        # Stranded record — the wiki doesn't have that page anymore. Treat as
-        # fresh write to the new title.
+    # No drift — page is at the stored title (which equals want_title) in
+    # the same namespace as before. Verify it still exists, then update.
+    if stored_title == want_title:
+        if site.pages[stored_full].exists:
+            return stored_full, "update", stored_ns
+        # Stranded: state said the page lives at stored_full but it's gone
+        # (reviewer deleted, or move-log race we missed). Fall back to a
+        # fresh create at want_namespace — typically Draft — because the
+        # stored namespace may no longer reflect intent. The reviewer would
+        # repeat the promote on the new draft when ready.
         logger.info(
             "TM ID %s: state said %s exists but it doesn't; writing fresh to %s",
-            tm_id_str, stored_full, final_full,
+            tm_id_str, stored_full, format_title(want_title, want_namespace),
         )
-        return final_full, "stranded"
+        return format_title(want_title, want_namespace), "stranded", want_namespace
 
-    # Real drift — MovePage the existing page to the new title
-    target_page = site.pages[final_full]
+    # Title drift WITHIN the stored namespace. Move the existing page from
+    # stored_full to write_full (both in stored_ns). MovePage with
+    # cross-namespace move was the catastrophic latent path — that's exactly
+    # what we no longer do.
+    stored_page = site.pages[stored_full]
+    if not stored_page.exists:
+        # Stranded — see above.
+        logger.info(
+            "TM ID %s: state said %s exists but it doesn't; writing fresh to %s",
+            tm_id_str, stored_full, format_title(want_title, want_namespace),
+        )
+        return format_title(want_title, want_namespace), "stranded", want_namespace
+
+    target_page = site.pages[write_full]
     if target_page.exists:
-        # The target already exists too. This shouldn't happen normally
-        # (would mean duplicate pages), but if it does, log + fall through
-        # to update (we'll overwrite the target; the stranded original
-        # becomes the responsibility of the reviewer to clean up).
+        # Both old and target exist in the same namespace — duplicate
+        # situation. Log + update target; orphan stays for reviewer cleanup.
         logger.warning(
             "TM ID %s: both %s (stored) AND %s (target) exist on wiki. "
             "Updating target; reviewer may need to delete %s manually.",
-            tm_id_str, stored_full, final_full, stored_full,
+            tm_id_str, stored_full, write_full, stored_full,
         )
-        return final_full, "update"
+        return write_full, "update", write_ns
 
     try:
         stored_page.move(
-            final_full,
+            write_full,
             reason=f"Wiki7Bot pipeline: TM ID {tm_id_str} renamed via mapping override or sitelinks-first",
             no_redirect=True,
         )
         logger.info(
-            "TM ID %s: MovePaged %s -> %s",
-            tm_id_str, stored_full, final_full,
+            "TM ID %s: MovePaged %s -> %s (within ns=%d)",
+            tm_id_str, stored_full, write_full, write_ns,
         )
-        return final_full, "moved"
+        return write_full, "moved", write_ns
     except mwclient.errors.APIError as exc:
         # MovePage can fail for many reasons (rate limit retried but still
         # failed, target exists, source protected, etc.). Log and fall back
-        # to writing to the new title — leaving the old as orphan that the
-        # reviewer can clean up.
+        # to writing the new title in want_namespace — leaving the old as
+        # orphan that the reviewer can clean up.
         logger.warning(
             "TM ID %s: MovePage %s -> %s failed (%s); writing to new title anyway, "
             "old page will be orphaned",
-            tm_id_str, stored_full, final_full, exc,
+            tm_id_str, stored_full, write_full, exc,
         )
-        return final_full, "stranded"
+        return format_title(want_title, want_namespace), "stranded", want_namespace

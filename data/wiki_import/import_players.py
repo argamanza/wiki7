@@ -180,9 +180,12 @@ def import_players(
             # Without state, fall back to the legacy gate-routed path so this
             # function stays backward-compatible.
             if state is not None:
-                # Always Draft for fresh bot writes; promoted pages come back
-                # as NS=0 via state file's stored namespace.
-                final_full, action = resolve_target_title(
+                # Fresh bot writes want Draft (want_namespace=3000); the router
+                # may override to 0 if it discovers the page is already in
+                # mainspace (reviewer promoted it). The router returns the
+                # ACTUAL namespace as final_ns — that's what we record in
+                # state, NOT a parsed-from-prefix guess. The §6 ① fix.
+                final_full, action, final_ns = resolve_target_title(
                     site, state, tm_id, bare_title, want_namespace=3000,
                 )
                 if action == "moved":
@@ -190,6 +193,7 @@ def import_players(
             else:
                 final_full = review_gate.route_title(site, bare_title)
                 action = None
+                final_ns = None
 
             page = site.pages[final_full]
             if page.exists:
@@ -200,8 +204,7 @@ def import_players(
                     # Still update state file so last_seen / namespace stays
                     # current (no-op upsert is cheap).
                     if state is not None:
-                        ns = 0 if ":" not in final_full else 3000
-                        state.upsert(tm_id, bare_title, ns)
+                        state.upsert(tm_id, bare_title, final_ns)
                     continue
                 # Use the routed title directly — the legacy _edit_page does its
                 # own gate-routing which we now want to skip when state is in play.
@@ -216,8 +219,7 @@ def import_players(
             # State file: record where the page lives now. Done AFTER save
             # succeeded — if save throws, state stays consistent with reality.
             if state is not None:
-                ns = 0 if ":" not in final_full else 3000
-                state.upsert(tm_id, bare_title, ns)
+                state.upsert(tm_id, bare_title, final_ns)
 
         except (mwclient.errors.APIError, ConnectionError, RuntimeError) as exc:
             logger.error("Failed to import player '%s': %s", bare_title, exc)
