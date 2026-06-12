@@ -2,7 +2,14 @@
 | name_english = {{ player.name_english }}
 | name_hebrew = {{ player.name_hebrew or '' }}
 | tmk_id = {{ player.id }}
+{# §6 ③ fix (2026-06-12 review): the Cargo `players.birth_date` column is
+   MySQL `Date`, which requires `YYYY-MM-DD`. Passing the human DD/MM/YYYY
+   form made MySQL parse it as M/D/Y — every birth past the 12th NULLed,
+   earlier ones got day/month swapped. We now pass the raw ISO date as
+   `birth_date_iso` (used by Cargo) AND the Israeli-formatted form as
+   `birth_date` (used by the visible infobox field). #}
 | birth_date = {{ player.birth_date | il_date }}
+| birth_date_iso = {{ player.birth_date or '' }}
 | birth_place = {{ player.birth_place or '' }}
 | nationality = {{ player.nationality | join(', ') if player.nationality else '' }}
 | position = {{ player.main_position or '' }}

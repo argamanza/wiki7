@@ -94,7 +94,11 @@
 | tmk_id = {{{tmk_id|}}}
 | name_english = {{{name_english|}}}
 | name_hebrew = {{{name_hebrew|}}}
-| birth_date = {{{birth_date|}}}
+<!-- §6 ③ fix (2026-06-12 review): Cargo's `players.birth_date` is MySQL
+     `Date` (requires YYYY-MM-DD). The renderer passes the ISO form in as
+     `birth_date_iso`; the human-formatted `birth_date` is used only by the
+     visible infobox field above. -->
+| birth_date = {{{birth_date_iso|}}}
 | birth_place = {{{birth_place|}}}
 | nationality = {{{nationality|}}}
 | main_position = {{{position|}}}
