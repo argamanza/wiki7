@@ -188,6 +188,20 @@ $wgGroupPermissions['reviewer']['unapprovedpages']   = true;
 // universally (local docker + prod) since Wiki7Bot is a bot regardless of env.
 $wgGroupPermissions['bot']['noratelimit']            = true;
 
+// === Bot 'move' grant — §6 ⑤ fix (2026-06-12 review) ===========================
+// Pattern A's auto-MovePage (Draft:X → Draft:Y on title drift, see
+// data/wiki_import/page_router.py) is the bot's flagship correctness
+// mechanism — without it, a reviewer-corrected mapping override produces a
+// silent duplicate-draft rather than a clean rename. But `bot` doesn't carry
+// the `move` right by default (MediaWiki grants `move` to the `user` group),
+// so Wiki7Bot's MovePage calls would have permission-failed if exercised —
+// the Phase 3a R2 PR A "117/117 verified" run was creation-only, so the bug
+// was latent. Grant the bot the same `move` right reviewers already have on
+// line 178. The bot only ever operates in NS_DRAFT for moves (per the
+// router's "never cross namespaces" invariant from §6 ①), so this is
+// effectively scoped to draft-space movement.
+$wgGroupPermissions['bot']['move']                   = true;
+
 // === Cargo anon-read revocation (iter-cycle 1, 2026-06-11) =========================
 // Cargo's extension.json grants `runcargoqueries` to `*` (anon) by default,
 // which means anonymous users can reach Special:CargoQuery + Special:CargoTables
@@ -228,7 +242,14 @@ wfLoadExtension( 'Lockdown' );
 $wgNamespacePermissionLockdown[NS_DRAFT]['read']      = ['reviewer', 'bot'];
 $wgNamespacePermissionLockdown[NS_DRAFT]['edit']      = ['reviewer', 'bot'];
 $wgNamespacePermissionLockdown[NS_DRAFT]['create']    = ['reviewer', 'bot'];
-$wgNamespacePermissionLockdown[NS_DRAFT]['move']      = ['reviewer'];
+# §6 ⑤ fix (2026-06-12 review): add 'bot' to the NS_DRAFT move allowlist
+# so Pattern A's auto-MovePage (Draft:X → Draft:Y on title drift) can
+# actually fire from Wiki7Bot. Lockdown REPLACES the base group permissions
+# for the listed action+namespace, so `$wgGroupPermissions['bot']['move']`
+# above isn't sufficient — Lockdown's explicit list must include 'bot' too.
+# Smoke-verified end-to-end 2026-06-12: bot creates Draft:Source, moves to
+# Draft:Target with no_redirect=True, source page is gone, target exists.
+$wgNamespacePermissionLockdown[NS_DRAFT]['move']      = ['reviewer', 'bot'];
 $wgNamespacePermissionLockdown[NS_DRAFT_TALK]['read'] = ['reviewer', 'bot'];
 $wgNamespacePermissionLockdown[NS_DRAFT_TALK]['edit'] = ['reviewer', 'bot'];
 
