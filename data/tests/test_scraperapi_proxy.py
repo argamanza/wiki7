@@ -122,3 +122,64 @@ class TestRedact:
         variations from elsewhere."""
         result = redact("?API_KEY=SECRET&x=1")
         assert "SECRET" not in result
+
+
+class TestRedactingLogFilter:
+    """Reviewer-pass blocker (2026-06-13): LOG_LEVEL=INFO alone doesn't
+    stop Scrapy's RetryMiddleware emitting `Gave up retrying <GET …
+    api_key=KEY…>` at ERROR. run_pipeline.py:139-141 then re-propagates
+    spider stderr (which includes that line) to its own logger. The
+    redacting root filter is the catch-all. These tests pin its behavior
+    so a future refactor that removes the install_… call surfaces here."""
+
+    def _captured_emission(self, msg: str, args=()) -> str:
+        """Capture what the filter does to a single log record's text."""
+        import logging
+        from tmk_scraper.scraperapi_proxy import (
+            install_redacting_log_filter, _RedactingLogFilter,
+        )
+        # Apply the filter directly (avoid global state).
+        record = logging.LogRecord(
+            name="test", level=logging.ERROR, pathname=__file__, lineno=0,
+            msg=msg, args=args, exc_info=None,
+        )
+        _RedactingLogFilter().filter(record)
+        try:
+            return record.getMessage()
+        except TypeError:
+            # If args mutated unexpectedly, return raw msg
+            return record.msg
+
+    def test_redacts_in_plain_message(self):
+        out = self._captured_emission(
+            "Gave up retrying <GET https://api.scraperapi.com/?api_key=ABC123&url=tm.com>"
+        )
+        assert "ABC123" not in out
+        assert "api_key=REDACTED" in out
+
+    def test_redacts_in_args(self):
+        out = self._captured_emission(
+            "Request failed: %s",
+            args=("https://api.scraperapi.com/?api_key=KEY_SECRET&url=tm.com",),
+        )
+        assert "KEY_SECRET" not in out
+        assert "REDACTED" in out
+
+    def test_clean_message_passes_through(self):
+        out = self._captured_emission("Normal log line, no key here")
+        assert out == "Normal log line, no key here"
+
+    def test_install_is_idempotent(self):
+        """Calling install_redacting_log_filter twice should not double-
+        register the filter on the root logger."""
+        import logging
+        from tmk_scraper.scraperapi_proxy import install_redacting_log_filter, _RedactingLogFilter
+        root = logging.getLogger()
+        before_count = sum(1 for f in root.filters if isinstance(f, _RedactingLogFilter))
+        install_redacting_log_filter()
+        install_redacting_log_filter()
+        install_redacting_log_filter()
+        after_count = sum(1 for f in root.filters if isinstance(f, _RedactingLogFilter))
+        # Either it was already installed (before > 0, after unchanged) or
+        # newly installed (before 0, after 1). Never more than one instance.
+        assert after_count <= max(1, before_count)

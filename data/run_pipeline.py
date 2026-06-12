@@ -341,11 +341,37 @@ def run_hebrew_enrichment(data_dir: Path, seasons: list[str] | None = None, revi
     try:
         from data_pipeline.generate_mapping_stub import generate_stub
         from data_pipeline.auto_translate_hebrew import auto_translate
-        from data_pipeline.apply_hebrew_mapping import apply_mappings, apply_hebrew_fixtures, apply_hebrew_matches, load_mapping
+        from data_pipeline.apply_hebrew_mapping import (
+            apply_mappings,
+            apply_hebrew_fixtures,
+            apply_hebrew_matches,
+            load_mapping,
+            seed_merged_mapping_from_iter_cycles,
+        )
 
         players_path = data_dir / "players.jsonl"
         transfers_path = data_dir / "transfers.jsonl"
         mapping_path = data_dir / "mappings.he.yaml"
+
+        # Reviewer-pass blocker (2026-06-13): when this run is operating
+        # on the merged (all-time) dir, seed the merged mapping from any
+        # per-season iter-cycle mappings BEFORE generate_stub runs. The
+        # reviewer corrections (src: manual) from current cycles live in
+        # `output/<year>/mappings.he.yaml` but the all-time run reads
+        # `output/merged/mappings.he.yaml` — a different file — so the
+        # corrections were silently dropped on the prod push. Seeding
+        # propagates them forward.
+        if data_dir == PIPELINE_OUTPUT_DIR / "merged":
+            iter_cycle_dirs = [
+                d for d in PIPELINE_OUTPUT_DIR.iterdir()
+                if d.is_dir() and d.name.isdigit()
+            ]
+            if iter_cycle_dirs:
+                logger.info(
+                    "Seeding merged mapping from %d iter-cycle dir(s)...",
+                    len(iter_cycle_dirs),
+                )
+                seed_merged_mapping_from_iter_cycles(iter_cycle_dirs, mapping_path)
 
         logger.info("Generating mapping stub...")
         generate_stub(players_path, transfers_path, mapping_path, SCRAPER_OUTPUT_DIR)
@@ -701,6 +727,19 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
         format="%(asctime)s %(name)-20s %(levelname)-8s %(message)s",
         datefmt="%H:%M:%S",
     )
+    # Reviewer-pass blocker (2026-06-13): install the redacting log filter
+    # at the root logger BEFORE any subprocess stderr relay can emit. The
+    # filter also lives in tmk-scraper/settings.py so Scrapy's own logs
+    # are filtered too; installing here covers any path where this script
+    # logs Scrapy-captured stderr directly (run_pipeline.py:139-141).
+    try:
+        sys.path.insert(0, str(SCRAPER_DIR))
+        from tmk_scraper.scraperapi_proxy import install_redacting_log_filter
+        install_redacting_log_filter()
+    except Exception:
+        # Filter is defense-in-depth — don't crash the pipeline if the
+        # tmk-scraper package isn't importable from this entry point.
+        pass
 
     # Determine season list (resolving --season=latest against TM if needed)
     from data_pipeline.season_detector import resolve_season_arg
@@ -781,12 +820,22 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
                 "Purging their output dirs before re-scraping.",
                 len(changed_seasons), ", ".join(changed_seasons),
             )
+            # Reviewer-pass blocker fix (2026-06-13): purge BOTH the raw
+            # scraper output dir AND the normalized pipeline output dir.
+            # The raw dir is the one the resume-skip at line 107-113
+            # actually checks — without purging it, the spiders all skip
+            # as "existing output", normalization re-runs on stale raw
+            # data, nothing errors, and the new hash gets saved at the
+            # end of the run: the §6 ⑥ wedge is back AND now masked.
+            # The previous version only purged PIPELINE_OUTPUT_DIR which
+            # the resume logic never consults.
+            import shutil
             for s in changed_seasons:
-                season_out = PIPELINE_OUTPUT_DIR / s
-                if season_out.exists():
-                    import shutil
-                    shutil.rmtree(season_out)
-                    logger.info("  purged %s", season_out)
+                for base in (SCRAPER_OUTPUT_DIR, PIPELINE_OUTPUT_DIR):
+                    season_out = base / s
+                    if season_out.exists():
+                        shutil.rmtree(season_out)
+                        logger.info("  purged %s", season_out)
 
     # Step 1: Scrape (per season + club-level). Resume by default; opt out
     # with --force-rescrape for an explicit full re-fetch. allow_empty is

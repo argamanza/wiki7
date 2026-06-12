@@ -1,3 +1,5 @@
+from urllib.parse import urljoin
+
 import scrapy
 
 
@@ -60,9 +62,18 @@ class SquadSpider(scrapy.Spider):
                 # carries a per-match captain bool already, which the import
                 # step can use to derive "current captain". Hand-curation is
                 # the fallback. Default False here.
+                # Reviewer-pass fix (2026-06-13): resolve against
+                # `self.base_url` (TM), NOT `response.url`. When the request
+                # was proxied through ScraperAPI, response.url is the
+                # api.scraperapi.com URL — `response.urljoin(link)` would
+                # then resolve the relative `/<slug>/profil/...` against the
+                # proxy host, persisting `https://api.scraperapi.com/...`
+                # into squad.json and silently breaking the entire
+                # squad→player chain on every run with USE_SCRAPERAPI=True
+                # (the default). Mirrors `fixtures_spider.py:63`.
                 yield {
                     "name_english": name.strip(),
-                    "profile_url": response.urljoin(link.strip()),
+                    "profile_url": urljoin(self.base_url, link.strip()),
                     "number": number.strip() if number else "-",
                     "season": self.season,
                     "loaned": False,
@@ -88,9 +99,11 @@ class SquadSpider(scrapy.Spider):
 
             if name and link:
                 self.players_scraped += 1
+                # Same fix as above — resolve against TM base, not
+                # response.url which may be the ScraperAPI proxy host.
                 yield {
                     "name_english": name.strip(),
-                    "profile_url": response.urljoin(link.strip()),
+                    "profile_url": urljoin(self.base_url, link.strip()),
                     "number": "-",  # loan page doesn't include jersey number
                     "season": self.season,
                     "loaned": True,

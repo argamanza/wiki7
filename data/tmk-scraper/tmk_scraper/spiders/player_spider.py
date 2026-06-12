@@ -3,6 +3,8 @@ import json
 from scrapy.http import Request
 from datetime import datetime
 
+from tmk_scraper.scraperapi_proxy import redact
+
 
 class PlayerSpider(scrapy.Spider):
     name = "player"
@@ -74,7 +76,10 @@ class PlayerSpider(scrapy.Spider):
                 # api_key when proxied, leaking it into output records on
                 # disk. The target was threaded through `target_url` meta
                 # from the original start() call.
-                "profile_scraped_from": response.meta.get("target_url") or response.url,
+                # Reviewer-pass (2026-06-13): wrap the fallback in redact()
+                # so even if `target_url` is somehow missing from meta, the
+                # key is still scrubbed before it hits disk.
+                "profile_scraped_from": response.meta.get("target_url") or redact(response.url),
                 "facts": facts,
                 "positions": {
                     "main": main_position.strip() if main_position else None,

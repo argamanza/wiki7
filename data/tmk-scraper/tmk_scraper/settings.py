@@ -17,6 +17,17 @@ SCRAPERAPI_KEY = os.environ.get("SCRAPERAPI_KEY", "")
 # real debugging session.
 LOG_LEVEL = "INFO"
 
+# Reviewer-pass blocker (2026-06-13): LOG_LEVEL=INFO alone is NOT
+# sufficient. Scrapy's RetryMiddleware logs "Gave up retrying <GET
+# …api_key=KEY…>" at ERROR regardless of LOG_LEVEL, and that ERROR
+# stream is what run_pipeline.py:139-141 captures and re-emits. Install
+# the redacting root-logger filter unconditionally so every emit path
+# (Scrapy itself, retry middleware, downloader middleware, run_pipeline's
+# stderr relay) goes through `redact()`. Cheap (substring check + regex
+# on hits only); no perf cost at INFO.
+from tmk_scraper.scraperapi_proxy import install_redacting_log_filter
+install_redacting_log_filter()
+
 # === Concurrency ===
 CONCURRENT_REQUESTS = 20
 CONCURRENT_REQUESTS_PER_DOMAIN = 20

@@ -27,6 +27,7 @@ coach_spider, stats_spider, platzierungen_spider, squad_spider.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
@@ -107,3 +108,51 @@ def redact(maybe_proxy_url: Any) -> str:
     """
     s = str(maybe_proxy_url) if maybe_proxy_url is not None else ""
     return _API_KEY_RE.sub(r"\1REDACTED", s)
+
+
+class _RedactingLogFilter(logging.Filter):
+    """logging.Filter that runs `redact()` on every record's message AND
+    arg values. Installed at the root logger so it catches:
+      - Scrapy's `Gave up retrying <GET …api_key=KEY…>` ERROR
+      - DownloaderMiddleware's per-request DEBUG/INFO lines
+      - run_pipeline's stderr-relay of spider failures (it forwards the
+        last 10 lines verbatim, which include the proxy URL)
+      - any other log path that picks up a request URL we didn't predict.
+
+    Reviewer-pass blocker (2026-06-13): the §6 ② fix dropped LOG_LEVEL to
+    INFO and migrated spiders to the helper, but Scrapy's own ERROR-level
+    request-URL logs survive any LOG_LEVEL choice. A filter is the right
+    layer to cover both Scrapy's logs AND any handler that pulls them
+    through (subprocess stderr capture in run_pipeline, etc).
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str) and "api_key=" in record.msg:
+            record.msg = redact(record.msg)
+        if record.args:
+            try:
+                record.args = tuple(
+                    redact(a) if isinstance(a, str) and "api_key=" in a else a
+                    for a in record.args
+                )
+            except TypeError:
+                # `record.args` may be a dict-like for %()s named formatting.
+                pass
+        return True
+
+
+_FILTER_INSTALLED = False
+
+
+def install_redacting_log_filter() -> None:
+    """Idempotent install of the redacting filter on the root logger.
+    Call once at process start (settings.py or the run_pipeline entry
+    point) — every subsequent emit is filtered. The filter is cheap (a
+    substring check + a regex on hits), so installing it unconditionally
+    has no meaningful perf cost.
+    """
+    global _FILTER_INSTALLED
+    if _FILTER_INSTALLED:
+        return
+    logging.getLogger().addFilter(_RedactingLogFilter())
+    _FILTER_INSTALLED = True

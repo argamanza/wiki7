@@ -251,6 +251,83 @@ def _translate_match(match: dict, club_map: dict, comp_map: dict, name_lookup: d
     return match
 
 
+def seed_merged_mapping_from_iter_cycles(
+    iter_cycle_dirs: list[Path],
+    merged_mapping_path: Path,
+) -> int:
+    """Reviewer-pass blocker (2026-06-13): the per-season iter-cycle
+    mapping files (`output/<year>/mappings.he.yaml`) are where reviewers
+    write `src: manual` corrections during walks. The all-time merged
+    run reads `output/merged/mappings.he.yaml` — a DIFFERENT file that
+    didn't see any of those corrections. Pre-fix, every reviewer
+    correction from current cycles was absent from the prod push: the
+    all-time run re-translated from scratch, picked bad Wikidata titles,
+    and MovePaged everything during reviewer cleanup.
+
+    This helper, run BEFORE the all-time `generate_stub`, merges every
+    per-season mapping file into the merged file. Precedence:
+
+      1. Anything already in the merged file (manual edits applied
+         against the merged dir directly — rare but possible).
+      2. `src: manual` entries from iter-cycles (reviewer's word always
+         wins over auto translations).
+      3. `src: wikidata` entries (high-confidence auto-translated).
+      4. Anything else (auto-llm, auto-google, auto-phonetic).
+
+    Returns the count of new entries added to the merged file.
+
+    `iter_cycle_dirs` is the list of per-season pipeline output dirs to
+    scan. Caller passes [`output/2024`, `output/2023`, ...] etc.
+    """
+    if not iter_cycle_dirs:
+        return 0
+
+    SRC_PRIORITY = {"manual": 4, "wikidata": 3, "auto-llm": 2,
+                    "auto-google": 1, "auto-phonetic": 1}
+
+    def _src_rank(entry):
+        if isinstance(entry, dict):
+            return SRC_PRIORITY.get(entry.get("src", ""), 0)
+        return 0
+
+    # Start from whatever the merged file already has.
+    merged = (
+        load_mapping(merged_mapping_path)
+        if merged_mapping_path.exists() else {}
+    )
+
+    added = 0
+    for cycle_dir in iter_cycle_dirs:
+        cycle_path = cycle_dir / "mappings.he.yaml"
+        if not cycle_path.exists():
+            continue
+        cycle_mapping = load_mapping(cycle_path)
+        for section, entries in cycle_mapping.items():
+            if not isinstance(entries, dict):
+                continue
+            merged_section = merged.setdefault(section, {})
+            for key, cycle_entry in entries.items():
+                merged_entry = merged_section.get(key)
+                if merged_entry is None:
+                    merged_section[key] = cycle_entry
+                    added += 1
+                elif _src_rank(cycle_entry) > _src_rank(merged_entry):
+                    # Higher-priority source wins (manual > wikidata > auto).
+                    merged_section[key] = cycle_entry
+
+    merged_mapping_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(merged_mapping_path, "w", encoding="utf-8") as f:
+        yaml.dump(
+            merged, f, allow_unicode=True, sort_keys=True,
+            default_flow_style=False,
+        )
+    logger.info(
+        "Seeded merged mapping from %d iter-cycle dir(s); added %d new entries -> %s",
+        len(iter_cycle_dirs), added, merged_mapping_path,
+    )
+    return added
+
+
 def apply_hebrew_fixtures(
     fixtures_input: Path,
     fixtures_output: Path,

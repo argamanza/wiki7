@@ -316,6 +316,64 @@ class TestSquadSpiderR2Captain:
             assert p["is_captain"] is False
 
 
+class TestSquadSpiderProfileUrlsResolveToTM:
+    """Reviewer-pass blocker (2026-06-13): with USE_SCRAPERAPI=True (the
+    project default), `response.url` is the ScraperAPI proxy URL
+    (`https://api.scraperapi.com/?api_key=…&url=…`). The pre-fix code
+    called `response.urljoin(link)` which resolves the relative TM path
+    against the response host — so squad.json persisted
+    `https://api.scraperapi.com/...` for every player's profile_url.
+    The whole squad→player chain then silently fetched the proxy's
+    fronted root page instead of the real TM player profile.
+
+    These tests pin a ScraperAPI-host response URL to ensure the spider
+    resolves profile URLs against `self.base_url` (TM) regardless of
+    what host the response came back from.
+    """
+
+    SCRAPERAPI_RESPONSE_URL = (
+        "https://api.scraperapi.com/"
+        "?api_key=KEY_REDACTED"
+        "&url=https://www.transfermarkt.com/hapoel-beer-sheva/kader/verein/2976/saison_id/2024"
+        "&country_code=us&render=false"
+    )
+
+    def _proxied_response(self, html_path: Path):
+        body = html_path.read_bytes()
+        return HtmlResponse(
+            url=self.SCRAPERAPI_RESPONSE_URL,
+            body=body,
+            request=Request(url=self.SCRAPERAPI_RESPONSE_URL),
+        )
+
+    def test_profile_urls_resolve_against_tm_when_response_is_proxy(self):
+        """The regression case: response came back via ScraperAPI, but
+        every player's profile_url must point at TM (so the player_spider
+        can scrape it next)."""
+        spider = SquadSpider(season="2024")
+        response = self._proxied_response(FIXTURES_DIR / "kader_2015_sample.html")
+        players = [item for item in spider.parse(response) if isinstance(item, dict)]
+        assert players, "fixture should yield at least one player"
+        for p in players:
+            assert "api.scraperapi.com" not in p["profile_url"], (
+                f"profile_url leaked proxy host: {p['profile_url']!r}"
+            )
+            assert p["profile_url"].startswith("https://www.transfermarkt.com/"), (
+                f"profile_url should be on TM host: {p['profile_url']!r}"
+            )
+
+    def test_loan_profile_urls_resolve_against_tm_when_response_is_proxy(self):
+        """Same fix on the parse_loans path."""
+        spider = SquadSpider(season="2024")
+        response = self._proxied_response(FIXTURES_DIR / "kader_2015_sample.html")
+        loans = list(spider.parse_loans(response))
+        # Some fixtures may yield no loan rows — that's fine, but every
+        # row that DOES exist must point at TM.
+        for p in loans:
+            assert "api.scraperapi.com" not in p["profile_url"]
+            assert p["profile_url"].startswith("https://www.transfermarkt.com/")
+
+
 class TestRecordsSpiderR2Direction:
     """Phase 3a R2 finding: TM removed the separate departures page. Records
     spider stays single-direction (arrivals only) but every row carries a

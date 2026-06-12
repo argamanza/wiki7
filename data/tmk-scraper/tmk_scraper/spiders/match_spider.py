@@ -3,6 +3,8 @@ import json
 import re
 from scrapy.http import Request
 
+from tmk_scraper.scraperapi_proxy import redact
+
 
 # TM player profile / event links share two structural pieces inside the href:
 # the URL slug (segment 1) which is a kebab-case full English name, and the
@@ -85,7 +87,11 @@ class MatchSpider(scrapy.Spider):
             # §6 ② fix (2026-06-12 review): persist the TM target URL, NOT
             # response.url — the latter contains the ScraperAPI api_key
             # when proxied, which leaks into ~70 seasons of output records.
-            "report_scraped_from": response.meta.get("target_url") or response.url,
+            # Reviewer-pass (2026-06-13): wrap the fallback in redact()
+            # so even if `target_url` is somehow missing from meta (caller
+            # bug, mid-migration data), the key is still scrubbed before
+            # it hits disk.
+            "report_scraped_from": response.meta.get("target_url") or redact(response.url),
             "home_lineup": graphic_lineups.get("home") or table_lineups.get("home"),
             "away_lineup": graphic_lineups.get("away") or table_lineups.get("away"),
             "goals": goals,

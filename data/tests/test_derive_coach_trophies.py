@@ -28,6 +28,20 @@ class TestSeasonLabelConversion:
         assert _season_label_to_yyyy("nonsense") is None
         assert _season_label_to_yyyy("abc/def") is None
 
+    def test_founding_era_pivots_to_1900s(self):
+        """§6 ③ fix completion (post-reviewer pass, 2026-06-13): this site
+        was missed in the original three-spot unify and continued using
+        the 50-cutoff. "49/50" → 2049 (wrong, HBS founded 1949) and
+        "30/31"–"48/49" landed in 2030-2048. Now pivots via
+        helpers.pivot_two_digit_year (cutoff 30) so the founding-era
+        coach trophies line up with the same era's transfers + standings."""
+        assert _season_label_to_yyyy("49/50") == "1949"
+        assert _season_label_to_yyyy("50/51") == "1950"
+        assert _season_label_to_yyyy("87/88") == "1987"
+        # Boundary check at the new cutoff: 29/30 still 2000s; 30/31 flips.
+        assert _season_label_to_yyyy("29/30") == "2029"
+        assert _season_label_to_yyyy("30/31") == "1930"
+
 
 class TestHonoursPivot:
     def test_pivot_to_per_season_keyed(self):

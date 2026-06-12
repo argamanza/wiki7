@@ -97,8 +97,12 @@ def _season_label_to_yyyy(label: str) -> str | None:
     if len(head) == 4:
         return head
     if len(head) == 2:
-        yy = int(head)
-        return str(1900 + yy if yy >= 50 else 2000 + yy)
+        # §6 ③ fix completion (2026-06-13, post-reviewer pass): this was
+        # the fourth pivot site, missed in the original three-spot unify.
+        # Same cutoff convention as helpers.pivot_two_digit_year (30) —
+        # founding-era seasons like "49/50" must bin to 1949, not 2049.
+        from data_pipeline.helpers import pivot_two_digit_year
+        return str(pivot_two_digit_year(int(head)))
     return None
 
 
