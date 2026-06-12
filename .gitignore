@@ -36,5 +36,8 @@ data/output/
 data/data_pipeline/output/
 data/tmk-scraper/output/
 
+# Pipeline state (per-environment; tracks TM-ID -> wiki-page identity)
+data/pipeline-state/
+
 # Claude Code
 .claude/

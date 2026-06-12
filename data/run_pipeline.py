@@ -437,6 +437,16 @@ def run_import(
     # Determine data directory (merged or single-season)
     resolved_data_dir = data_dir or PIPELINE_OUTPUT_DIR
 
+    # Pattern A (iter-cycle 1 v1+ architecture): load the TM-ID page-index
+    # state file before any imports. Pass it through to import_players so
+    # title drift triggers auto-MovePage instead of duplicate creation.
+    # State lives under repo/data/pipeline-state/page_index.yaml (per-env;
+    # git-ignored). Cleared/recreated on every full docker reset.
+    from data_pipeline.pipeline_state import PageIndexState
+    state = None if dry_run else PageIndexState().load()
+    if state is not None:
+        logger.info("Loaded page-index state: %d known TM IDs", len(state))
+
     results = {}
     all_ok = True
 
@@ -481,6 +491,7 @@ def run_import(
             market_values_path=mv_path,
             stats_path=resolved_data_dir / "stats.jsonl",
             dry_run=dry_run,
+            state=state,
         )
     except FileNotFoundError as exc:
         logger.error("Player import failed: %s", exc)
@@ -630,6 +641,20 @@ def run_import(
         total_created, total_updated, total_skipped, total_failed,
     )
 
+    # Pattern A: persist the page-index state file so the next run sees
+    # which titles every TM ID currently lives at.
+    if state is not None:
+        state.save()
+        players_summary = results.get("players") or {}
+        moved_count = players_summary.get("moved", 0)
+        if moved_count:
+            logger.info(
+                "Page index: %d entries; auto-MovePaged %d pages this run",
+                len(state), moved_count,
+            )
+        else:
+            logger.info("Page index: %d entries", len(state))
+
     return all_ok and total_failed == 0
 
 
@@ -651,8 +676,15 @@ def run_import(
          "already exists. Default (resume) skips spiders whose output is already "
          "on disk — makes long all-time runs restartable after a partial failure.",
 )
+@click.option(
+    "--check-changes", is_flag=True,
+    help="Iter-cycle 1 (A.4): probe TM's squad page first and skip the full "
+         "scrape if its hash matches the last-saved hash for this season. "
+         "Designed for daily-cron periodic re-scrapes — saves ~99% of the "
+         "cost on no-op days while keeping <24h freshness on change days.",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable debug logging")
-def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_merge, skip_import, skip_hebrew, review_mappings, wiki_url, force_rescrape, verbose):
+def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_merge, skip_import, skip_hebrew, review_mappings, wiki_url, force_rescrape, check_changes, verbose):
     """Wiki7 data pipeline: scrape -> normalize -> merge -> Hebrew enrich -> import."""
     log_level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
@@ -661,12 +693,14 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
         datefmt="%H:%M:%S",
     )
 
-    # Determine season list
+    # Determine season list (resolving --season=latest against TM if needed)
+    from data_pipeline.season_detector import resolve_season_arg
+
     if seasons:
         season_list = parse_seasons(seasons)
         multi_season = True
     else:
-        season_list = [season]
+        season_list = [resolve_season_arg(season)]
         multi_season = False
 
     # Parse --spiders filter
@@ -685,6 +719,27 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
         season_list, dry_run, multi_season,
     )
     errors = []
+
+    # Pattern A.4 (iter-cycle 1): if --check-changes is set, probe TM's
+    # squad page first. If nothing changed since the last run, skip the
+    # full scrape (saves ScraperAPI + Anthropic credits).
+    scrape_cache_module = None
+    if check_changes and not skip_scrape:
+        from data_pipeline.scrape_cache import ScrapeHashCache, squad_page_unchanged
+
+        scrape_cache_module = ScrapeHashCache().load()
+        all_unchanged = all(
+            squad_page_unchanged(s, cache=scrape_cache_module)
+            for s in season_list
+        )
+        scrape_cache_module.save()
+        if all_unchanged:
+            logger.info(
+                "--check-changes: all %d season(s) unchanged since last probe. "
+                "Skipping scrape step (--skip-scrape implicitly enabled).",
+                len(season_list),
+            )
+            skip_scrape = True
 
     # Step 1: Scrape (per season + club-level). Resume by default; opt out
     # with --force-rescrape for an explicit full re-fetch. allow_empty is

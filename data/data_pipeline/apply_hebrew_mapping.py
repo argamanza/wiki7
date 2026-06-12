@@ -68,8 +68,26 @@ def apply_hebrew(player: dict, mapping: dict) -> dict:
             _lookup(nationality_map, n) or n for n in player["nationality"]
         ]
 
-    if not player.get("name_hebrew"):
-        translated_name = _lookup(names_map, player["name_english"])
+    # Name resolution priority:
+    #   1. Manual override in mappings.he.yaml (src: manual) — reviewer's word
+    #      always wins, even over TM's own Hebrew. This is how a reviewer
+    #      shortens "Ben Gordin → בן אנריקה גורדין ענברי" (TM long-canonical) to
+    #      "בן גורדין" (common form). Discovered iter-cycle 1 walk 2026-06-12.
+    #   2. Existing name_hebrew (from TM scrape OR Wikidata enrichment pass).
+    #   3. Anything else in the names map (any src) — for players where TM
+    #      gave no Hebrew at all.
+    name_english = player.get("name_english", "")
+    name_entry = names_map.get(name_english) if name_english else None
+
+    def _is_manual(entry):
+        return isinstance(entry, dict) and entry.get("src") == "manual"
+
+    if _is_manual(name_entry):
+        manual_he = name_entry.get("he")
+        if manual_he:
+            player["name_hebrew"] = manual_he
+    elif not player.get("name_hebrew"):
+        translated_name = _lookup(names_map, name_english)
         if translated_name:
             player["name_hebrew"] = translated_name
 

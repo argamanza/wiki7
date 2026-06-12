@@ -110,6 +110,7 @@ def import_players(
     market_values_path: Optional[Path] = None,
     stats_path: Optional[Path] = None,
     dry_run: bool = False,
+    state: Optional["PageIndexState"] = None,
 ) -> dict:
     """Import all player pages into MediaWiki.
 
@@ -120,10 +121,16 @@ def import_players(
         market_values_path: Path to market_values.jsonl.
         stats_path: Path to stats.jsonl (optional).
         dry_run: If True, just preview changes without writing.
+        state: Pattern A.1 page-index state. Pass through to enable
+               auto-MovePage on title drift. None = no state tracking
+               (backward-compatible; mid-iter-cycle 1 fallback).
 
     Returns:
         A summary dict with counts of created, updated, skipped, and failed pages.
     """
+    from data_pipeline.pipeline_state import PageIndexState
+    from wiki_import.page_router import format_title, resolve_target_title
+
     resolved_players = players_path or DEFAULT_PLAYERS_PATH
     resolved_transfers = transfers_path or DEFAULT_TRANSFERS_PATH
     resolved_mvs = market_values_path or DEFAULT_MARKET_VALUES_PATH
@@ -134,42 +141,74 @@ def import_players(
     market_values = _load_jsonl(resolved_mvs)
     stats = _load_jsonl(resolved_stats) if resolved_stats.exists() else []
 
-    summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "errors": []}
+    summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "moved": 0, "errors": []}
 
     for player in players:
-        title = player.get("name_hebrew") or player["name_english"]
+        bare_title = player.get("name_hebrew") or player["name_english"]
+        tm_id = str(player["id"])
         try:
             content = _build_player_page(player, transfers, market_values, stats)
 
             if dry_run:
-                logger.info("[DRY RUN] Would create/update page: %s (%d chars)", title, len(content))
+                logger.info("[DRY RUN] Would create/update page: %s (%d chars)", bare_title, len(content))
                 summary["created"] += 1
                 continue
 
             if site is None:
                 raise RuntimeError("site is required when dry_run=False")
 
-            # Phase 3a R2: route through the gate before probing existence so
-            # the report layer reflects Draft-namespace reality. Without this,
-            # every existing draft re-imports as "created" instead of skipped.
-            routed = review_gate.route_title(site, title)
-            page = site.pages[routed]
+            # Pattern A (iter-cycle 1 v1+ architecture): when a state file is
+            # provided, route through it. The router handles MovePages on title
+            # drift (reviewer-fixed Hebrew names, draft -> mainspace promotions,
+            # sitelinks-first overrides) so the bot writes to the page's CURRENT
+            # location instead of creating duplicates or orphans.
+            #
+            # Without state, fall back to the legacy gate-routed path so this
+            # function stays backward-compatible.
+            if state is not None:
+                # Always Draft for fresh bot writes; promoted pages come back
+                # as NS=0 via state file's stored namespace.
+                final_full, action = resolve_target_title(
+                    site, state, tm_id, bare_title, want_namespace=3000,
+                )
+                if action == "moved":
+                    summary["moved"] += 1
+            else:
+                final_full = review_gate.route_title(site, bare_title)
+                action = None
+
+            page = site.pages[final_full]
             if page.exists:
                 existing = page.text()
                 if _content_hash(existing.strip()) == _content_hash(content.strip()):
-                    logger.debug("Page '%s' unchanged, skipping", title)
+                    logger.debug("Page '%s' unchanged, skipping", final_full)
                     summary["skipped"] += 1
+                    # Still update state file so last_seen / namespace stays
+                    # current (no-op upsert is cheap).
+                    if state is not None:
+                        ns = 0 if ":" not in final_full else 3000
+                        state.upsert(tm_id, bare_title, ns)
                     continue
-                _edit_page(site, title, content, summary=f"Updated player page for {title}")
+                # Use the routed title directly — the legacy _edit_page does its
+                # own gate-routing which we now want to skip when state is in play.
+                page.save(content, summary=f"Updated player page for {bare_title}")
+                logger.info("Saved page: %s", final_full)
                 summary["updated"] += 1
             else:
-                _edit_page(site, title, content, summary=f"Created player page for {title}")
+                page.save(content, summary=f"Created player page for {bare_title}")
+                logger.info("Saved page: %s", final_full)
                 summary["created"] += 1
 
+            # State file: record where the page lives now. Done AFTER save
+            # succeeded — if save throws, state stays consistent with reality.
+            if state is not None:
+                ns = 0 if ":" not in final_full else 3000
+                state.upsert(tm_id, bare_title, ns)
+
         except (mwclient.errors.APIError, ConnectionError, RuntimeError) as exc:
-            logger.error("Failed to import player '%s': %s", title, exc)
+            logger.error("Failed to import player '%s': %s", bare_title, exc)
             summary["failed"] += 1
-            summary["errors"].append({"page": title, "error": str(exc)})
+            summary["errors"].append({"page": bare_title, "error": str(exc)})
 
     logger.info(
         "Player import complete: %d created, %d updated, %d skipped, %d failed",
