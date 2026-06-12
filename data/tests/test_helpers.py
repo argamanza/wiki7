@@ -2,6 +2,7 @@
 
 from datetime import date
 from data_pipeline.helpers import (
+    hbs_match_outcome,
     is_all_hebrew,
     is_youth_club_name,
     parse_birth_date,
@@ -310,3 +311,56 @@ class TestToIlDateYearPivot:
         """Regression: the 4-digit-year path is unaffected by the pivot."""
         assert to_il_date("25/07/1987") == "25/07/1987"
         assert to_il_date("25/07/2024") == "25/07/2024"
+
+
+class TestHbsMatchOutcome:
+    """§6 ③ fix from the 2026-06-12 review: the win/loss/draw categorisation
+    must consult `venue` (H/A) — TM's result string is always
+    'home_goals:away_goals' so for an away match the home/away need to be
+    swapped to get HBS's perspective. Pre-fix code compared the raw goals
+    directly, miscategorising ~half of all matches (every away match)."""
+
+    def test_home_win(self):
+        # HBS at home, scored 2, opponent scored 1.
+        assert hbs_match_outcome("2:1", "H") == "win"
+
+    def test_home_loss(self):
+        # HBS at home, scored 0, opponent scored 1.
+        assert hbs_match_outcome("0:1", "H") == "loss"
+
+    def test_home_draw(self):
+        assert hbs_match_outcome("1:1", "H") == "draw"
+
+    def test_away_win(self):
+        """The regression-class case: HBS played away, result string "0:2"
+        means home=0, away=2 → HBS scored 2, opponent scored 0 → WIN.
+        Pre-fix code compared 0 vs 2 directly and called this a LOSS."""
+        assert hbs_match_outcome("0:2", "A") == "win"
+        # Real corpus sample: row 2 of 2024 matches was venue=A, result=0:4
+        # (HBS won 4-0 at SC Dimona).
+        assert hbs_match_outcome("0:4", "A") == "win"
+
+    def test_away_loss(self):
+        assert hbs_match_outcome("2:0", "A") == "loss"
+
+    def test_away_draw(self):
+        assert hbs_match_outcome("1:1", "A") == "draw"
+
+    def test_unknown_venue_returns_empty(self):
+        """Defensive: missing or weird venue → empty string, NOT a guess.
+        Caller should fall through to "uncategorised" rather than display
+        a wrong category."""
+        assert hbs_match_outcome("2:1", None) == ""
+        assert hbs_match_outcome("2:1", "") == ""
+        assert hbs_match_outcome("2:1", "X") == ""
+
+    def test_missing_or_unparseable_result_returns_empty(self):
+        assert hbs_match_outcome(None, "H") == ""
+        assert hbs_match_outcome("", "H") == ""
+        assert hbs_match_outcome("postponed", "H") == ""
+        assert hbs_match_outcome("2-1", "H") == ""  # dash not colon
+        assert hbs_match_outcome("a:b", "H") == ""
+
+    def test_venue_case_insensitive(self):
+        assert hbs_match_outcome("2:1", "h") == "win"
+        assert hbs_match_outcome("2:1", "a") == "loss"

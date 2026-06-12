@@ -64,8 +64,14 @@ def _render_template(template_name: str, **kwargs) -> str:
     )
     # Iter-cycle 1 (2026-06-12): Israeli DD/MM/YYYY date format on match
     # report pages. Match dates render via `{{ match.date | il_date }}`.
-    from data_pipeline.helpers import to_il_date
+    from data_pipeline.helpers import hbs_match_outcome, to_il_date
     env.filters["il_date"] = to_il_date
+    # §6 ③ fix (2026-06-12 review): the match-report category logic and
+    # competition_season row-colour logic both used to assume HBS was the
+    # home team, miscategorising every away match. This filter
+    # consults the venue and returns 'win'/'loss'/'draw' from HBS's
+    # perspective. Templates wrap the result in their own categorisation.
+    env.filters["hbs_match_outcome"] = hbs_match_outcome
     template = env.get_template(template_name)
     return template.render(**kwargs)
 

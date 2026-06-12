@@ -161,13 +161,14 @@
 
 [[קטגוריה:משחקים]]
 [[קטגוריה:{{ match.competition or 'תחרות לא ידועה' }}]]
-{% set result = match.result | default('') %}
-{% set parts = result.split(':') if ':' in result | string else [] %}
-{% if parts | length == 2 %}
-{% set home_goals = parts[0] | trim | int if parts[0] | trim else 0 %}
-{% set away_goals = parts[1] | trim | int if parts[1] | trim else 0 %}
-{% if home_goals > away_goals %}[[קטגוריה:ניצחונות]]
-{% elif home_goals < away_goals %}[[קטגוריה:הפסדים]]
-{% else %}[[קטגוריה:תיקו]]
-{% endif %}
+{# §6 ③ fix (2026-06-12 review): use the venue-aware hbs_match_outcome
+   filter rather than comparing home_goals vs away_goals directly. The old
+   "home > away → win" rule silently miscategorised every away match (HBS
+   plays half its season away). The filter returns 'win'/'loss'/'draw' from
+   HBS's perspective; empty string suppresses the category if the result
+   can't be parsed. #}
+{% set outcome = match.result | hbs_match_outcome(match.venue) %}
+{% if outcome == 'win' %}[[קטגוריה:ניצחונות]]
+{% elif outcome == 'loss' %}[[קטגוריה:הפסדים]]
+{% elif outcome == 'draw' %}[[קטגוריה:תיקו]]
 {% endif %}

@@ -10,7 +10,7 @@ import jinja2
 import mwclient
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from data_pipeline.helpers import to_il_date, to_il_fee, to_season_display
+from data_pipeline.helpers import hbs_match_outcome, to_il_date, to_il_fee, to_season_display
 from wiki_import import review_gate
 
 logger = logging.getLogger(__name__)
@@ -219,6 +219,11 @@ def _render_template(template_name: str, **kwargs) -> str:
     # transfer-fee translation. Used in match_report.j2 etc.
     env.filters["il_date"] = to_il_date
     env.filters["il_fee"] = to_il_fee
+    # §6 ③ fix (2026-06-12 review): HBS-perspective match outcome based on
+    # venue + result string. Used by competition_season.j2 to colour fixture
+    # rows correctly for both home AND away matches (previously assumed
+    # HBS was always home, miscategorising ~half of all matches).
+    env.filters["hbs_match_outcome"] = hbs_match_outcome
     template = env.get_template(template_name)
     return template.render(**kwargs)
 

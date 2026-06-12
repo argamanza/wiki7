@@ -65,6 +65,55 @@ def is_youth_club_name(name: str | None) -> bool:
     return bool(_YOUTH_SUFFIX_RE_HE.search(name))
 
 
+# Match-outcome resolution from HBS's perspective. §6 ③ fix from the
+# 2026-06-12 review: `match_report.j2` and `competition_season.j2` both
+# categorised matches as "win/loss/draw" purely from comparing home_goals
+# vs away_goals, which silently assumed HBS was always the home team. For
+# away matches that flipped the categorisation — an away win came out as
+# a loss, an away loss as a win. About half of all matches were
+# miscategorised.
+#
+# The result string from TM is always "<home_goals>:<away_goals>" so the
+# venue is the only signal we need to remap goals to HBS's perspective:
+#   venue=H → HBS = home_goals, opp = away_goals
+#   venue=A → HBS = away_goals, opp = home_goals
+def hbs_match_outcome(result: str | None, venue: str | None) -> str:
+    """Categorise a match result as `'win'`, `'loss'`, `'draw'`, or `''`
+    from HBS's perspective.
+
+    `result` is TM's "home_goals:away_goals" string (e.g. "2:1"). `venue`
+    is `'H'` or `'A'` indicating where HBS played. Returns `''` when the
+    inputs can't be parsed — the caller should fall through to "uncoloured /
+    uncategorised" rather than guessing.
+
+    Used by both `match_report.j2` (single-match page category) and
+    `competition_season.j2` (per-row colouring).
+    """
+    if not result or not venue:
+        return ""
+    s = result.strip()
+    if ":" not in s:
+        return ""
+    home_str, _, away_str = s.partition(":")
+    try:
+        home_goals = int(home_str.strip())
+        away_goals = int(away_str.strip())
+    except (ValueError, TypeError):
+        return ""
+    v = venue.strip().upper()
+    if v == "H":
+        hbs_goals, opp_goals = home_goals, away_goals
+    elif v == "A":
+        hbs_goals, opp_goals = away_goals, home_goals
+    else:
+        return ""
+    if hbs_goals > opp_goals:
+        return "win"
+    if hbs_goals < opp_goals:
+        return "loss"
+    return "draw"
+
+
 def to_il_fee(raw: str | None) -> str:
     """Translate a TM transfer-fee string to Hebrew form, or pass numeric
     values through unchanged.
