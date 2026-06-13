@@ -43,10 +43,22 @@ echo "Profile: $AWS_PROFILE | Region: $REGION"
 echo ""
 
 # 1. Find source DB + latest automated snapshot
+#
+# Filter exclusions:
+#   - dr-test-*  : transient temp instances from a previous (or in-progress
+#                  cleanup of a previous) drill run. Including them turns the
+#                  text-output multi-row return into a tab-joined string that
+#                  fails the next describe-db-snapshots call with
+#                  "Input can't contain control characters". Discovered
+#                  2026-06-12 when an orphan from a killed-mid-flight run was
+#                  still in 'deleting' state during the next invocation.
+#   - restore-*  : same idea for any other restore-shaped instance name.
+# `awk 'NR==1'` (not `head -1`) extracts the first row even when text-output
+# uses tabs as field separators on a single line.
 echo "--- Step 1: Locating source DB and latest snapshot ---"
 SOURCE_DB=$(aws_cmd rds describe-db-instances \
-  --query "DBInstances[?contains(DBInstanceIdentifier, 'wiki7')].DBInstanceIdentifier" \
-  --output text | head -1)
+  --query "DBInstances[?contains(DBInstanceIdentifier, 'wiki7') && !contains(DBInstanceIdentifier, 'dr-test') && !contains(DBInstanceIdentifier, 'restore')].DBInstanceIdentifier" \
+  --output text | tr '\t' '\n' | awk 'NF{print; exit}')
 [ -n "$SOURCE_DB" ] || { echo "ERROR: Could not find Wiki7 RDS instance"; exit 1; }
 echo "Source DB: $SOURCE_DB"
 
