@@ -338,8 +338,18 @@ def import_players(
             summary["failed"] += 1
             summary["errors"].append({"page": bare_title, "error": str(exc)})
 
+    # Pattern B.4 (2026-06-13): surface the merger + mover counts to the
+    # operator-facing digest. `merged` is the surgical-merge count from
+    # B.3 (how many pages had reviewer content preserved this run);
+    # `moved` is Pattern A's auto-MovePage count. Pure client-side
+    # visibility — there is intentionally NO server-side bot-move
+    # notification channel (reviewers see moves via the queue + move log;
+    # a push notification for content-less renames would just erode the
+    # save notifications that actually carry the content change).
     logger.info(
-        "Player import complete: %d created, %d updated, %d skipped, %d failed",
-        summary["created"], summary["updated"], summary["skipped"], summary["failed"],
+        "Player import complete: %d created, %d updated (%d merged), "
+        "%d skipped, %d moved, %d failed",
+        summary["created"], summary["updated"], summary.get("merged", 0),
+        summary["skipped"], summary.get("moved", 0), summary["failed"],
     )
     return summary
