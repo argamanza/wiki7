@@ -1,2 +1,9 @@
-output
+# Ephemeral pipeline output (scrape JSON, rendered wikitext) stays ignored,
+# EXCEPT the reviewer's hand-curated Hebrew overrides: mappings.he.yaml carries
+# `src: manual` corrections that survive re-runs and seed the all-time merged
+# push. Tracking them means a walk's translation work lives in git, not just on
+# the operator's laptop. See docs/iter-cycle-review-guide.md.
+output/**
+!output/**/
+!output/**/mappings.he.yaml
 __pycache__

@@ -1,10 +1,61 @@
 == עונת {{ season_display }} ==
 
+{% if standings %}
+{{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/SeasonStanding
+| season = {{ standings.season or '' }}
+| competition = {{ standings.competition or '' }}
+| tier = {{ standings.tier or '' }}
+| final_position = {{ standings.final_position or '' }}
+| played = {{ standings.played or 0 }}
+| wins = {{ standings.wins or 0 }}
+| draws = {{ standings.draws or 0 }}
+| losses = {{ standings.losses or 0 }}
+| goals_for = {{ standings.goals_for or 0 }}
+| goals_against = {{ standings.goals_against or 0 }}
+| points = {{ standings.points or 0 }}
+{{"}}"}}|{{"}}"}}
+=== סיכום העונה ===
+{| class="wikitable"
+! נתון !! ערך
+|-
+| תחרות || {{ standings.competition or '—' }}
+|-
+| דרגה || {{ 'ליגת על' if standings.tier == 1 else 'ליגה לאומית' if standings.tier == 2 else (standings.tier | string if standings.tier else '—') }}
+|-
+| מקום בטבלה || {{ standings.final_position or '—' }}
+|-
+| ניצחונות || {{ standings.wins or '—' }}
+|-
+| תיקואים || {{ standings.draws or '—' }}
+|-
+| הפסדים || {{ standings.losses or '—' }}
+|-
+| שערי זכות || {{ standings.goals_for or '—' }}
+|-
+| שערי חובה || {{ standings.goals_against or '—' }}
+|-
+| נקודות || {{ standings.points or '—' }}
+{% if standings.manager_name %}
+|-
+| מאמן || [[{{ standings.manager_name }}]]
+{% endif %}
+
+|}
+{% endif %}
+
 === סגל ===
-''ראו: [[סגל {{ season }}]]''
+{% if has_squad_page %}
+''ראו: [[סגל {{ season_display }}]]''
+{% else %}
+''אין מידע על הסגל לעונה זו''
+{% endif %}
 
 === העברות ===
-''ראו: [[העברות {{ season }}]]''
+{% if has_transfers_page %}
+''ראו: [[העברות {{ season_display }}]]''
+{% else %}
+''אין מידע על העברות לעונה זו''
+{% endif %}
 
 {% if stats %}
 === סטטיסטיקות מפתח ===
@@ -68,11 +119,37 @@
 {% if fixtures_by_competition %}
 === תחרויות ===
 {% for comp, matches in fixtures_by_competition.items() %}
-{% set season_int = season | int %}
-{% set season_display_comp = season_int ~ "/" ~ (season_int + 1) | string %}
-* '''[[{{ comp }} {{ season_display_comp }}|{{ comp }}]]''': {{ matches | length }} משחקים
+* '''[[{{ comp }} {{ season_display }}|{{ comp }}]]''': {{ matches | length }} משחקים
+{% endfor %}
+{% endif %}
+
+{# Phase 3a R2: empty-placeholder + sparse-data footer. When the season has
+   no data at all (no standings, no stats, no fixtures), render the explicit
+   placeholder banner. When some data is missing but other is present, the
+   "what's missing" footer explains why so reviewers know it's sparse-by-
+   design (not by-bug). #}
+{% set has_any = standings or stats or fixtures_by_competition %}
+{% if not has_any %}
+{| class="wikitable" style="background:#fff3cd; border:2px solid #ffc107;"
+|-
+! style="text-align:center; padding:10px;" | אין מידע זמין על עונה זו
+|-
+| style="padding:10px;" |
+'''Transfermarkt לא מספק מידע על עונה {{ season_display }}.''' עמוד זה הופק כשלד אוטומטי כך שכל העונות בהיסטוריה של המועדון מופיעות בוויקי. נא להוסיף תוכן באופן ידני אם יש לכם מידע על העונה הזו (סגל, יריבות, תוצאות, מאמן, אירועים בולטים).
+|}
+{% elif missing_notes %}
+
+=== מה חסר ===
+''Transfermarkt לא מספק את כל המידע על עונה {{ season_display }}. הסעיפים הבאים סופקו ידנית או חסרים:''
+{% for note in missing_notes %}
+* {{ note }}
 {% endfor %}
 {% endif %}
 
 [[קטגוריה:עונות]]
-[[קטגוריה:עונת {{ season }}]]
+[[קטגוריה:עונת {{ season_display }}]]
+{% if not has_any %}
+[[קטגוריה:עונות ללא מידע]]
+{% elif missing_notes %}
+[[קטגוריה:עונות חלקיות]]
+{% endif %}

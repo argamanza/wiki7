@@ -1,14 +1,19 @@
 <includeonly>
 {| class="infobox" style="width:22em; font-size:88%; direction:rtl; text-align:right;"
 |-
-! colspan="2" style="background:#cc0000; color:white; font-size:120%; text-align:center;" | {{{name_english|}}}
-{{#if:{{{name_hebrew|}}}|
+! colspan="2" style="background:#cc0000; color:white; font-size:120%; text-align:center;" | {{{name_hebrew|{{{name_english|}}}}}}
+{{#if:{{{name_english|}}}|
 {{!}}-
-! colspan="2" style="background:#cc0000; color:white; font-size:110%; text-align:center;" {{!}} {{{name_hebrew|}}}
+! colspan="2" style="background:#cc0000; color:white; font-size:95%; text-align:center;" {{!}} {{{name_english|}}}
 }}
 |-
 ! style="width:35%;" | עמדה
 | {{{position|}}}
+{{#if:{{{other_positions|}}}|
+{{!}}-
+! עמדות נוספות
+{{!}} {{{other_positions|}}}
+}}
 |-
 ! מספר חולצה
 | {{{jersey_number|}}}
@@ -27,9 +32,24 @@
 ! אזרחות
 {{!}} {{{nationality|}}}
 }}
+{{#if:{{{height_cm|}}}|
+{{!}}-
+! גובה
+{{!}} {{{height_cm|}}} ס"מ
+}}
+{{#if:{{{preferred_foot|}}}|
+{{!}}-
+! רגל חזקה
+{{!}} {{{preferred_foot|}}}
+}}
 |-
 ! בסגל הנוכחי
 | {{#ifeq:{{{current_squad|}}}|Yes|&#x2705;|&#x274C;}}
+{{#ifeq:{{{is_captain|}}}|Yes|
+{{!}}-
+! קפטן
+{{!}} &#x2705;
+}}
 {{#ifeq:{{{homegrown|}}}|Yes|
 {{!}}-
 ! חניך המועדון
@@ -40,10 +60,57 @@
 ! פרש
 {{!}} &#x2705;
 }}
+{{#if:{{{current_market_value|}}}|
+{{!}}-
+! שווי שוק
+{{!}} {{{current_market_value|}}}
+}}
+{{#if:{{{contract_expires|}}}|
+{{!}}-
+! חוזה עד
+{{!}} {{{contract_expires|}}}
+}}
 {{#if:{{{tmk_id|}}}|
 {{!}}-
 ! קישור חיצוני
 {{!}} [https://www.transfermarkt.com/player/profil/spieler/{{{tmk_id|}}} Transfermarkt]
 }}
 |}
+<!-- Cargo storage — every player page transcludes this infobox, so calling
+     Template:Cargo/Player here populates the players Cargo table without
+     requiring the page wikitext to invoke both templates. Field-name mapping
+     normalises infobox params (position, jersey_number) to Cargo names
+     (main_position, current_jersey_number).
+
+     The #ifeq:NAMESPACENUMBER|0|...| gate skips the Cargo store when the
+     transcluding page is NOT in mainspace (NS=0). Draft pages (NS_DRAFT=3000)
+     populate the visual infobox but do NOT contribute to the Cargo SQL
+     tables — preventing un-reviewed draft data from leaking via public
+     cargo_query renders and Special:CargoQuery. After a draft is promoted
+     via MovePage, Cargo's PageMoveComplete + refreshLinks re-parse fires
+     this store automatically (now with NAMESPACENUMBER=0). See
+     docs/operational-bootstrap.md §9 for the design rationale. -->
+{{#ifeq:{{NAMESPACENUMBER}}|0|{{Cargo/Player
+| tmk_id = {{{tmk_id|}}}
+| name_english = {{{name_english|}}}
+| name_hebrew = {{{name_hebrew|}}}
+<!-- §6 ③ fix (2026-06-12 review): Cargo's `players.birth_date` is MySQL
+     `Date` (requires YYYY-MM-DD). The renderer passes the ISO form in as
+     `birth_date_iso`; the human-formatted `birth_date` is used only by the
+     visible infobox field above. -->
+| birth_date = {{{birth_date_iso|}}}
+| birth_place = {{{birth_place|}}}
+| nationality = {{{nationality|}}}
+| main_position = {{{position|}}}
+| other_positions = {{{other_positions|}}}
+| current_jersey_number = {{{jersey_number|}}}
+| current_squad = {{{current_squad|}}}
+| homegrown = {{{homegrown|}}}
+| retired = {{{retired|}}}
+| is_captain = {{{is_captain|}}}
+| height_cm = {{{height_cm|}}}
+| preferred_foot = {{{preferred_foot|}}}
+| contract_expires = {{{contract_expires|}}}
+| current_market_value = {{{current_market_value|}}}
+}}|}}
 </includeonly>

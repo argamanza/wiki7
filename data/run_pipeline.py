@@ -16,6 +16,25 @@ Usage:
     python run_pipeline.py --seasons 2021-2025 --review-mappings     # Phase 1: stop after auto-translate
     # Edit data_pipeline/output/merged/mappings.he.yaml              # Phase 2: review & fix
     python run_pipeline.py --seasons 2021-2025 --skip-scrape --skip-normalize --skip-merge  # Phase 3: apply & import
+
+Phase 3a R2 — idempotency + resume across seasons:
+
+    # An all-time run (1949 -> current). If this dies mid-season — network
+    # hiccup, ScraperAPI rate-limit, anything — restart with the SAME command.
+    # Spiders whose output already exists on disk are skipped (resume default),
+    # so the second run picks up where the first stopped without re-spending
+    # credits or hitting TM.
+    python run_pipeline.py --seasons 1949-2025
+
+    # Force a full re-scrape when TM's HTML structure has changed or you want
+    # fresh data (e.g. after a known spider fix that affects already-scraped
+    # seasons).
+    python run_pipeline.py --seasons 1949-2025 --force-rescrape
+
+    # The wiki import step is idempotent regardless of resume — every page
+    # write does a content-hash compare against the live page text and skips
+    # no-op edits. So re-running import after a partial failure is safe and
+    # cheap; the bot makes zero edits for unchanged pages.
 """
 
 import json
@@ -48,11 +67,50 @@ def parse_seasons(seasons_arg: str) -> list[str]:
     return [s.strip() for s in seasons_arg.split(",")]
 
 
-def _run_spider(spider_name: str, season: str, output_file: str) -> bool:
-    """Run a Scrapy spider and return True on success."""
+def _has_useful_data(path: Path) -> bool:
+    """A scraper output file is "useful" if it contains a non-empty JSON
+    list (i.e. at least one record). Empty / `[]` / missing files mean we
+    need to re-scrape.
+    """
+    if not path.exists():
+        return False
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        return bool(data)
+    except (json.JSONDecodeError, OSError):
+        return False
+
+
+def _run_spider(
+    spider_name: str,
+    season: str,
+    output_file: str,
+    resume: bool = True,
+    allow_empty: bool = False,
+) -> bool:
+    """Run a Scrapy spider and return True on success.
+
+    Phase 3a R2: when `resume=True` (default for multi-season runs), an
+    existing non-empty output file is treated as already-done and the
+    spider call is skipped. Pass `resume=False` (--force-rescrape) to
+    re-fetch even when output exists. The resume default makes long
+    all-time runs restartable when they die mid-season.
+
+    Phase 3a R2: when `allow_empty=True` (default for multi-season runs),
+    a spider that returns `[]` is logged as a warning but does NOT abort
+    the run — this is the sparse-historical-season case. The downstream
+    season-overview rendering handles missing data by emitting a
+    placeholder banner. Single-season runs keep allow_empty=False so a
+    TM block on the latest season still surfaces as a hard error.
+    """
     season_output_dir = SCRAPER_OUTPUT_DIR / season
     season_output_dir.mkdir(parents=True, exist_ok=True)
     output_path = season_output_dir / output_file
+
+    if resume and _has_useful_data(output_path):
+        logger.info("Resume: skipping %s for season %s (existing output)", spider_name, season)
+        return True
 
     if output_path.exists():
         output_path.unlink()
@@ -79,25 +137,44 @@ def _run_spider(spider_name: str, season: str, output_file: str) -> bool:
     if result.returncode != 0:
         logger.error("Spider '%s' failed (exit code %d)", spider_name, result.returncode)
         if result.stderr:
+            # Reviewer-pass blocker-4-followup (2026-06-13): belt-and-
+            # suspenders. Even with the handler-level redacting filter
+            # installed correctly, redact at the CAPTURE SITE too —
+            # `result.stderr` is a string we already hold, so the
+            # redaction here doesn't depend on any logging internals.
+            # If a future logging refactor accidentally bypasses the
+            # filter, the captured stderr still won't leak the key.
+            try:
+                from tmk_scraper.scraperapi_proxy import redact as _redact
+            except Exception:
+                _redact = lambda s: s  # noqa: E731 — fallback when tmk_scraper not importable
             for line in result.stderr.strip().split("\n")[-10:]:
-                logger.error("  %s", line)
+                logger.error("  %s", _redact(line))
         return False
 
     if not output_path.exists():
         logger.error("Spider '%s' produced no output at %s", spider_name, output_path)
         return False
 
-    # Check output file has actual data
-    # squad, player, and stats are critical — empty means Transfermarkt is blocking us.
+    # Check output file has actual data.
+    # squad, player, and stats are critical for the latest season — empty
+    # typically means Transfermarkt is blocking us. For historical sparse
+    # seasons (multi-season runs over the all-time corpus), empty is the
+    # legitimate "TM doesn't carry this era" case — `allow_empty=True`
+    # downgrades the error to a warning so the run continues.
     # fixtures and match may legitimately return [] (future/incomplete seasons).
     CRITICAL_SPIDERS = {"squad", "player", "stats"}
     with open(output_path, "r") as f:
         data = json.load(f)
     if not data:
-        if spider_name in CRITICAL_SPIDERS:
+        if spider_name in CRITICAL_SPIDERS and not allow_empty:
             logger.error("Spider '%s' returned empty results for season %s", spider_name, season)
             return False
-        logger.warning("Spider '%s' returned empty results for season %s (non-critical, continuing)", spider_name, season)
+        logger.warning(
+            "Spider '%s' returned empty results for season %s (continuing — %s)",
+            spider_name, season,
+            "sparse historical season" if allow_empty else "non-critical",
+        )
 
     logger.info("Spider '%s' completed -> %s", spider_name, output_path)
     return True
@@ -119,18 +196,36 @@ CLUB_SPIDERS = [
     ("honours", "honours.json"),
     ("stadium", "stadium.json"),
     ("records", "records.json"),
+    # Phase 3a R2 additions: aggregate club-level data that doesn't change per
+    # season. Both spiders ignore the season arg and emit one rows-set per
+    # request, covering all seasons TM has data for.
+    ("platzierungen", "season_standings.json"),
+    ("bilanz", "head_to_head.json"),
 ]
 
 
-def run_scrape(season: str, only: set[str] | None = None) -> bool:
+def run_scrape(
+    season: str,
+    only: set[str] | None = None,
+    resume: bool = True,
+    allow_empty: bool = False,
+) -> bool:
     """Run per-season spiders in the correct order for a single season.
 
     If *only* is given, run just those spiders (order is preserved).
+    When *resume* is True, existing non-empty output files cause the
+    matching spider to be skipped (the default for multi-season runs).
+    When *allow_empty* is True, empty results from critical spiders are
+    logged as warnings instead of aborting the season — required for
+    multi-season runs over sparse historical eras.
     """
     spiders = [(n, f) for n, f in ALL_SPIDERS if only is None or n in only]
 
     for spider_name, output_file in spiders:
-        if not _run_spider(spider_name, season, output_file):
+        if not _run_spider(
+            spider_name, season, output_file,
+            resume=resume, allow_empty=allow_empty,
+        ):
             logger.error("Pipeline aborted: spider '%s' failed for season %s", spider_name, season)
             return False
 
@@ -138,10 +233,11 @@ def run_scrape(season: str, only: set[str] | None = None) -> bool:
     return True
 
 
-def run_club_scrape(only: set[str] | None = None) -> bool:
+def run_club_scrape(only: set[str] | None = None, resume: bool = True) -> bool:
     """Run club-level spiders (not per-season).
 
     These are run once and output to the base scraper output directory.
+    Resume default applies the same skip-when-output-exists rule.
     """
     spiders = [(n, f) for n, f in CLUB_SPIDERS if only is None or n in only]
 
@@ -150,6 +246,9 @@ def run_club_scrape(only: set[str] | None = None) -> bool:
 
     for spider_name, output_file in spiders:
         output_path = SCRAPER_OUTPUT_DIR / output_file
+        if resume and _has_useful_data(output_path):
+            logger.info("Resume: skipping club spider '%s' (existing output)", spider_name)
+            continue
         if output_path.exists():
             output_path.unlink()
             logger.info("Removed stale output: %s", output_path)
@@ -174,8 +273,14 @@ def run_club_scrape(only: set[str] | None = None) -> bool:
         if result.returncode != 0:
             logger.error("Club spider '%s' failed (exit code %d)", spider_name, result.returncode)
             if result.stderr:
+                # Belt-and-suspenders redaction at the capture site —
+                # see _run_spider above for the rationale.
+                try:
+                    from tmk_scraper.scraperapi_proxy import redact as _redact
+                except Exception:
+                    _redact = lambda s: s  # noqa: E731
                 for line in result.stderr.strip().split("\n")[-10:]:
-                    logger.error("  %s", line)
+                    logger.error("  %s", _redact(line))
             return False
 
         logger.info("Club spider '%s' completed -> %s", spider_name, output_path)
@@ -184,7 +289,13 @@ def run_club_scrape(only: set[str] | None = None) -> bool:
 
 
 def run_normalize(season: str) -> bool:
-    """Run the normalization pipeline for a single season."""
+    """Run the normalization pipeline for a single season.
+
+    Phase 3a R2: sparse seasons (where scrape produced no players.json
+    because the squad spider returned empty) get a warning + skip. The
+    downstream season-overview rendering handles the missing-data case
+    via its placeholder banner.
+    """
     logger.info("Running normalization pipeline for season %s...", season)
     try:
         from data_pipeline.normalize_enrich_players import main as normalize_main
@@ -192,16 +303,29 @@ def run_normalize(season: str) -> bool:
         scraper_season_dir = SCRAPER_OUTPUT_DIR / season
         pipeline_season_dir = PIPELINE_OUTPUT_DIR / season
 
+        # Phase 3a R2: sparse-season guard. If players.json doesn't exist or
+        # is empty (squad spider returned []), there's nothing to normalize —
+        # skip cleanly. import_season_overview will render a placeholder.
+        players_path = scraper_season_dir / "players.json"
+        if not _has_useful_data(players_path):
+            logger.info(
+                "Skipping normalize for season %s: no player data on disk "
+                "(sparse historical season — placeholder will render downstream).",
+                season,
+            )
+            pipeline_season_dir.mkdir(parents=True, exist_ok=True)
+            return True
+
         normalize_main(
-            raw_path=scraper_season_dir / "players.json",
+            raw_path=players_path,
             stats_path=scraper_season_dir / "stats.json",
             out_dir=pipeline_season_dir,
         )
         logger.info("Normalization completed for season %s", season)
         return True
     except FileNotFoundError as exc:
-        logger.error("Normalization failed for season %s: %s", season, exc)
-        return False
+        logger.warning("Normalization skipped for season %s (missing input): %s", season, exc)
+        return True
     except (KeyError, ValueError, TypeError) as exc:
         logger.error("Normalization failed with data error for season %s: %s", season, exc)
         return False
@@ -234,11 +358,37 @@ def run_hebrew_enrichment(data_dir: Path, seasons: list[str] | None = None, revi
     try:
         from data_pipeline.generate_mapping_stub import generate_stub
         from data_pipeline.auto_translate_hebrew import auto_translate
-        from data_pipeline.apply_hebrew_mapping import apply_mappings, apply_hebrew_matches, load_mapping
+        from data_pipeline.apply_hebrew_mapping import (
+            apply_mappings,
+            apply_hebrew_fixtures,
+            apply_hebrew_matches,
+            load_mapping,
+            seed_merged_mapping_from_iter_cycles,
+        )
 
         players_path = data_dir / "players.jsonl"
         transfers_path = data_dir / "transfers.jsonl"
         mapping_path = data_dir / "mappings.he.yaml"
+
+        # Reviewer-pass blocker (2026-06-13): when this run is operating
+        # on the merged (all-time) dir, seed the merged mapping from any
+        # per-season iter-cycle mappings BEFORE generate_stub runs. The
+        # reviewer corrections (src: manual) from current cycles live in
+        # `output/<year>/mappings.he.yaml` but the all-time run reads
+        # `output/merged/mappings.he.yaml` — a different file — so the
+        # corrections were silently dropped on the prod push. Seeding
+        # propagates them forward.
+        if data_dir == PIPELINE_OUTPUT_DIR / "merged":
+            iter_cycle_dirs = [
+                d for d in PIPELINE_OUTPUT_DIR.iterdir()
+                if d.is_dir() and d.name.isdigit()
+            ]
+            if iter_cycle_dirs:
+                logger.info(
+                    "Seeding merged mapping from %d iter-cycle dir(s)...",
+                    len(iter_cycle_dirs),
+                )
+                seed_merged_mapping_from_iter_cycles(iter_cycle_dirs, mapping_path)
 
         logger.info("Generating mapping stub...")
         generate_stub(players_path, transfers_path, mapping_path, SCRAPER_OUTPUT_DIR)
@@ -269,6 +419,15 @@ def run_hebrew_enrichment(data_dir: Path, seasons: list[str] | None = None, revi
                 if matches_in.exists():
                     logger.info("Applying Hebrew mappings to matches for season %s...", season)
                     apply_hebrew_matches(matches_in, matches_out, mapping, players_he)
+                # §6 high #9 fix (2026-06-12 review): fixtures must also be
+                # translated so competition_season.j2's per-row match links
+                # resolve to the Hebrew-titled match pages. Pre-fix the
+                # English fixtures + Hebrew match titles never matched.
+                fixtures_in = SCRAPER_OUTPUT_DIR / season / "fixtures.json"
+                fixtures_out = SCRAPER_OUTPUT_DIR / season / "fixtures.he.json"
+                if fixtures_in.exists():
+                    logger.info("Applying Hebrew mappings to fixtures for season %s...", season)
+                    apply_hebrew_fixtures(fixtures_in, fixtures_out, mapping)
 
         logger.info("Hebrew enrichment completed")
         return True
@@ -324,10 +483,21 @@ def run_import(
         import_coaches_page, import_honours_page, import_stadium_page,
         import_records_page, import_season_overview, import_leaderboards,
         import_attendance, import_competition_pages,
+        import_derbies_page, import_european_campaign_page,
     )
 
     # Determine data directory (merged or single-season)
     resolved_data_dir = data_dir or PIPELINE_OUTPUT_DIR
+
+    # Pattern A (iter-cycle 1 v1+ architecture): load the TM-ID page-index
+    # state file before any imports. Pass it through to import_players so
+    # title drift triggers auto-MovePage instead of duplicate creation.
+    # State lives under repo/data/pipeline-state/page_index.yaml (per-env;
+    # git-ignored). Cleared/recreated on every full docker reset.
+    from data_pipeline.pipeline_state import PageIndexState
+    state = None if dry_run else PageIndexState().load()
+    if state is not None:
+        logger.info("Loaded page-index state: %d known TM IDs", len(state))
 
     results = {}
     all_ok = True
@@ -373,6 +543,7 @@ def run_import(
             market_values_path=mv_path,
             stats_path=resolved_data_dir / "stats.jsonl",
             dry_run=dry_run,
+            state=state,
         )
     except FileNotFoundError as exc:
         logger.error("Player import failed: %s", exc)
@@ -482,6 +653,24 @@ def run_import(
         logger.error("Competition pages import failed: %s", exc)
         all_ok = False
 
+    # Phase 3a R2 new page types: Derbies (driven by bilanz spider) +
+    # European campaign history (derived from fixtures across seasons).
+    try:
+        logger.info("Importing derbies page...")
+        results["derbies"] = import_derbies_page(site=site, dry_run=dry_run)
+    except FileNotFoundError as exc:
+        logger.error("Derbies page import failed: %s", exc)
+        all_ok = False
+
+    try:
+        logger.info("Importing European campaign page...")
+        results["european_campaign"] = import_european_campaign_page(
+            site=site, seasons=seasons, dry_run=dry_run,
+        )
+    except FileNotFoundError as exc:
+        logger.error("European campaign page import failed: %s", exc)
+        all_ok = False
+
     # Print summary
     logger.info("=" * 60)
     logger.info("IMPORT SUMMARY%s", " (DRY RUN)" if dry_run else "")
@@ -504,6 +693,20 @@ def run_import(
         total_created, total_updated, total_skipped, total_failed,
     )
 
+    # Pattern A: persist the page-index state file so the next run sees
+    # which titles every TM ID currently lives at.
+    if state is not None:
+        state.save()
+        players_summary = results.get("players") or {}
+        moved_count = players_summary.get("moved", 0)
+        if moved_count:
+            logger.info(
+                "Page index: %d entries; auto-MovePaged %d pages this run",
+                len(state), moved_count,
+            )
+        else:
+            logger.info("Page index: %d entries", len(state))
+
     return all_ok and total_failed == 0
 
 
@@ -519,8 +722,21 @@ def run_import(
 @click.option("--skip-hebrew", is_flag=True, help="Skip the Hebrew enrichment step")
 @click.option("--review-mappings", is_flag=True, help="Stop after generating Hebrew mappings for manual review")
 @click.option("--wiki-url", envvar="WIKI_URL", default=None, help="MediaWiki site URL (or set WIKI_URL env var)")
+@click.option(
+    "--force-rescrape", is_flag=True,
+    help="Phase 3a R2: re-fetch every spider output even when a non-empty file "
+         "already exists. Default (resume) skips spiders whose output is already "
+         "on disk — makes long all-time runs restartable after a partial failure.",
+)
+@click.option(
+    "--check-changes", is_flag=True,
+    help="Iter-cycle 1 (A.4): probe TM's squad page first and skip the full "
+         "scrape if its hash matches the last-saved hash for this season. "
+         "Designed for daily-cron periodic re-scrapes — saves ~99% of the "
+         "cost on no-op days while keeping <24h freshness on change days.",
+)
 @click.option("--verbose", "-v", is_flag=True, help="Enable debug logging")
-def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_merge, skip_import, skip_hebrew, review_mappings, wiki_url, verbose):
+def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_merge, skip_import, skip_hebrew, review_mappings, wiki_url, force_rescrape, check_changes, verbose):
     """Wiki7 data pipeline: scrape -> normalize -> merge -> Hebrew enrich -> import."""
     log_level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
@@ -528,13 +744,32 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
         format="%(asctime)s %(name)-20s %(levelname)-8s %(message)s",
         datefmt="%H:%M:%S",
     )
+    # Reviewer-pass blocker-4-followup (2026-06-13): attach the redacting
+    # filter to root's HANDLERS, not the root logger itself. Python's
+    # logging semantics: a filter on a logger only sees records emitted
+    # DIRECTLY on that logger; records propagated up from child loggers
+    # (scrapy.* + this module's own getLogger(__name__) when relaying
+    # captured stderr) bypass parent filters and hit parent handlers
+    # directly. The filter has to live on the HANDLERS to catch them.
+    # `basicConfig` above just installed the StreamHandler, so this is
+    # the right moment.
+    try:
+        sys.path.insert(0, str(SCRAPER_DIR))
+        from tmk_scraper.scraperapi_proxy import attach_redacting_filter_to_handlers
+        attach_redacting_filter_to_handlers()
+    except Exception:
+        # Filter is defense-in-depth — don't crash the pipeline if the
+        # tmk-scraper package isn't importable from this entry point.
+        pass
 
-    # Determine season list
+    # Determine season list (resolving --season=latest against TM if needed)
+    from data_pipeline.season_detector import resolve_season_arg
+
     if seasons:
         season_list = parse_seasons(seasons)
         multi_season = True
     else:
-        season_list = [season]
+        season_list = [resolve_season_arg(season)]
         multi_season = False
 
     # Parse --spiders filter
@@ -554,14 +789,93 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
     )
     errors = []
 
-    # Step 1: Scrape (per season + club-level)
+    # Pattern A.4 (iter-cycle 1): if --check-changes is set, probe TM's
+    # squad page first. If nothing changed since the last run, skip the
+    # full scrape (saves ScraperAPI + Anthropic credits).
+    #
+    # §6 ⑥ fix (2026-06-12 review): the cache invariant changed.
+    # Pre-fix the cache was `.save()`d immediately after the probe, BEFORE
+    # the scrape ran — so a failed scrape permanently recorded "unchanged"
+    # for the new hash, and the next invocation would skip the scrape
+    # entirely (forever). Additionally, when "changed" was detected, the
+    # season's output dir was not cleared, so the merge step saw a mix of
+    # stale and fresh records.
+    #
+    # The new invariants:
+    #   - cache is loaded + updated in-memory during the probe, but ONLY
+    #     saved at the end of the pipeline run AND only if no scrape step
+    #     produced errors;
+    #   - any season whose probe detected "changed" has its output dir
+    #     purged before scraping, so the next merge sees only fresh data.
+    scrape_cache_module = None
+    changed_seasons: list[str] = []
+    if check_changes and not skip_scrape:
+        from data_pipeline.scrape_cache import ScrapeHashCache, squad_page_unchanged
+
+        scrape_cache_module = ScrapeHashCache().load()
+        per_season_unchanged = [
+            (s, squad_page_unchanged(s, cache=scrape_cache_module))
+            for s in season_list
+        ]
+        changed_seasons = [s for s, u in per_season_unchanged if not u]
+        all_unchanged = not changed_seasons
+        # DO NOT save the cache here. Defer to the end of the run, after
+        # scrape + import have actually succeeded. Otherwise a failed scrape
+        # permanently records "unchanged" → next run skips → wedged.
+        if all_unchanged:
+            logger.info(
+                "--check-changes: all %d season(s) unchanged since last probe. "
+                "Skipping scrape step (--skip-scrape implicitly enabled).",
+                len(season_list),
+            )
+            skip_scrape = True
+        else:
+            # §6 ⑥ fix: a "changed" season must have its output dir purged
+            # before re-scraping. Without this, the next merge sees a mix
+            # of stale records (left from a previous run) and fresh records
+            # (from the current run), even though the operator intended a
+            # full refresh of those seasons. Other seasons (that came back
+            # "unchanged") are left intact — their cached output stays.
+            logger.info(
+                "--check-changes: %d season(s) changed since last probe (%s). "
+                "Purging their output dirs before re-scraping.",
+                len(changed_seasons), ", ".join(changed_seasons),
+            )
+            # Reviewer-pass blocker fix (2026-06-13): purge BOTH the raw
+            # scraper output dir AND the normalized pipeline output dir.
+            # The raw dir is the one the resume-skip at line 107-113
+            # actually checks — without purging it, the spiders all skip
+            # as "existing output", normalization re-runs on stale raw
+            # data, nothing errors, and the new hash gets saved at the
+            # end of the run: the §6 ⑥ wedge is back AND now masked.
+            # The previous version only purged PIPELINE_OUTPUT_DIR which
+            # the resume logic never consults.
+            import shutil
+            for s in changed_seasons:
+                for base in (SCRAPER_OUTPUT_DIR, PIPELINE_OUTPUT_DIR):
+                    season_out = base / s
+                    if season_out.exists():
+                        shutil.rmtree(season_out)
+                        logger.info("  purged %s", season_out)
+
+    # Step 1: Scrape (per season + club-level). Resume by default; opt out
+    # with --force-rescrape for an explicit full re-fetch. allow_empty is
+    # automatically enabled for multi-season runs so sparse historical
+    # seasons (where TM legitimately has no squad/stats data) don't abort
+    # the whole pipeline — they fall through to placeholder season-overview
+    # pages downstream.
+    resume = not force_rescrape
+    allow_empty = multi_season
     if not skip_scrape:
         logger.info("=" * 60)
-        logger.info("STEP 1: SCRAPING (%d seasons)", len(season_list))
+        logger.info(
+            "STEP 1: SCRAPING (%d seasons, %s, empty-tolerant=%s)",
+            len(season_list), "resume" if resume else "full re-fetch", allow_empty,
+        )
         logger.info("=" * 60)
         for s in season_list:
             logger.info("--- Scraping season %s ---", s)
-            if not run_scrape(s, only=spider_filter):
+            if not run_scrape(s, only=spider_filter, resume=resume, allow_empty=allow_empty):
                 errors.append(f"Scraping failed for season {s}")
                 logger.error("Scraping failed for season %s. Continuing with next...", s)
 
@@ -572,9 +886,23 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
             club_filter = club_filter & club_names
         if club_filter is None or club_filter:
             logger.info("--- Scraping club-level data ---")
-            if not run_club_scrape(only=club_filter):
+            if not run_club_scrape(only=club_filter, resume=resume):
                 errors.append("Club-level scraping failed")
                 logger.error("Club-level scraping failed")
+
+        # Phase 3a R2: derive coach trophies-won + tenure-seasons by joining
+        # honours.json x season_standings.json (platzierungen) + layering current
+        # staff (coaches.json) on top. Writes coaches_enriched.json next to the
+        # source files. Skipped when none of the inputs exist (e.g. dev runs
+        # using --spiders that didn't fetch the prerequisites).
+        try:
+            from data_pipeline.derive_coach_trophies import write_enriched
+            if any((SCRAPER_OUTPUT_DIR / fname).exists()
+                   for fname in ("honours.json", "season_standings.json", "coaches.json")):
+                logger.info("--- Deriving coach trophies + tenure-seasons ---")
+                write_enriched(SCRAPER_OUTPUT_DIR)
+        except Exception as exc:  # noqa: BLE001 — non-fatal post-process step
+            logger.warning("Coach trophy derivation failed: %s (continuing)", exc)
     else:
         logger.info("Skipping scrape step (--skip-scrape)")
 
@@ -635,6 +963,24 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
             errors.append("Wiki import had failures")
     else:
         logger.info("Skipping import step (--skip-import)")
+
+    # §6 ⑥ fix (2026-06-12 review): persist the scrape-cache hashes ONLY
+    # after the pipeline succeeded end-to-end. A failure anywhere upstream
+    # (scrape / merge / Hebrew enrichment / import) means we should re-run
+    # next time, so the cache must stay at its previous value — that's
+    # what produces the right "still needs scraping" answer on the next
+    # probe. The cache state was updated in-memory by squad_page_unchanged
+    # earlier; we just commit it (or not) here.
+    if scrape_cache_module is not None:
+        if errors:
+            logger.warning(
+                "scrape-cache: NOT saving updated hashes — pipeline had %d error(s). "
+                "Next run will re-probe and (likely) re-scrape these seasons.",
+                len(errors),
+            )
+        else:
+            scrape_cache_module.save()
+            logger.info("scrape-cache: saved updated hashes after successful run.")
 
     # Final summary
     elapsed = time.time() - start_time

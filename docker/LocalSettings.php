@@ -178,17 +178,97 @@ $wgGroupPermissions['reviewer']['edit']              = true;
 $wgGroupPermissions['reviewer']['move']              = true;
 $wgGroupPermissions['reviewer']['approverevisions']  = true;
 $wgGroupPermissions['reviewer']['unapprovedpages']   = true;
+
+// Bot group's `noratelimit` (iter-cycle audit 2026-06-10): MW 1.45's `bot`-group
+// default does NOT include `noratelimit` — only `apihighlimits` + the `bot` flag
+// + autoconfirmed-ish. Empirically the data-pipeline hit `ratelimited` on burst
+// writes (~1 page dropped per ~117 imports) despite Wiki7Bot being in the bot
+// group. Granting this explicitly eliminates that failure mode; the import
+// code's tenacity retry policy is the belt, this is the suspenders. Applies
+// universally (local docker + prod) since Wiki7Bot is a bot regardless of env.
+$wgGroupPermissions['bot']['noratelimit']            = true;
+
+// === Bot 'move' grant — §6 ⑤ fix (2026-06-12 review) ===========================
+// Pattern A's auto-MovePage (Draft:X → Draft:Y on title drift, see
+// data/wiki_import/page_router.py) is the bot's flagship correctness
+// mechanism — without it, a reviewer-corrected mapping override produces a
+// silent duplicate-draft rather than a clean rename. The blocking factor was
+// the per-namespace Lockdown line below (NS_DRAFT['move'] = ['reviewer']),
+// not the global group permission — Wiki7Bot is in the `user` group too, and
+// MediaWiki grants `move` globally to `user`. The line below is therefore a
+// no-op (verified during the reviewer-pass on 2026-06-13) but documents the
+// intent and acts as belt-and-suspenders against a future LocalSettings edit
+// that strips the user-level grant.
+//
+// Reviewer-pass orange #10 corrections (2026-06-13):
+//  - The previous comment claimed "bot doesn't carry the `move` right by
+//    default" — wrong; the inherited `user` group grant covers it. The real
+//    fix is the Lockdown line.
+//  - The previous comment claimed "the bot only ever operates in NS_DRAFT
+//    for moves (per the router's never-cross-namespaces invariant)". The
+//    router invariant is genuine, but `$wgGroupPermissions['bot']['move']`
+//    itself is NOT namespace-scoped, so a future bug could move outside
+//    NS_DRAFT. Queued for Phase 3b: a `getUserPermissionsErrors` hook that
+//    denies Wiki7Bot moves outside NS_DRAFT at the MW layer.
+//  - The §6 ④ safety rationale on resetContent.php previously implied
+//    ApprovedRevs holds renames + the gate notifies on moves. NEITHER is
+//    true. ApprovedRevs gates revision approvals, not page moves — renames
+//    are publicly visible immediately. And Wiki7ReviewGate only registers
+//    PageSaveComplete (not PageMoveComplete), so reviewer-side notifications
+//    don't fire for moves. Open decision pre-Pattern-B: should
+//    PageMoveComplete also trigger a notification? Tzahi to decide; either
+//    answer is consistent.
+$wgGroupPermissions['bot']['move']                   = true;
+
+// === Cargo anon-read revocation (iter-cycle 1, 2026-06-11) =========================
+// Cargo's extension.json grants `runcargoqueries` to `*` (anon) by default,
+// which means anonymous users can reach Special:CargoQuery + Special:CargoTables
+// + Special:CargoDrilldown and run arbitrary queries against every Cargo SQL
+// table. Combined with the namespace gate in the #cargo_store wrappers
+// (drafts skip store), this is defense-in-depth: even if a future template
+// edit loses its namespace gate by accident, anon can't reach the ad-hoc query
+// surface to exploit the leak. The grant is restored to `reviewer` and `sysop`
+// so the operator can still drilldown / query during review walks.
+//
+// Note: this revocation does NOT affect #cargo_query parser functions embedded
+// in MAINSPACE pages (leaderboards etc.) — those render server-side and the
+// permission check applies only to the special-page UI. So public-facing
+// leaderboards continue to work for anon viewers; only the ad-hoc query UI
+// is locked down.
+$wgGroupPermissions['*']['runcargoqueries']          = false;
+$wgGroupPermissions['reviewer']['runcargoqueries']   = true;
+$wgGroupPermissions['sysop']['runcargoqueries']      = true;
+
+// === External links open in a new tab ============================================
+// Iter-cycle 1 review walk (2026-06-12): reviewer flagged the Transfermarkt link
+// on player infoboxes as needing target="_blank" so readers don't get pulled out
+// of the wiki. Site-wide setting affects every external link emitted via the
+// [https://... Display Text] wiki syntax. Internal wiki links (NS links, draft
+// links) are unaffected. `noreferrer noopener` is auto-added by MW on these links.
+$wgExternalLinkTarget = '_blank';
 # sysop can grant/revoke 'reviewer'; reviewers can self-remove.
 $wgAddGroups['sysop'][]       = 'reviewer';
 $wgRemoveGroups['sysop'][]    = 'reviewer';
 $wgRemoveGroups['reviewer'][] = 'reviewer';
 
 wfLoadExtension( 'Lockdown' );
-$wgNamespacePermissionLockdown[NS_DRAFT]['read']      = ['reviewer'];
+# Phase 3a R2 update: bot needs READ on NS_DRAFT so the pipeline's content-hash
+# idempotency check (page.text() compare before page.save()) works on re-runs.
+# Without read, the bot can only blindly write, and every re-run produces a new
+# revision instead of recognising the page is unchanged. Public still can't
+# read drafts — the bot is a specific named account, not anon.
+$wgNamespacePermissionLockdown[NS_DRAFT]['read']      = ['reviewer', 'bot'];
 $wgNamespacePermissionLockdown[NS_DRAFT]['edit']      = ['reviewer', 'bot'];
 $wgNamespacePermissionLockdown[NS_DRAFT]['create']    = ['reviewer', 'bot'];
-$wgNamespacePermissionLockdown[NS_DRAFT]['move']      = ['reviewer'];
-$wgNamespacePermissionLockdown[NS_DRAFT_TALK]['read'] = ['reviewer'];
+# §6 ⑤ fix (2026-06-12 review): add 'bot' to the NS_DRAFT move allowlist
+# so Pattern A's auto-MovePage (Draft:X → Draft:Y on title drift) can
+# actually fire from Wiki7Bot. Lockdown REPLACES the base group permissions
+# for the listed action+namespace, so `$wgGroupPermissions['bot']['move']`
+# above isn't sufficient — Lockdown's explicit list must include 'bot' too.
+# Smoke-verified end-to-end 2026-06-12: bot creates Draft:Source, moves to
+# Draft:Target with no_redirect=True, source page is gone, target exists.
+$wgNamespacePermissionLockdown[NS_DRAFT]['move']      = ['reviewer', 'bot'];
+$wgNamespacePermissionLockdown[NS_DRAFT_TALK]['read'] = ['reviewer', 'bot'];
 $wgNamespacePermissionLockdown[NS_DRAFT_TALK]['edit'] = ['reviewer', 'bot'];
 
 wfLoadExtension( 'ApprovedRevs' );
@@ -528,11 +608,11 @@ if ( getenv('WIKI_ENV') === 'production' ) {
     // Pre-PR #38 every viewer looked like a CloudFront edge IP, so per-IP rate limits were
     // nonsense (everyone shared one IP at the MW layer). After #38 + 2.5d the per-IP buckets
     // actually apply per real client. MW 1.45 defaults: edit=8/60s (ip/newbie), 90/60s (user);
-    // move/linkpurge/purge similar. For the Phase 3 data-pipeline bot, the standard pattern
-    // is to add the bot account to the `bot` user-group, which carries the `noratelimit`
-    // user right and bypasses these checks entirely (`data/BOT_SETUP.md`). No site-wide
-    // override needed; if a future ad-hoc burst trips the user-bucket limit (90 edits/min),
-    // raise the offending group here with a comment naming the bucket + reason.
+    // move/linkpurge/purge similar.
+    //
+    // For the data-pipeline bot, see the universal `$wgGroupPermissions['bot']['noratelimit']`
+    // grant above the production block — applies in both local + prod since Wiki7Bot is a bot
+    // regardless of environment.
 
     // Real client IP recovery behind CloudFront. CloudFront's origin request policy
     // (ALL_VIEWER_AND_CLOUDFRONT_2022, set in cloudfront-stack.ts) adds the

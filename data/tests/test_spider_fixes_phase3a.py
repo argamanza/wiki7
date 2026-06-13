@@ -18,7 +18,9 @@ from pathlib import Path
 from scrapy.http import HtmlResponse, Request
 
 from tmk_scraper.spiders.coach_spider import CoachSpider
-from tmk_scraper.spiders.match_spider import MatchSpider
+from tmk_scraper.spiders.match_spider import MatchSpider, _parse_player_link
+from tmk_scraper.spiders.records_spider import RecordsSpider
+from tmk_scraper.spiders.squad_spider import SquadSpider
 from tmk_scraper.spiders.transfers_spider import TransfersSpider
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -58,16 +60,339 @@ class TestMatchSpiderPhase3a:
         assert sample["number"]
         assert isinstance(sample["captain"], bool)
 
-    def test_resolve_team_key_is_home_first(self):
-        """TM renders home-team box first. The pre-fix code looked up nonexistent
-        match.home_team / match.away_team fields and silently fell through to a similar
-        first-box-is-home fallback — this test pins the surviving behavior.
+    def test_lineup_emits_full_name_from_slug_not_just_surname(self):
+        """Iteration-cycle phase: TM's formation diagram renders surnames only
+        (`Eliasi`) but encodes the full English name in the `<a href>` URL
+        slug (`/niv-eliasi/profil/spieler/912586`). The spider must surface
+        the slug-derived full name as `name_english`; the surname survives
+        as `name_short` for compact rendering. Without this, the names
+        corpus ends up with both `Eliasi` and `Niv Eliasi` as separate
+        translation keys, and the lineup section of every match report
+        shows surname-only player references."""
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        graphic = self.spider.extract_from_graphic_field(response)
+        for side in ("home", "away"):
+            for p in graphic[side]:
+                # Full name has at least one space (multi-token) for every
+                # real player. Single-name footballers (e.g. Pelé) would
+                # break this assertion, but none have appeared on HBS or
+                # any 2024/25 opponent rosters.
+                assert " " in p["name_english"], (
+                    f"Expected full name on {side} lineup but got {p['name_english']!r}"
+                )
+                assert p["tm_player_id"] is not None
+                assert p["tm_player_id"].isdigit()
+                # Surname is preserved separately.
+                assert p["name_short"] is not None
+
+    def test_event_extractors_carry_tm_player_id(self):
+        """Goals, substitutions, cards (and penalties when present) all carry
+        a TM player ID so the pipeline can dedupe across name forms and
+        the match report renderer can decide link-or-plain via {{#ifexist:}}."""
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        goals = self.spider.extract_goals(response)
+        assert goals, "fixture should have goals"
+        for g in goals:
+            assert g["scorer"]
+            assert g["scorer_tm_id"] and g["scorer_tm_id"].isdigit()
+            if g["assist"]:
+                assert g["assist_tm_id"] and g["assist_tm_id"].isdigit()
+
+        subs = self.spider.extract_substitutions(response)
+        assert subs, "fixture should have substitutions"
+        for s in subs:
+            if s["player_in"]:
+                assert s["player_in_tm_id"] and s["player_in_tm_id"].isdigit()
+            if s["player_out"]:
+                assert s["player_out_tm_id"] and s["player_out_tm_id"].isdigit()
+
+        cards = self.spider.extract_cards(response)
+        for c in cards:
+            if c["player"]:
+                assert c["player_tm_id"] and c["player_tm_id"].isdigit()
+
+    def test_first_box_is_home_via_extraction(self):
+        """TM renders home-team box first. Was previously tested via
+        `resolve_team_key()` which used shared `response.meta`; that method
+        was removed in the §6 ③ fix (2026-06-12 review) because the shared
+        state caused the home-lineup-dropped regression on pre-formation
+        match reports. The first-box-is-home invariant is now tested by
+        running the full extractor on a real fixture and asserting the
+        home key comes back populated.
+
+        See `TestMatchSpiderHomeLineupRegression` (below) for the 1985
+        regression case that the removal addresses."""
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        result = self.spider.extract_from_graphic_field(response)
+        # Modern fixture has the graphic layout; both home + away populated.
+        assert "home" in result and "away" in result
+        assert len(result["home"]) > 0
+        assert len(result["away"]) > 0
+
+
+class TestParsePlayerLink:
+    """Helper used everywhere the spider crosses an <a href> on a TM player.
+    Tested in isolation so the spider extractors only need to verify the
+    end-to-end glue."""
+
+    def test_lineup_link_yields_full_name_and_id(self):
+        assert _parse_player_link("/niv-eliasi/profil/spieler/912586") \
+            == ("Niv Eliasi", "912586")
+
+    def test_event_link_with_long_path_yields_full_name_and_id(self):
+        # Goals/cards use `/leistungsdatendetails/spieler/<id>/saison/...`
+        href = "/ohad-almagor/leistungsdatendetails/spieler/933143/saison/2024/wettbewerb/ISR1"
+        assert _parse_player_link(href) == ("Ohad Almagor", "933143")
+
+    def test_accented_slug_strips_diacritics(self):
+        # TM slug-normalises non-ASCII; downstream Wikidata search is
+        # accent-insensitive so this is fine for translation lookup.
+        assert _parse_player_link("/helder-lopes/profil/spieler/171068") \
+            == ("Helder Lopes", "171068")
+
+    def test_multi_segment_name_slug(self):
+        # Real-world: hyphenated first or last names (e.g. Jean-Luc-Picard).
+        # We split on every hyphen — the result is a space-separated string.
+        assert _parse_player_link("/jean-luc-picard/profil/spieler/1234") \
+            == ("Jean Luc Picard", "1234")
+
+    def test_missing_href_yields_none_pair(self):
+        assert _parse_player_link(None) == (None, None)
+        assert _parse_player_link("") == (None, None)
+
+    def test_unexpected_first_segment_yields_none(self):
+        # Defensive: if TM ever changes URL layout we'd rather emit None
+        # than garbage. Confirm the guard against likely-bad first-segments.
+        assert _parse_player_link("/spieler/12345") == (None, None)
+        assert _parse_player_link("/verein/2976") == (None, None)
+
+
+class TestMatchSpiderR2Additions:
+    """Phase 3a R2: halftime score, stadium, main referee, AET inference,
+    referee-team placeholder fields.
+    """
+
+    def setup_method(self):
+        self.spider = MatchSpider(season="2024")
+
+    def test_extract_halftime_score(self):
+        """Legacy: covered fully by the regulation-vs-AET tests below. Kept
+        as a smoke that the parse helpers compose into a real score for the
+        2024 fixture."""
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        text = self.spider.extract_halbzeit_text(response)
+        assert self.spider.parse_halftime_from_halbzeit(text) == "0:1"
+
+    def test_extract_stadium(self):
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        # 2024/25 fixture is at Turner Stadium.
+        assert self.spider.extract_stadium(response) == "Toto Jacob Turner Stadium"
+
+    def test_extract_referee_modern_match(self):
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        assert self.spider.extract_referee(response) == "Yoav Mizrahi"
+
+    def test_extract_referee_1985_match(self):
+        """Verify the same selector works against TM's 1985/86-era HTML. The
+        Sep 14 1985 fixture was refereed by Zvi Sharir (verified during PR A
+        probing).
+        """
+        response = _fake_response(FIXTURES_DIR / "match_report_1985_sample.html")
+        assert self.spider.extract_referee(response) == "Zvi Sharir"
+
+    def test_aet_false_when_no_penalties_no_late_goal(self):
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        response.request.meta["match_data"] = {"competition": "Ligat ha'Al"}
+        record = next(iter(self.spider.parse_match_report(response)))
+        # 3:1 in regulation with no late winner past minute 90.
+        assert record["aet"] is False
+
+    def test_extract_halftime_score_regulation_match(self):
+        """Regulation match has the halftime score in parens — e.g. (0:1)
+        for the HBS 3:1 H. Jerusalem fixture (Sep 2024 IPL game)."""
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        text = self.spider.extract_halbzeit_text(response)
+        assert text == "(0:1)"
+        assert self.spider.parse_halftime_from_halbzeit(text) == "0:1"
+        assert self.spider.is_aet_marker(text) is False
+
+    def test_extract_halftime_score_aet_match(self):
+        """Knockout match that went to extra time: TM replaces the
+        halftime-score slot with the literal "AET" marker. We must NOT
+        treat that string as the halftime score.
+
+        Fixture: HBS 3:2 Maccabi Netanya, Gvia haMedina (Israeli State Cup)
+        2023/24 — drawn at 90', HBS scored in extra time. TM serves
+        '3:2' final + 'AET' in the halbzeit slot.
+        """
+        response = _fake_response(FIXTURES_DIR / "match_report_aet_sample.html")
+        text = self.spider.extract_halbzeit_text(response)
+        assert text == "AET"
+        # Halftime score is unknown for AET matches in TM's English layout.
+        assert self.spider.parse_halftime_from_halbzeit(text) is None
+        # AET marker drives the AET flag straight to True.
+        assert self.spider.is_aet_marker(text) is True
+
+    def test_parse_match_report_aet_flag(self):
+        """End-to-end through parse_match_report: the AET fixture must yield
+        aet=True via the explicit marker, halftime_score=None, and the
+        regulation fixture must yield aet=False with a real halftime score.
+        """
+        # AET fixture
+        response = _fake_response(FIXTURES_DIR / "match_report_aet_sample.html")
+        response.request.meta["match_data"] = {"competition": "Gvia haMedina"}
+        record = next(iter(self.spider.parse_match_report(response)))
+        assert record["aet"] is True
+        assert record["halftime_score"] is None
+
+        # Regulation fixture — fresh spider instance because resolve_team_key
+        # caches "home" on response.meta which mutates state across calls.
+        spider = MatchSpider(season="2024")
+        response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
+        response.request.meta["match_data"] = {"competition": "Ligat ha'Al"}
+        record = next(iter(spider.parse_match_report(response)))
+        assert record["aet"] is False
+        assert record["halftime_score"] == "0:1"
+
+    def test_aet_marker_is_case_insensitive(self):
+        assert MatchSpider.is_aet_marker("AET") is True
+        assert MatchSpider.is_aet_marker("aet") is True
+        assert MatchSpider.is_aet_marker(" AET ") is True
+        # German variants for forward-compat (in case ScraperAPI ever serves DE).
+        assert MatchSpider.is_aet_marker("n.V.") is True
+        assert MatchSpider.is_aet_marker("AP") is True
+        # Real halftime scores must NOT trigger the marker.
+        assert MatchSpider.is_aet_marker("(0:1)") is False
+        assert MatchSpider.is_aet_marker("1:1") is False
+        assert MatchSpider.is_aet_marker(None) is False
+        assert MatchSpider.is_aet_marker("") is False
+
+    def test_referee_team_placeholder_fields_default_none(self):
+        """TM doesn't expose assistants / 4th official / VAR in the match-
+        report layout; PR B records them as nullable for hand-curation or a
+        future IFA scraper. Spider must emit them as None so the schema
+        validates and Cargo skips them on store.
         """
         response = _fake_response(FIXTURES_DIR / "match_report_sample.html")
-        response.request.meta["match_data"] = {"venue": "H", "opponent": "H. Jerusalem"}
-        # First call sees the home team; second call should return "away" regardless of name.
-        assert self.spider.resolve_team_key("Hapoel Beer Sheva", response) == "home"
-        assert self.spider.resolve_team_key("Hapoel Jerusalem", response) == "away"
+        response.request.meta["match_data"] = {"competition": "Ligat ha'Al"}
+        record = next(iter(self.spider.parse_match_report(response)))
+        assert record["assistant_referee_1"] is None
+        assert record["assistant_referee_2"] is None
+        assert record["fourth_official"] is None
+        assert record["var_referee"] is None
+        assert record["var_assistant"] is None
+
+
+class TestSquadSpiderR2Captain:
+    """Phase 3a R2 finding: TM's squad page does NOT expose a captain marker
+    in any era (audited 2026-06-09 against 2015/16, 1985/86, and current
+    fixtures). The is_captain field on the Player model is populated outside
+    the squad spider — from the latest match-report's graphic_lineups (which
+    already carries a per-match captain bool), or by hand-curation. The squad
+    spider emits is_captain=False unconditionally.
+    """
+
+    def test_2015_squad_defaults_to_no_captain(self):
+        spider = SquadSpider(season="2015")
+        response = _fake_response(FIXTURES_DIR / "kader_2015_sample.html")
+        # The spider also yields a Request to the loans page at the end;
+        # filter it out so we're only asserting against player dicts.
+        players = [item for item in spider.parse(response) if isinstance(item, dict)]
+        assert len(players) > 0
+        assert all(p["is_captain"] is False for p in players)
+
+    def test_1985_squad_defaults_to_no_captain(self):
+        spider = SquadSpider(season="1985")
+        response = _fake_response(FIXTURES_DIR / "kader_1985_sample.html")
+        players = [item for item in spider.parse(response) if isinstance(item, dict)]
+        assert len(players) > 0
+        assert all(p["is_captain"] is False for p in players)
+
+    def test_loaned_players_default_to_no_captain(self):
+        spider = SquadSpider(season="2015")
+        response = _fake_response(FIXTURES_DIR / "kader_2015_sample.html")
+        loans = list(spider.parse_loans(response))
+        for p in loans:
+            assert p["is_captain"] is False
+
+
+class TestSquadSpiderProfileUrlsResolveToTM:
+    """Reviewer-pass blocker (2026-06-13): with USE_SCRAPERAPI=True (the
+    project default), `response.url` is the ScraperAPI proxy URL
+    (`https://api.scraperapi.com/?api_key=…&url=…`). The pre-fix code
+    called `response.urljoin(link)` which resolves the relative TM path
+    against the response host — so squad.json persisted
+    `https://api.scraperapi.com/...` for every player's profile_url.
+    The whole squad→player chain then silently fetched the proxy's
+    fronted root page instead of the real TM player profile.
+
+    These tests pin a ScraperAPI-host response URL to ensure the spider
+    resolves profile URLs against `self.base_url` (TM) regardless of
+    what host the response came back from.
+    """
+
+    SCRAPERAPI_RESPONSE_URL = (
+        "https://api.scraperapi.com/"
+        "?api_key=KEY_REDACTED"
+        "&url=https://www.transfermarkt.com/hapoel-beer-sheva/kader/verein/2976/saison_id/2024"
+        "&country_code=us&render=false"
+    )
+
+    def _proxied_response(self, html_path: Path):
+        body = html_path.read_bytes()
+        return HtmlResponse(
+            url=self.SCRAPERAPI_RESPONSE_URL,
+            body=body,
+            request=Request(url=self.SCRAPERAPI_RESPONSE_URL),
+        )
+
+    def test_profile_urls_resolve_against_tm_when_response_is_proxy(self):
+        """The regression case: response came back via ScraperAPI, but
+        every player's profile_url must point at TM (so the player_spider
+        can scrape it next)."""
+        spider = SquadSpider(season="2024")
+        response = self._proxied_response(FIXTURES_DIR / "kader_2015_sample.html")
+        players = [item for item in spider.parse(response) if isinstance(item, dict)]
+        assert players, "fixture should yield at least one player"
+        for p in players:
+            assert "api.scraperapi.com" not in p["profile_url"], (
+                f"profile_url leaked proxy host: {p['profile_url']!r}"
+            )
+            assert p["profile_url"].startswith("https://www.transfermarkt.com/"), (
+                f"profile_url should be on TM host: {p['profile_url']!r}"
+            )
+
+    def test_loan_profile_urls_resolve_against_tm_when_response_is_proxy(self):
+        """Same fix on the parse_loans path."""
+        spider = SquadSpider(season="2024")
+        response = self._proxied_response(FIXTURES_DIR / "kader_2015_sample.html")
+        loans = list(spider.parse_loans(response))
+        # Some fixtures may yield no loan rows — that's fine, but every
+        # row that DOES exist must point at TM.
+        for p in loans:
+            assert "api.scraperapi.com" not in p["profile_url"]
+            assert p["profile_url"].startswith("https://www.transfermarkt.com/")
+
+
+class TestRecordsSpiderR2Direction:
+    """Phase 3a R2 finding: TM removed the separate departures page. Records
+    spider stays single-direction (arrivals only) but every row carries a
+    `direction: "in"` marker so downstream code can populate departure rows
+    derived from alletransfers into the same shape.
+    """
+
+    def test_records_arrivals_carries_direction_marker(self):
+        spider = RecordsSpider()
+        response = _fake_response(
+            FIXTURES_DIR / "transferrekorde_arrivals_sample.html",
+            url="https://www.transfermarkt.com/hapoel-beer-sheva/transferrekorde/verein/2976",
+        )
+        records = list(spider.parse(response))
+        assert len(records) > 0
+        for r in records:
+            assert r["direction"] == "in"
+            assert r["player_name"]
+            assert r["value"]
 
 
 class TestCoachSpiderPhase3a:
@@ -163,3 +488,76 @@ class TestTransfersSpiderPhase3a:
         assert spider._parse_header("Arrivals 00/01") == ("in", "2000")
         assert spider._parse_header("Info") == (None, None)
         assert spider._parse_header("") == (None, None)
+
+    def test_header_parser_pre_2000_pivot(self):
+        """§6 ③ corruption fix (2026-06-12 review): pre-2000 seasons must
+        bin into 19XX, not 20XX. HBS's founding-era data exists in TM."""
+        spider = TransfersSpider(season="1985")
+        assert spider._parse_header("Arrivals 49/50") == ("in", "1949")
+        assert spider._parse_header("Arrivals 85/86") == ("in", "1985")
+        # Boundary: 29/30 still 2000s; 30/31 flips.
+        assert spider._parse_header("Arrivals 29/30") == ("in", "2029")
+        assert spider._parse_header("Arrivals 30/31") == ("in", "1930")
+
+
+class TestMatchSpiderHomeLineupRegression:
+    """§6 ③ home-lineup-dropped regression test (2026-06-12 review).
+
+    On pre-formation match reports (1985 vintage and earlier), TM uses a
+    table-layout lineup format instead of the modern graphic-field
+    diagram. The dispatcher in `parse_match_report` runs BOTH extractors
+    against the response — first the graphic-field one (returns empty
+    for this layout), then the simple-table one. Previously these shared
+    state via `response.meta["home"]`: the graphic-field call saw zero
+    formation containers but DID find the team-name header for the home
+    column (the selector matches both layouts), and set
+    `response.meta["home"] = "<home team>"`. The simple-table call then
+    saw `"home" in response.meta` for every box and keyed both as "away",
+    dropping the home lineup entirely.
+
+    This test reproduces the bug against the 1985 fixture: both
+    extractors must produce both home + away keys when called in the
+    same dispatch order as production.
+    """
+
+    def test_home_and_away_both_extracted_on_1985_table_layout(self):
+        response = _fake_response(FIXTURES_DIR / "match_report_1985_sample.html")
+        spider = MatchSpider()
+
+        # Mirror parse_match_report's dispatch ORDER exactly. The bug only
+        # manifests when graphic_field runs FIRST and contaminates meta.
+        graphic = spider.extract_from_graphic_field(response)
+        table = spider.extract_from_simple_table(response)
+
+        # graphic_field has no formation containers on this fixture — fine.
+        assert graphic == {} or all(not v for v in graphic.values())
+
+        # The bug: previously this assertion failed — only "away" was set.
+        assert "home" in table, (
+            "Home lineup dropped — extract_from_simple_table only produced "
+            f"keys {list(table.keys())} (the §6 ③ regression)"
+        )
+        assert "away" in table
+
+        # Both lineups must carry actual roster data, not empty stubs.
+        assert any(table["home"].get(pos) for pos in ("goalkeeper", "defenders", "midfielders", "forwards"))
+        assert any(table["away"].get(pos) for pos in ("goalkeeper", "defenders", "midfielders", "forwards"))
+
+    def test_extractors_have_independent_first_box_tracking(self):
+        """Each extractor must determine home/away independently — they
+        no longer share `response.meta["home"]`. Calling them in either
+        order must produce the same result."""
+        response_a = _fake_response(FIXTURES_DIR / "match_report_1985_sample.html")
+        response_b = _fake_response(FIXTURES_DIR / "match_report_1985_sample.html")
+        spider = MatchSpider()
+
+        # Order A: graphic first
+        spider.extract_from_graphic_field(response_a)
+        table_a = spider.extract_from_simple_table(response_a)
+
+        # Order B: simple-table first (the would-be-bug-free order under
+        # the old code).
+        table_b = spider.extract_from_simple_table(response_b)
+        spider.extract_from_graphic_field(response_b)
+
+        assert list(table_a.keys()) == list(table_b.keys()) == ["home", "away"]

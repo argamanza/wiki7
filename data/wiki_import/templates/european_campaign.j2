@@ -1,0 +1,39 @@
+== היסטוריית קמפיינים אירופיים ==
+
+''כל הקמפיינים האירופיים של [[הפועל באר שבע]] לאורך השנים, מסודרים לפי עונה.''
+
+{% if campaigns %}
+{| class="wikitable sortable"
+! עונה !! תחרות !! משחקים
+{% for c in campaigns %}
+|-
+| [[עונת {{ c.season_display }}|{{ c.season_display }}]]
+| [[{{ c.competition }} {{ c.season_display }}|{{ c.competition }}]]
+| {{ c.match_count }}
+{% endfor %}
+
+|}
+
+=== סיכום ===
+{| class="wikitable"
+! נתון !! ערך
+|-
+| סך עונות באירופה || {{ total_seasons }}
+|-
+| סך משחקים אירופיים || {{ total_matches }}
+{% if competition_breakdown %}
+|-
+! colspan="2" style="text-align:center;" | פילוח לפי תחרות
+{% for comp, count in competition_breakdown.items() %}
+|-
+| {{ comp }} || {{ count }} משחקים
+{% endfor %}
+{% endif %}
+
+|}
+{% else %}
+''לא נמצאו נתונים על קמפיינים אירופיים. ייתכן שהפייפליין עוד לא הריץ ספיידרי לוח-משחקים עבור עונות עם השתתפות אירופית.''
+{% endif %}
+
+[[קטגוריה:אירופה]]
+[[קטגוריה:היסטוריה]]

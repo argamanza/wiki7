@@ -1,58 +1,145 @@
+{{ bot_section_start('infobox') }}
 {{"{{"}}Player infobox
 | name_english = {{ player.name_english }}
 | name_hebrew = {{ player.name_hebrew or '' }}
 | tmk_id = {{ player.id }}
-| birth_date = {{ player.birth_date or '' }}
+{# §6 ③ fix (2026-06-12 review): the Cargo `players.birth_date` column is
+   MySQL `Date`, which requires `YYYY-MM-DD`. Passing the human DD/MM/YYYY
+   form made MySQL parse it as M/D/Y — every birth past the 12th NULLed,
+   earlier ones got day/month swapped. We now pass the raw ISO date as
+   `birth_date_iso` (used by Cargo) AND the Israeli-formatted form as
+   `birth_date` (used by the visible infobox field). #}
+| birth_date = {{ player.birth_date | il_date }}
+| birth_date_iso = {{ player.birth_date or '' }}
 | birth_place = {{ player.birth_place or '' }}
 | nationality = {{ player.nationality | join(', ') if player.nationality else '' }}
 | position = {{ player.main_position or '' }}
+| other_positions = {{ player.other_positions | join(', ') if player.other_positions else '' }}
 | jersey_number = {{ player.current_jersey_number or '' }}
 | current_squad = {{ 'Yes' if player.current_squad else 'No' }}
 | homegrown = {{ 'Yes' if player.homegrown else 'No' }}
 | retired = {{ 'Yes' if player.retired else 'No' }}
+| is_captain = {{ 'Yes' if player.is_captain else 'No' }}
+| height_cm = {{ player.height_cm or '' }}
+| preferred_foot = {{ player.preferred_foot or '' }}
+| contract_expires = {{ player.contract_expires | il_date }}
+| current_market_value = {{ player.current_market_value or '' }}
 {{"}}"}}
+{{ bot_section_end('infobox') }}
 
-== קריירה ==
-{% if transfers %}
+{% if transfers_youth %}
+{{ bot_section_start('youth-career') }}
+== קריירת נוער ==
+{# Iter-cycle 1 walk (2026-06-12): transfers where the destination club is
+   a youth / academy team. The pro-debut transfer (youth → senior) lives in
+   the senior section below since its destination is the senior club. #}
 {| class="wikitable sortable" style="direction:rtl; text-align:right;"
 ! עונה !! תאריך !! מ !! אל !! עלות !! השאלה
-{% for t in transfers %}
+{% for t in transfers_youth %}
 |-
-| {{ t.season }} || {{ t.transfer_date }} || {{ t.from_club }} || {{ t.to_club }} || {{ t.fee }} || {{ '&#x2705;' if t.loan else '' }}
+| {{ t.season }} || {{ t.transfer_date | il_date }} || {{ t.from_club }} || {{ t.to_club }} || {{ t.fee | il_fee }} || {{ '&#x2705;' if t.loan else '' }}
+{% endfor %}
+
+|}
+{{ bot_section_end('youth-career') }}
+{% endif %}
+
+{{ bot_section_start('career') }}
+== קריירה ==
+{% if transfers_senior %}
+{| class="wikitable sortable" style="direction:rtl; text-align:right;"
+! עונה !! תאריך !! מ !! אל !! עלות !! השאלה
+{% for t in transfers_senior %}
+|-
+| {{ t.season }} || {{ t.transfer_date | il_date }} || {{ t.from_club }} || {{ t.to_club }} || {{ t.fee | il_fee }} || {{ '&#x2705;' if t.loan else '' }}
 {% endfor %}
 
 |}
 {% endif %}
 
+{% if transfers %}
+{# Cargo storage — one row per transfer (youth + senior, in chronological
+   order). Invisible: the wikitext tables above render the user-facing view;
+   this is data-only for Cargo queries. A single store covers both buckets
+   so aggregations across a player's whole career stay accurate. Wrapped in
+   {{#ifeq:{{NAMESPACENUMBER}}|0|...|}} so drafts (NS=3000) skip the store.
+   See Player_infobox.wikitext for the gating rationale. #}
+{% for t in transfers %}
+{{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/Transfer
+| player_id = {{ player.id }}
+| season = {{ t.season or '' }}
+| transfer_date = {{ t.transfer_date or '' }}
+| from_club = {{ t.from_club or '' }}
+| to_club = {{ t.to_club or '' }}
+| fee = {{ t.fee or '' }}
+| loan = {{ 'Yes' if t.loan else 'No' }}
+| from_club_tm_id = {{ t.from_club_tm_id or '' }}
+| to_club_tm_id = {{ t.to_club_tm_id or '' }}
+{{"}}"}}|{{"}}"}}
+{% endfor %}
+{% endif %}
+{{ bot_section_end('career') }}
+
 {% if stats %}
+{{ bot_section_start('stats') }}
 == סטטיסטיקה עונתית ==
 {| class="wikitable sortable"
 ! עונה !! הופעות !! שערים !! בישולים !! {{"{{"}}Tooltip|Y|כרטיסים צהובים{{"}}"}} !! {{"{{"}}Tooltip|2Y|כרטיס צהוב שני{{"}}"}} !! {{"{{"}}Tooltip|R|כרטיסים אדומים{{"}}"}} !! דקות
 {% for s in stats %}
-{% set season_int = s.season | int %}
-{% set next_year = (season_int + 1) | string %}
-{% set season_display = season_int ~ "/" ~ next_year[-2:] %}
+{% set row_season_display = s.season | season_display %}
 |-
-| [[עונת {{ season_display }}|{{ s.season }}]] || {{ s.appearances }} || {{ s.goals }} || {{ s.assists }} || {{ s.yellow_cards }} || {{ s.get('second_yellow_cards', 0) }} || {{ s.red_cards }} || {{ s.minutes_played }}
+| [[עונת {{ row_season_display }}|{{ row_season_display }}]] || {{ s.appearances }} || {{ s.goals }} || {{ s.assists }} || {{ s.yellow_cards }} || {{ s.get('second_yellow_cards', 0) }} || {{ s.red_cards }} || {{ s.minutes_played }}
 {% endfor %}
 
 |-
-! סה"כ !! {{ stats | sum(attribute='appearances') }} !! {{ stats | sum(attribute='goals') }} !! {{ stats | sum(attribute='assists') }} !! {{ stats | sum(attribute='yellow_cards') }} !! {{ stats | map(attribute='second_yellow_cards') | map('default', 0) | sum }} !! {{ stats | sum(attribute='red_cards') }} !! {{ stats | sum(attribute='minutes_played') }}
+{# §6 medium fix (2026-06-12 review): direct `sum(attribute='X')` raises
+   TypeError on any stats row with `X=None`. Real corpus has None values
+   for historical-era rows where TM doesn't expose all per-season fields.
+   Funnel through `map(attribute=...) | map('default', 0) | sum` so a
+   missing value bins to 0 instead of crashing the entire player page. #}
+! סה"כ !! {{ stats | map(attribute='appearances') | map('default', 0) | sum }} !! {{ stats | map(attribute='goals') | map('default', 0) | sum }} !! {{ stats | map(attribute='assists') | map('default', 0) | sum }} !! {{ stats | map(attribute='yellow_cards') | map('default', 0) | sum }} !! {{ stats | map(attribute='second_yellow_cards') | map('default', 0) | sum }} !! {{ stats | map(attribute='red_cards') | map('default', 0) | sum }} !! {{ stats | map(attribute='minutes_played') | map('default', 0) | sum }}
 |}
+{# Cargo storage — one row per season's stats. Mainspace-only gate. #}
+{% for s in stats %}
+{{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/PlayerStats
+| player_id = {{ player.id }}
+| season = {{ s.season or '' }}
+| appearances = {{ s.appearances or 0 }}
+| goals = {{ s.goals or 0 }}
+| assists = {{ s.assists or 0 }}
+| yellow_cards = {{ s.yellow_cards or 0 }}
+| second_yellow_cards = {{ s.get('second_yellow_cards', 0) }}
+| red_cards = {{ s.red_cards or 0 }}
+| minutes_played = {{ s.minutes_played or 0 }}
+{{"}}"}}|{{"}}"}}
+{% endfor %}
+{{ bot_section_end('stats') }}
 {% endif %}
 
 {% if market_values %}
+{{ bot_section_start('market-values') }}
 == היסטוריית שווי שוק ==
 {| class="wikitable sortable"
 ! תאריך !! שווי !! קבוצה
 {% for mv in market_values %}
 |-
-| {{ mv.value_date }} || {{ mv.value }} || {{ mv.team }}
+| {{ mv.value_date | il_date }} || {{ mv.value }} || {{ mv.team }}
 {% endfor %}
 
 |}
+{# Cargo storage — one row per market-value snapshot. Mainspace-only gate. #}
+{% for mv in market_values %}
+{{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/MarketValue
+| player_id = {{ player.id }}
+| value_date = {{ mv.value_date or '' }}
+| value = {{ mv.value or '' }}
+| team = {{ mv.team or '' }}
+{{"}}"}}|{{"}}"}}
+{% endfor %}
+{{ bot_section_end('market-values') }}
 {% endif %}
 
+{{ bot_section_start('categories') }}
 [[קטגוריה:שחקנים]]
 {% if player.current_squad %}[[קטגוריה:סגל נוכחי]]{% endif %}
 {% if player.homegrown %}[[קטגוריה:חניכי מועדון]]{% endif %}
@@ -63,3 +150,4 @@
 {% elif 'קישור' in pos or 'Midfield' in pos or 'Midfielder' in pos %}[[קטגוריה:קישור]]
 {% elif 'התקפה' in pos or 'Wing' in pos or 'Forward' in pos or 'Striker' in pos %}[[קטגוריה:התקפה]]
 {% endif %}
+{{ bot_section_end('categories') }}

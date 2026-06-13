@@ -5,12 +5,14 @@ from scrapy.http import Request
 
 
 class TransfersSpider(scrapy.Spider):
-    """Scrape club-level arrivals + departures for a single season from Transfermarkt.
+    """Scrape club-level arrivals + departures for a single season from
+    Transfermarkt.
 
-    The `/alletransfers/verein/2976/saison_id/<season>` page returns *all* past seasons in
-    one HTML response (TM ignores the saison_id query for the table contents and only uses
-    it for navigation). We walk every `div.box`, parse the `<h2>` for direction + season,
-    and filter rows to the spider's `self.season`.
+    The `/alletransfers/verein/2976/saison_id/<season>` page (`alletransfers`
+    = "all transfers") returns *all* past seasons in one HTML response (TM
+    ignores the saison_id query for the table contents and only uses it for
+    navigation). We walk every `div.box`, parse the `<h2>` for direction +
+    season, and filter rows to the spider's `self.season`.
     """
 
     name = "transfers"
@@ -24,16 +26,15 @@ class TransfersSpider(scrapy.Spider):
         self.season = str(season)
 
     def start_requests(self):
+        from tmk_scraper.scraperapi_proxy import validate_key, wrap
+
         target = (
             f"https://www.transfermarkt.com/hapoel-beer-sheva/alletransfers/verein/2976"
             f"/saison_id/{self.season}"
         )
         use_scraperapi = self.settings.getbool("USE_SCRAPERAPI", False)
-        api_key = self.settings.get("SCRAPERAPI_KEY")
-        url = (
-            f"http://api.scraperapi.com/?api_key={api_key}&url={target}&country_code=us&render=false"
-            if use_scraperapi else target
-        )
+        api_key = validate_key(self.settings.get("SCRAPERAPI_KEY")) if use_scraperapi else None
+        url = wrap(target, api_key) if use_scraperapi else target
         yield Request(url=url, callback=self.parse)
 
     def _parse_header(self, header_text: str):
@@ -47,10 +48,13 @@ class TransfersSpider(scrapy.Spider):
         if not m:
             return None, None
         direction = "in" if m.group(1).lower() == "arrivals" else "out"
-        # Two-digit year prefix. Years 50-99 belong to the 1900s, 00-49 to the 2000s
-        # (handles the early-2000s seasons in the archive).
+        # Two-digit year prefix. Pivot at 30 so HBS's founding-era seasons
+        # bin correctly: "49/50" → 1949 (not 2049 — the §6 ③ corruption
+        # from the 2026-06-12 review). yy < 30 → 20yy; yy >= 30 → 19yy.
+        # Cutoff = 30 leaves a ~5-year forward window (2025-2029 still 20XX);
+        # bump down to 25 by 2030.
         yy = int(m.group(2))
-        season_yyyy = 1900 + yy if yy >= 50 else 2000 + yy
+        season_yyyy = 1900 + yy if yy >= 30 else 2000 + yy
         return direction, str(season_yyyy)
 
     def parse(self, response: scrapy.http.Response, **kwargs):

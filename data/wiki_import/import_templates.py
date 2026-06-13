@@ -10,6 +10,7 @@ import jinja2
 import mwclient
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
+from data_pipeline.helpers import hbs_match_outcome, to_il_date, to_il_fee, to_season_display
 from wiki_import import review_gate
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,14 @@ CARGO_TABLES = {
             "current_jersey_number": "Integer",
             "homegrown": "Boolean",
             "retired": "Boolean",
+            # Phase 3a R2 additions — scraped from the TM player profile facts.
+            # All nullable for historical players whose profiles omit them.
+            "preferred_foot": "String",      # "right" / "left" / "both"
+            "height_cm": "Integer",          # height in centimetres
+            "contract_expires": "String",    # e.g. "30/06/2027"
+            "is_captain": "Boolean",         # current squad captain flag
+            "current_market_value": "String",  # latest entry of MV history
+            "other_positions": "List (,) of String",
         },
     },
     "Template:Cargo/Transfer": {
@@ -64,6 +73,9 @@ CARGO_TABLES = {
             "to_club": "String",
             "fee": "String",
             "loan": "Boolean",
+            # Phase 3a R2: TM club IDs for cross-linking once club pages exist.
+            "from_club_tm_id": "String",
+            "to_club_tm_id": "String",
         },
     },
     "Template:Cargo/MarketValue": {
@@ -76,7 +88,13 @@ CARGO_TABLES = {
         },
     },
     "Template:Cargo/Match": {
-        "table": "matches",
+        # `match_reports` not `matches` — `matches` is a Cargo reserved word
+        # for both fields AND tables (CargoDeclare.php's $cargoReservedWords).
+        # Empirically verified iter-cycle 1: the table-rejection is silent
+        # (page_props for Template:Cargo/Match remained empty while the other
+        # 8 Cargo declarations registered cleanly). Same constraint applied
+        # to the `matches` field in three other tables (renamed to `played`).
+        "table": "match_reports",
         "fields": {
             "competition": "String",
             "matchday": "String",
@@ -88,6 +106,20 @@ CARGO_TABLES = {
             "system_of_play": "String",
             "attendance": "String",
             "season": "String",
+            # Phase 3a R2: match-detail additions.
+            "halftime_score": "String",      # "0:0" / "1:2"
+            "aet": "Boolean",                # extra time played
+            "stadium": "String",             # per-match stadium (away matches)
+            # Referee team. TM exposes only `referee` (main) inline in the
+            # match-report metadata; the other 5 fields are nullable forward-
+            # compat slots for hand-curation by reviewers + a future IFA
+            # scraper (filed as Phase 4 backlog).
+            "referee": "String",
+            "assistant_referee_1": "String",
+            "assistant_referee_2": "String",
+            "fourth_official": "String",
+            "var_referee": "String",         # populated 2022/23+ when hand-curated
+            "var_assistant": "String",       # populated 2022/23+ when hand-curated
         },
     },
     "Template:Cargo/PlayerStats": {
@@ -111,11 +143,18 @@ CARGO_TABLES = {
             "name": "String",
             "tenure_start": "String",
             "tenure_end": "String",
-            "matches": "Integer",
+            # `played` not `matches` — Cargo reserves `matches` as a SQL-ish
+            # keyword (CargoDeclare.php $cargoReservedWords). Same constraint
+            # applies to season_standings + head_to_head schemas below.
+            "played": "Integer",
             "wins": "Integer",
             "draws": "Integer",
             "losses": "Integer",
             "ppm": "String",
+            # Phase 3a R2: tenure context + trophies-won join.
+            "is_caretaker": "Boolean",
+            "tenure_seasons": "List (,) of String",
+            "hbs_trophies_won": "List (,) of String",
         },
     },
     "Template:Cargo/Honour": {
@@ -124,6 +163,37 @@ CARGO_TABLES = {
             "competition": "String",
             "achievement": "String",
             "seasons": "List (,) of String",
+        },
+    },
+    # Phase 3a R2: new tables.
+    "Template:Cargo/SeasonStanding": {
+        "table": "season_standings",
+        "fields": {
+            "season": "String",              # "2024" (start-year)
+            "competition": "String",         # e.g. "Ligat ha'Al"
+            "tier": "Integer",               # 1 = top flight, 2 = second tier
+            "final_position": "Integer",
+            "played": "Integer",             # NOT `matches` — Cargo reserved (see Coach above)
+            "wins": "Integer",
+            "draws": "Integer",
+            "losses": "Integer",
+            "goals_for": "Integer",
+            "goals_against": "Integer",
+            "points": "Integer",
+        },
+    },
+    "Template:Cargo/HeadToHead": {
+        "table": "head_to_head",
+        "fields": {
+            "opponent": "String",
+            "opponent_tm_id": "String",
+            "played": "Integer",             # NOT `matches` — Cargo reserved (see Coach above)
+            "wins": "Integer",
+            "draws": "Integer",
+            "losses": "Integer",
+            "goals_for": "Integer",
+            "goals_against": "Integer",
+            "avg_attendance": "Integer",
         },
     },
 }
@@ -140,6 +210,30 @@ def _render_template(template_name: str, **kwargs) -> str:
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    # Phase 3a R2: expose to_season_display as a filter so per-row template
+    # contexts (e.g. multi-season stats tables on player pages) can convert
+    # each row's bare-integer season to the slash display without inlining
+    # the format math. Usage: `{{ s.season | season_display }}`.
+    env.filters["season_display"] = to_season_display
+    # Iter-cycle 1 (2026-06-12): Israeli DD/MM/YYYY date format + Hebrew
+    # transfer-fee translation. Used in match_report.j2 etc.
+    env.filters["il_date"] = to_il_date
+    env.filters["il_fee"] = to_il_fee
+    # §6 ③ fix (2026-06-12 review): HBS-perspective match outcome based on
+    # venue + result string. Used by competition_season.j2 to colour fixture
+    # rows correctly for both home AND away matches (previously assumed
+    # HBS was always home, miscategorising ~half of all matches).
+    env.filters["hbs_match_outcome"] = hbs_match_outcome
+    # Yellow-triage fix (2026-06-13): `competition_season.j2` builds per-row
+    # links to match-report pages, but pre-fix the format was inlined and
+    # skipped both the il_date conversion AND the wikitext sanitization
+    # that `_match_page_title` does on the renderer side. The filter routes
+    # both surfaces through the same `_format_match_title` helper so the
+    # link text and the actual page title are guaranteed identical.
+    from wiki_import.import_matches import _format_match_title
+    env.filters["match_title"] = lambda date, opponent, competition: (
+        _format_match_title(date, opponent, competition)
+    )
     template = env.get_template(template_name)
     return template.render(**kwargs)
 
@@ -151,9 +245,12 @@ def _load_jsonl(path: Path) -> list:
         return [json.loads(line) for line in f if line.strip()]
 
 
+# Iteration-cycle 2026-06-10: bumped from 3 attempts/~6s to 6 attempts /
+# ~3min total to tolerate MediaWiki's `ratelimited` API error on burst
+# writes. See import_matches.py _edit_page for the rationale.
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(6),
+    wait=wait_exponential(multiplier=5, min=5, max=60),
     retry=retry_if_exception_type((mwclient.errors.APIError, ConnectionError)),
     reraise=True,
 )
@@ -309,6 +406,25 @@ def import_squad_page(
     resolved_stats = stats_path or DEFAULT_STATS_PATH
     players = _load_jsonl(resolved_players)
 
+    # §6 high #8 fix (2026-06-12 review): filter players to those who were
+    # in the SQUAD for THIS season. Pre-fix, the merged-mode players file
+    # contained the all-time roster and the squad page rendered every
+    # player ever, regardless of season — so the 2002/03 squad page showed
+    # Ramzi Safouri (signed 2023). The merge step now stamps
+    # `seasons_active` on each player; we filter on it here. When the
+    # field isn't present (legacy single-season pipeline run), don't
+    # filter — preserves backward compat for the iter-cycle 1 path.
+    if players and any("seasons_active" in p for p in players):
+        season_str = str(season)
+        players = [
+            p for p in players
+            if season_str in (p.get("seasons_active") or [])
+        ]
+        logger.info(
+            "import_squad_page: filtered to %d players active in season %s",
+            len(players), season_str,
+        )
+
     # Enrich players with season-specific stats
     if resolved_stats.exists():
         all_stats = _load_jsonl(resolved_stats)
@@ -323,8 +439,18 @@ def import_squad_page(
             p["stats"] = None
 
     players_by_position = _group_players_by_position(players)
-    content = _render_template("squad_table.j2", season=season, players=players, players_by_position=players_by_position)
-    title = f"סגל {season}"
+    # Phase 3a R2: pass both `season` (bare integer join key, used in cargo
+    # store calls within the template) and `season_display` (slash form, used
+    # for the rendered h2 + category text). Internal join key stays bare.
+    season_display = to_season_display(season)
+    content = _render_template(
+        "squad_table.j2",
+        season=season,
+        season_display=season_display,
+        players=players,
+        players_by_position=players_by_position,
+    )
+    title = f"סגל {season_display}"
 
     summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "errors": []}
 
@@ -337,7 +463,11 @@ def import_squad_page(
         if site is None:
             raise RuntimeError("site is required when dry_run=False")
 
-        page = site.pages[title]
+        # Phase 3a R2: route through the gate before probing existence so the
+        # report layer reflects Draft-namespace reality (see _import_single_page
+        # comment).
+        routed = review_gate.route_title(site, title)
+        page = site.pages[routed]
         if page.exists:
             existing = page.text()
             if _content_hash(existing.strip()) == _content_hash(content.strip()):
@@ -386,13 +516,17 @@ def import_transfer_page(
         elif any(kw in from_club for kw in HBS_KEYWORDS):
             outgoing.append(t)
 
+    # Phase 3a R2: pass both bare `season` (join key) and `season_display`
+    # (slash form, rendered in the h2 + category).
+    season_display = to_season_display(season)
     content = _render_template(
         "transfer_table.j2",
         season=season,
+        season_display=season_display,
         incoming=incoming,
         outgoing=outgoing,
     )
-    title = f"העברות {season}"
+    title = f"העברות {season_display}"
 
     summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "errors": []}
 
@@ -405,7 +539,9 @@ def import_transfer_page(
         if site is None:
             raise RuntimeError("site is required when dry_run=False")
 
-        page = site.pages[title]
+        # Phase 3a R2: route through the gate before probing existence.
+        routed = review_gate.route_title(site, title)
+        page = site.pages[routed]
         if page.exists:
             existing = page.text()
             if _content_hash(existing.strip()) == _content_hash(content.strip()):
@@ -439,7 +575,16 @@ def _load_json(path: Path) -> list:
 def _import_single_page(
     site, title: str, content: str, dry_run: bool, summary: dict
 ):
-    """Helper to import a single wiki page with dry-run support."""
+    """Helper to import a single wiki page with dry-run support.
+
+    Phase 3a R2: routes the title through the review gate BEFORE checking
+    `page.exists`. Without the routing, the existence probe hits mainspace
+    (which never has the draft) and the counts always report "created"
+    even when the existing Draft: page is unchanged. The downstream
+    `_edit_page` does its own content-hash check + correctly skips the
+    no-op write, so the wiki state stays right — but the report layer
+    here would silently miscount everything as a create.
+    """
     try:
         if dry_run:
             logger.info("[DRY RUN] Would create/update page: %s (%d chars)", title, len(content))
@@ -449,7 +594,8 @@ def _import_single_page(
         if site is None:
             raise RuntimeError("site is required when dry_run=False")
 
-        page = site.pages[title]
+        routed_title = review_gate.route_title(site, title)
+        page = site.pages[routed_title]
         if page.exists:
             existing = page.text()
             if _content_hash(existing.strip()) == _content_hash(content.strip()):
@@ -577,9 +723,18 @@ def import_season_overview(
     players_path: Optional[Path] = None,
     stats_path: Optional[Path] = None,
     fixtures_path: Optional[Path] = None,
+    standings_path: Optional[Path] = None,
     dry_run: bool = False,
 ) -> dict:
-    """Import a Season Overview page aggregating squad, stats, and fixtures data."""
+    """Import a Season Overview page aggregating squad, stats, fixtures, and
+    standings data.
+
+    Phase 3a R2: always emits a page even when no TM data exists for the
+    season — sparse historical seasons get a placeholder banner; partial
+    seasons get a "what's missing" footer. The wiki ends up with a complete
+    chronological index from 1949/50 onwards, with hand-curation prompts on
+    the empty / partial pages.
+    """
     summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "errors": []}
 
     resolved_players = players_path or DEFAULT_PLAYERS_PATH
@@ -613,16 +768,59 @@ def import_season_overview(
     top_appearances = sorted(season_stats, key=lambda s: s.get("appearances", 0), reverse=True)
     top_assists = sorted(season_stats, key=lambda s: s.get("assists", 0), reverse=True)
 
-    # Load fixtures if available
-    resolved_fixtures = fixtures_path or DEFAULT_SCRAPER_OUTPUT_DIR / season / "fixtures.json"
+    # Load fixtures if available. §6 high #9 fix (2026-06-12 review): prefer
+    # the Hebrew-translated `fixtures.he.json` when present so the per-row
+    # match-page links in competition_season.j2 resolve to the actual
+    # Hebrew-titled match pages. Falls back to English fixtures.json on
+    # pre-Hebrew-enrichment runs.
+    season_dir_for_fix = DEFAULT_SCRAPER_OUTPUT_DIR / season
+    if fixtures_path is not None:
+        resolved_fixtures = fixtures_path
+    elif (season_dir_for_fix / "fixtures.he.json").exists():
+        resolved_fixtures = season_dir_for_fix / "fixtures.he.json"
+    else:
+        resolved_fixtures = season_dir_for_fix / "fixtures.json"
     fixtures = _load_json(resolved_fixtures) if resolved_fixtures.exists() else []
     fixtures_by_competition = {}
     for f in fixtures:
         comp = f.get("competition", "Unknown")
         fixtures_by_competition.setdefault(comp, []).append(f)
 
-    season_int = int(season)
-    season_display = f"{season_int}/{str(season_int + 1)[-2:]}"
+    # Phase 3a R2: load the per-season standings row (from platzierungen
+    # spider). When present, gives us "Finished Nth, X points, M-W-D-L, GF:GA".
+    resolved_standings = standings_path or DEFAULT_SCRAPER_OUTPUT_DIR / "season_standings.json"
+    standings_all = _load_json(resolved_standings) if resolved_standings.exists() else []
+    standings = next(
+        (row for row in standings_all if row.get("season") == season),
+        None,
+    )
+
+    # Phase 3a R2: derive presence flags + missing-data notes for the
+    # template's graceful-degradation footer.
+    season_dir = DEFAULT_SCRAPER_OUTPUT_DIR / season
+    has_squad = (season_dir / "squad.json").exists() and _load_json(season_dir / "squad.json")
+    has_transfers = (season_dir / "transfers.json").exists() and _load_json(season_dir / "transfers.json")
+
+    missing_notes = []
+    if not standings:
+        missing_notes.append(
+            "Transfermarkt לא מספק מידע על מיקום בליגה לעונה זו "
+            "(`platzierungen` מתחיל בשנת 1986/87)."
+        )
+    if not season_stats:
+        missing_notes.append(
+            "Transfermarkt לא מספק סטטיסטיקות שחקנים לעונה זו "
+            "(`leistungsdaten` מתחיל בעיקר משנת 1985/86)."
+        )
+    if not has_squad:
+        missing_notes.append("Transfermarkt לא מספק רשימת סגל לעונה זו.")
+    if not fixtures:
+        missing_notes.append(
+            "Transfermarkt לא מספק לוח משחקים לעונה זו "
+            "(לוחות משחקים זמינים בעיקר משנת 1985/86)."
+        )
+
+    season_display = to_season_display(season)
 
     content = _render_template(
         "season_overview.j2",
@@ -638,6 +836,11 @@ def import_season_overview(
         top_appearances=top_appearances,
         top_assists=top_assists,
         fixtures_by_competition=fixtures_by_competition,
+        # Phase 3a R2 additions:
+        standings=standings,
+        has_squad_page=bool(has_squad),
+        has_transfers_page=bool(has_transfers),
+        missing_notes=missing_notes,
     )
     title = f"עונת {season_display}"
     _import_single_page(site, title, content, dry_run, summary)
@@ -748,9 +951,8 @@ def import_attendance(
                     attendances.append(int(cleaned))
 
         if attendances:
-            season_int = int(season)
             season_stats.append({
-                "season": f"{season_int}/{str(season_int + 1)[-2:]}",
+                "season": to_season_display(season),
                 "total_matches": len(attendances),
                 "total_attendance": sum(attendances),
                 "average": sum(attendances) // len(attendances),
@@ -767,6 +969,172 @@ def import_attendance(
 
     logger.info(
         "Attendance import: %d created, %d updated, %d skipped, %d failed",
+        summary["created"], summary["updated"], summary["skipped"], summary["failed"],
+    )
+    return summary
+
+
+# Phase 3a R2: Derbies page driven by the bilanz spider's head_to_head.json.
+# Four major Israeli football rivalries. TM's "B. Jerusalem" / "M. Tel Aviv"
+# short forms appear in the data; we accept both the short and the canonical
+# long form as aliases when looking up each derby's row.
+_MAJOR_DERBIES = [
+    {
+        "display_name": "מכבי תל אביב",
+        "aliases": ["Maccabi Tel Aviv", "M. Tel Aviv"],
+    },
+    {
+        "display_name": "הפועל תל אביב",
+        "aliases": ["Hapoel Tel Aviv", "H. Tel Aviv"],
+    },
+    {
+        "display_name": "בית\"ר ירושלים",
+        "aliases": ["Beitar Jerusalem", "B. Jerusalem"],
+    },
+    {
+        "display_name": "מכבי חיפה",
+        "aliases": ["Maccabi Haifa", "M. Haifa"],
+    },
+]
+
+
+def import_derbies_page(
+    site=None,
+    head_to_head_path: Optional[Path] = None,
+    dry_run: bool = False,
+) -> dict:
+    """Import the Derbies page driven by `head_to_head.json` (bilanz spider).
+
+    Phase 3a R2: high-value derived page. Walks the 4 canonical Israeli
+    football rivalries, plus a "top opponents" tail of the highest-match-
+    count rows. The bilanz row may be absent if TM data for that opponent
+    is empty — the template handles that with a fallback note.
+    """
+    summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "errors": []}
+
+    path = head_to_head_path or DEFAULT_SCRAPER_OUTPUT_DIR / "head_to_head.json"
+    rows = _load_json(path)
+    if not rows:
+        logger.warning("No head_to_head data found at %s; skipping derbies page", path)
+        return summary
+
+    # Index by opponent name for derby lookups.
+    rows_by_name = {r["opponent"]: r for r in rows}
+
+    major_derbies = []
+    for derby in _MAJOR_DERBIES:
+        row = next(
+            (rows_by_name[alias] for alias in derby["aliases"] if alias in rows_by_name),
+            None,
+        )
+        major_derbies.append({**derby, "row": row})
+
+    # Tail: the other opponents sorted by match count descending. Exclude any
+    # alias of the major derbies so the bottom table doesn't duplicate them.
+    derby_aliases = {a for derby in _MAJOR_DERBIES for a in derby["aliases"]}
+    other_opponents = sorted(
+        (r for r in rows if r["opponent"] not in derby_aliases),
+        key=lambda r: r.get("played", 0),
+        reverse=True,
+    )
+
+    content = _render_template(
+        "derbies.j2",
+        major_derbies=major_derbies,
+        other_opponents=other_opponents,
+    )
+    _import_single_page(site, "דרבים", content, dry_run, summary)
+
+    logger.info(
+        "Derbies page import: %d created, %d updated, %d skipped, %d failed",
+        summary["created"], summary["updated"], summary["skipped"], summary["failed"],
+    )
+    return summary
+
+
+# Phase 3a R2: European-campaign page derives from fixtures.json across all
+# seasons. These competition names match what TM serves in English. New
+# competitions joined here as TM gives them; the page falls back gracefully
+# when nothing matches.
+_EUROPEAN_COMPETITIONS = {
+    "UEFA Champions League",
+    "Champions League",
+    "Champions League qualifying",
+    "Champions League Qualifying",
+    "UEFA Champions League Qualifying",
+    "UEFA Europa League",
+    "Europa League",
+    "Europa League qualifying",
+    "Europa League Qualifying",
+    "UEFA Europa League Qualifying",
+    "UEFA Conference League",
+    "Conference League",
+    "UEFA Conference League Qualifying",
+    "Conference League qualifying",
+    "Conference League Qualifying",
+    "UEFA Europa Conference League",
+    "UEFA Cup",
+    "Cup Winners' Cup",
+    "Intertoto Cup",
+}
+
+
+def import_european_campaign_page(
+    site=None,
+    seasons: list = None,
+    dry_run: bool = False,
+) -> dict:
+    """Import the European campaign history page derived from fixtures.
+
+    Phase 3a R2: walks every season's fixtures.json, filters to European
+    competitions, groups by (season, competition). Renders one row per
+    (season, competition) on a sortable table + a sub-summary.
+    """
+    summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "errors": []}
+
+    if not seasons:
+        return summary
+
+    campaigns = []  # list of {season_display, competition, match_count}
+    competition_counts: dict[str, int] = {}
+
+    for season in sorted(seasons):
+        fixtures_path = DEFAULT_SCRAPER_OUTPUT_DIR / season / "fixtures.json"
+        if not fixtures_path.exists():
+            continue
+        fixtures = _load_json(fixtures_path)
+        # Group by competition name within this season.
+        per_comp: dict[str, list] = {}
+        for f in fixtures:
+            comp = (f.get("competition") or "").strip()
+            if comp in _EUROPEAN_COMPETITIONS:
+                per_comp.setdefault(comp, []).append(f)
+        for comp, comp_fixtures in per_comp.items():
+            campaigns.append({
+                "season": season,
+                "season_display": to_season_display(season),
+                "competition": comp,
+                "match_count": len(comp_fixtures),
+            })
+            competition_counts[comp] = competition_counts.get(comp, 0) + len(comp_fixtures)
+
+    total_seasons = len({c["season"] for c in campaigns})
+    total_matches = sum(c["match_count"] for c in campaigns)
+    competition_breakdown = dict(
+        sorted(competition_counts.items(), key=lambda kv: kv[1], reverse=True)
+    )
+
+    content = _render_template(
+        "european_campaign.j2",
+        campaigns=campaigns,
+        total_seasons=total_seasons,
+        total_matches=total_matches,
+        competition_breakdown=competition_breakdown,
+    )
+    _import_single_page(site, "היסטוריית קמפיינים אירופיים", content, dry_run, summary)
+
+    logger.info(
+        "European campaign page import: %d created, %d updated, %d skipped, %d failed",
         summary["created"], summary["updated"], summary["skipped"], summary["failed"],
     )
     return summary
@@ -795,8 +1163,7 @@ def import_competition_pages(
             comp = f.get("competition", "Unknown")
             by_competition.setdefault(comp, []).append(f)
 
-        season_int = int(season)
-        season_display = f"{season_int}/{str(season_int + 1)[-2:]}"
+        season_display = to_season_display(season)
 
         for comp, comp_fixtures in by_competition.items():
             if not comp or comp == "Unknown":

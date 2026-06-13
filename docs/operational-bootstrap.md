@@ -105,13 +105,27 @@ To diagnose whether you're behind a MITM: `echo | openssl s_client -connect wiki
 
 ## 6. ScraperAPI key (data pipeline only)
 
-If running the data pipeline locally, the bot needs a ScraperAPI key in env. The key is operator-supplied (free tier from <https://www.scraperapi.com/>) and lives in `~/.zshrc`:
+If running the data pipeline locally, the bot needs a ScraperAPI key in env. The key is operator-supplied and lives in `~/.zshrc`:
 
 ```bash
 echo 'export SCRAPERAPI_KEY=<your key>' >> ~/.zshrc
 ```
 
 Used by `data/run_pipeline.py` to route requests through ScraperAPI (Transfermarkt blocks direct scraping). Not needed for read-only wiki operations.
+
+**Plan tier:** Phase 3a R2's all-time scrape (1949-2025) consumed **7,893 credits** — see [[wiki7-scraperapi-baseline]]. The free tier (1,000 credits/month) is insufficient for an all-time pass; the Hobby tier ($49/mo, 100k credits) supports ~12 all-time iterations per month, plenty for the iteration-cycle phase. Per-season cost varies by data density: sparse historical (1949-1974) ~5-8 credits, modern (1985+) ~100-200 credits.
+
+## 6a. WIKI7_ANTHROPIC_API_KEY — translation backend isolation
+
+Phase 3a R2 PR B step 6 added a dedicated env var for the pipeline's Claude API access. **Use `WIKI7_ANTHROPIC_API_KEY`, not `ANTHROPIC_API_KEY`** — keeping them separate prevents pipeline runs from draining day-to-day Claude Code subscription credits (relevant after Anthropic's 2026-06-15 Agent SDK credit-pool split).
+
+```bash
+echo 'export WIKI7_ANTHROPIC_API_KEY=sk-ant-api03-...' >> ~/.zshrc
+```
+
+The pipeline reads `WIKI7_ANTHROPIC_API_KEY` first and only falls back to `ANTHROPIC_API_KEY` when the wiki7-specific one is unset. Day-to-day Claude Code subscription work (which reads `ANTHROPIC_API_KEY`) remains untouched.
+
+When both are unset, the pipeline falls back to Google Translate with a warning. For Phase 3a R2 quality, export the key.
 
 ---
 
@@ -172,10 +186,188 @@ See `docker/extensions/Wiki7ReviewGate/maintenance/resetContent.php` for the imp
 
 ---
 
+## 8. Multi-season pipeline recipes (Phase 3a R2+)
+
+### Single-season run (the original 3a flow)
+
+```bash
+cd data
+uv run python run_pipeline.py --season 2024              # write to local docker
+uv run python run_pipeline.py --season 2024 --dry-run    # preview without writing
+```
+
+### Multi-season run (Phase 3a R2)
+
+```bash
+# All-time (1949 → current). Resume default: spiders whose output already exists
+# on disk are skipped. Sparse historical seasons (pre-~1974) get a placeholder
+# overview page emitted automatically. Recommended for the v1 corpus.
+uv run python run_pipeline.py --seasons 1949-2025
+
+# A focused slice — useful for sanity-checking a spider change.
+uv run python run_pipeline.py --seasons 2015,2024
+```
+
+**Resume from a partial failure:** the pipeline writes per-spider per-season output to disk as it goes. If a run dies (network hiccup, ScraperAPI rate-limit, anything), restart with the **same command** — non-empty existing output skips the matching spider call. Empty `[]` files re-fetch (so a transient TM block doesn't lock a season into permanent emptiness).
+
+```bash
+# Force a full re-fetch even where output exists (after a spider fix, etc.):
+uv run python run_pipeline.py --seasons 1949-2025 --force-rescrape
+```
+
+The wiki import step is independently idempotent — every `page.save()` does a content-hash compare against the live page text and skips no-op edits.
+
+### Iteration-cycle phase recipe (per-season review on local docker)
+
+Phase 3a R2 step 10 surfaced that bulk all-time review (2,680 pages) is overwhelming for a solo reviewer. The iteration-cycle phase walks season-by-season instead. Recommended order: **2024/25 first → walk backwards → review modern aggregates around the 10-season slice → jump to 1985/86 → walk forward → fill historical placeholders by hand**.
+
+Per-cycle recipe:
+
+```bash
+# 1. Reset draft content from last iteration (preserves seed homepage + sub-
+#    templates + users + extensions; wipes only Wiki7Bot-authored content).
+docker exec docker-mediawiki-1 php /var/www/html/maintenance/run.php \
+  /var/www/html/extensions/Wiki7ReviewGate/maintenance/resetContent.php \
+  --scope=drafts-only --confirm
+
+# 2. (Optional) wipe local pipeline output for this season to force fresh
+#    translation. Resume default would otherwise reuse the cached output.
+rm -rf data/data_pipeline/output/<season>/ data/data_pipeline/output/merged/
+
+# 3. Run pipeline for the season.
+cd data
+export WIKI_URL='http://localhost:8080' \
+       WIKI_BOT_USER='Wiki7Bot' \
+       WIKI_BOT_PASS='localdev-password-2026' \
+       WIKI_GATE_ENABLED='1' \
+       WIKI7_ANTHROPIC_API_KEY='<your key>'
+uv run python run_pipeline.py --season 2024
+
+# 4. Approve Cargo templates (one-time per fresh stack; see §9 below).
+# 5. Review drafts at http://localhost:8080/Special:AllPages?namespace=3000
+#    edit/promote (Special:MovePage) per draft, capture issues.
+# 6. Fix issues in code, repeat.
+```
+
+## 9. Cargo tables — post-import approval + population (fully automatable)
+
+Cargo's table-creation lifecycle has TWO subtle gotchas that bit iter-cycle 1. Read all of §9 before running anything new — there's a fix here for both.
+
+### Namespace gate on `#cargo_store` (iter-cycle 1, 2026-06-11)
+
+Every `#cargo_store` invocation across all 9 templates is wrapped in:
+
+```wiki
+{{#ifeq:{{NAMESPACENUMBER}}|0|{{Cargo/X | ... }}|}}
+```
+
+So pages in NS_DRAFT (3000) skip the Cargo store entirely; only mainspace pages contribute data. This prevents un-reviewed draft data from leaking via public `#cargo_query` renders (leaderboards etc.) and via `Special:CargoQuery` / `Special:CargoTables` / `Special:CargoDrilldown`. Drafts remain VISUALLY complete (the infobox renders, the match-report renders) — only the SQL-store side is gated.
+
+The magic word `{{NAMESPACENUMBER}}` resolves at parse time in the context of the *transcluding* page, so the gate works correctly regardless of which template wraps the call.
+
+**Promotion flow:** when a reviewer moves a draft to mainspace, MediaWiki's `PageMoveComplete` hook fires Cargo's `onPageMoveComplete` (updates `_pageName` + `_pageNamespace` on any existing rows — none in this case since drafts skip storing) AND enqueues `refreshLinks` for the moved page. `refreshLinks` re-parses the page, the conditional now sees `NAMESPACENUMBER=0`, and `#cargo_store` fires for the first time. The row appears in the Cargo table. **No manual re-import needed.**
+
+**Reviewer workflow caveat:** aggregation pages in NS_DRAFT (e.g. `Draft:מלכי השערים של כל הזמנים`) render with zero rows during draft review because no source pages have stored data yet. To preview aggregation rendering, promote a small test slice (3-5 players) to mainspace first; the leaderboard then shows partial data and confirms the rendering logic. Full data appears as more source pages are promoted.
+
+### Defense 2 — anon revocation of `runcargoqueries`
+
+Cargo's `extension.json` grants `runcargoqueries` to `*` (anon) by default. Combined with the namespace gate above, `LocalSettings.php` revokes this from anon and re-grants it to `reviewer` + `sysop`:
+
+```php
+$wgGroupPermissions['*']['runcargoqueries']         = false;
+$wgGroupPermissions['reviewer']['runcargoqueries']  = true;
+$wgGroupPermissions['sysop']['runcargoqueries']     = true;
+```
+
+This is defense-in-depth: even if a future template edit accidentally drops the namespace gate, anon can't reach `Special:CargoQuery` / `Special:CargoTables` to exploit the leak.
+
+**Note:** the revocation does NOT affect `#cargo_query` parser functions embedded in mainspace pages (leaderboards etc.) — those render server-side and the permission check applies only to the special-page UI. Public-facing leaderboards continue to work for anon viewers; only the ad-hoc query UI is locked down.
+
+### How `#cargo_declare` actually behaves
+
+Per the Cargo docs (mediawiki.org/wiki/Extension:Cargo/Storing_data): **`#cargo_declare` does NOT create the SQL table when parsed.** It only registers the schema in MediaWiki's `page_props` table (as `CargoTableName` + `CargoFields`). The actual SQL table creation is a separate, **explicit** action triggered either by:
+
+- Clicking the **"Create data" / "Recreate data"** tab on the template page (UI), or
+- Running `cargoRecreateData.php --table <NAME>` (CLI)
+
+**Caveat: `cargoRecreateData.php` WITHOUT `--table` is a no-op on a fresh install** — it iterates over already-registered tables in `cargo_tables`, which is empty until each table is created at least once. Don't be misled by its silent exit-0.
+
+Additionally, **Approved Revs gates the `#cargo_declare` parse:** the template lands as latest-unapproved on the bot's write; the parse that populates `page_props` happens after a reviewer approves the template's current revision.
+
+### Cargo reserved words
+
+`CargoDeclare.php` rejects table names AND field names that match its small reserved list: **`holds`, `matches`, `near`, `within`**. The rejection is silent — `#cargo_declare` just doesn't register the schema in `page_props`, and a small error message appears on the template page. This is what made the table named `matches` and the field named `matches` both silently fail in iter-cycle 1 (now renamed to `match_reports` and `played` respectively). Avoid these four names entirely for both new tables and new fields.
+
+### The recipe (fully automated, no clicking)
+
+After every bot import, run two scripts back-to-back:
+
+```bash
+# Step 1 — approve all unapproved revisions. Fires the #cargo_declare parse
+# on every Cargo template, which populates page_props. Also approves the 4
+# MediaWiki templates + 11 main-page sub-templates + the homepage.
+#
+# IMPORTANT: pass --username=Admin (or any valid registered user). Without it
+# the script runs in CLI context with no user — approvals get attributed to
+# the anonymous IP-based actor with NULL user_id, and Special:ApprovedRevs?show=all
+# subsequently throws a TypeError on MW 1.45 (`Linker::userLink(null, ...)`).
+# Discovered iter-cycle 1; fix is to always pass --username=Admin.
+#
+# ALSO IMPORTANT: pass --force after a mid-cycle template fix. Without --force,
+# the script only approves pages that have NEVER been approved — pages with an
+# existing-but-stale approved revision are silently skipped, and the wiki keeps
+# rendering the old (broken) version. --force re-approves the latest revision
+# of every page, including pages where the previous revision was already
+# approved. Use --force whenever bot edits go out after the initial bulk approve.
+docker exec docker-mediawiki-1 php /var/www/html/maintenance/run.php \
+  /var/www/html/extensions/ApprovedRevs/maintenance/approveAllPages.php \
+  --username=Admin --force
+
+# Step 2 — create the SQL table + populate it for each Cargo table. The
+# script reads CargoTableName from page_props (populated by step 1) to find
+# the declaring template, creates the SQL table, then queues background
+# jobs to crawl every page transcluding the template + run #cargo_store.
+for table in players match_reports transfers market_values player_stats \
+             coaches honours season_standings head_to_head; do
+  docker exec docker-mediawiki-1 php /var/www/html/maintenance/run.php \
+    /var/www/html/extensions/Cargo/maintenance/cargoRecreateData.php \
+    --table=$table --quiet
+done
+
+# Step 3 — drain the background-job queue so the data actually lands in
+# the Cargo tables before the reviewer starts inspecting. cargoRecreateData
+# enqueues `cargoPopulateTable` jobs; runJobs drains them synchronously.
+docker exec docker-mediawiki-1 php /var/www/html/maintenance/run.php runJobs.php
+```
+
+### Verify
+
+`http://localhost:8080/Special:CargoTables` should now show each table. After draft promotion (or initial v1 prod approve), spot-check one query: `Special:CargoQuery` → table `match_reports` → fields `_pageName, opponent, result, season` → run.
+
+If a table is missing, the most common cause is the same Approved Revs / reserved-word combo: check `page_props WHERE pp_propname='CargoTableName'` to see which schemas registered.
+
+### Local vs prod — when does each step actually run?
+
+The full recipe above runs every iter cycle on local docker. On prod the parts have different semantics — **don't cargo-cult the recipe into routine prod ops**:
+
+| Step | Local (every iter cycle) | Prod (initial v1 launch) | Prod (ongoing ops) |
+|------|---|---|---|
+| `approveAllPages.php` | Bulk-approve so review can proceed | **Once**, for the canonical bot-produced templates that converged through iter cycles | **NO** — defeats the review gate. Reviewer approves each bot revision individually via the wiki UI (or Telegram inline-approve once Phase 3b ships) |
+| `cargoRecreateData.php --table=X` | Run after first import to materialise SQL tables | **Once** — required for SQL tables to exist | **NO** unless a Cargo schema changes (then re-run for the affected table). Ongoing `#cargo_store` calls populate incrementally |
+| `runJobs.php` | Drain inline for immediate verification | **NO** — prod has `$wgJobRunRate = 0` and the EC2 host cron drains jobs every minute (Phase 2.5 work) | **NO** — host cron handles it |
+
+The point: on prod, the bulk-approval recipe is a **one-time launch event**, not a regular operation. Once v1 is live, the review gate works as designed: new pages enter NS_DRAFT, reviewer MovePages individually; updates to existing mainspace pages create unapproved revisions, reviewer approves individually. Cargo `#cargo_store` fires on each promoted/approved page automatically. No manual scripts needed.
+
+---
+
 ## Related docs
 
 - **Secret rotation choreography** (rolling any env-file-threaded secret without breaking the running container): memory `[[wiki7-secret-rotation]]`.
 - **Phase 3.5 review-gate architecture**: `docs/adr/0002-review-gate-architecture.md`.
+- **TM data-surface inventory + glossary**: `docs/research/0002-transfermarkt-data-surface.md`.
+- **Translation overhaul plan** (Wikidata-based, iteration-cycle plan): `docs/research/0003-translation-overhaul-plan.md`.
 - **Open follow-ups** (including the `docker/scripts/recycle-wiki7.sh` helper that would automate step 1's container recycle): `docs/phase-3b-backlog.md`.
 - **Live infrastructure snapshot**: memory `[[wiki7-aws-state]]`.
+- **ScraperAPI baseline**: memory `[[wiki7-scraperapi-baseline]]`.
+- **Translation strategy + status**: memory `[[wiki7-translation-strategy]]`.
 - **High-level priorities + sequencing**: memory `[[wiki7-revival-priorities]]`.

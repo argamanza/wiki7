@@ -97,9 +97,9 @@ jobs:
       - name: Install dependencies
         run: cd data && uv sync
       - name: Run linter
-        # Advisory until the Phase 3 pipeline correctness work lands (which touches
-        # the 7 ruff issues that overlap the broken transfers spider).
-        continue-on-error: true
+        # Blocking as of Phase 3a R2 (post-2026-06-12 review §6 ⑦ fix).
+        # All 14 issues the review caught are cleaned; ruff stays clean
+        # going forward via this gate.
         run: cd data && uv run ruff check .
       - name: Run tests
         run: cd data && uv run pytest --tb=short -v

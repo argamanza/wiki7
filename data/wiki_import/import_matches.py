@@ -62,13 +62,31 @@ def _render_template(template_name: str, **kwargs) -> str:
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    # Iter-cycle 1 (2026-06-12): Israeli DD/MM/YYYY date format on match
+    # report pages. Match dates render via `{{ match.date | il_date }}`.
+    from data_pipeline.helpers import hbs_match_outcome, to_il_date
+    env.filters["il_date"] = to_il_date
+    # §6 ③ fix (2026-06-12 review): the match-report category logic and
+    # competition_season row-colour logic both used to assume HBS was the
+    # home team, miscategorising every away match. This filter
+    # consults the venue and returns 'win'/'loss'/'draw' from HBS's
+    # perspective. Templates wrap the result in their own categorisation.
+    env.filters["hbs_match_outcome"] = hbs_match_outcome
     template = env.get_template(template_name)
     return template.render(**kwargs)
 
 
+# Retry policy tuned for MediaWiki's `ratelimited` API error specifically.
+# Wiki7Bot lives in the `bot` group (which has `noratelimit`), but in
+# practice we still hit `ratelimited` on burst writes — observed in the
+# 2024/25 iteration-cycle re-runs (2026-06-10) dropping single match pages.
+# MW's per-bucket reset window is typically ~60s, so we need backoff that
+# crosses that threshold rather than the original 3-attempt / ~6s policy.
+# Total worst-case wall-clock per page = 5 + 10 + 20 + 40 + 60 + 60 ≈ 3min,
+# acceptable for a once-per-page write.
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(6),
+    wait=wait_exponential(multiplier=5, min=5, max=60),
     retry=retry_if_exception_type((mwclient.errors.APIError, ConnectionError)),
     reraise=True,
 )
@@ -89,19 +107,50 @@ def _edit_page(site: mwclient.Site, title: str, content: str, summary: str) -> b
     return True
 
 
-def _match_page_title(match: dict) -> str:
-    """Generate a wiki page title for a match report."""
-    date = match.get("date", "תאריך לא ידוע")
-    opponent = match.get("opponent", "לא ידוע")
-    competition = match.get("competition", "")
+def _wikitext_sanitize_title(title: str) -> str:
+    """Strip wikitext-illegal chars from a page title. Shared between
+    `_match_page_title` and any caller that builds match-page link text
+    from match data (e.g. `competition_season.j2`'s per-row link), so
+    both surfaces produce identical strings.
 
-    title = f"{date} נגד {opponent}"
-    if competition:
-        title += f" ({competition})"
-
+    Yellow-triage fix (2026-06-13): pre-fix the sanitization lived only
+    in `_match_page_title`; `competition_season.j2:23` built the link
+    text inline and skipped it, so a fixture with a `[`, `]`, `{`, `}`,
+    `#`, or `|` in its opponent/competition produced a link that pointed
+    at a different page than the rendered match-report. Extract the
+    sanitization into a shared helper used by both."""
     title = title.replace("[", "(").replace("]", ")").replace("{", "(").replace("}", ")")
     title = title.replace("#", "").replace("|", "-")
     return title
+
+
+def _format_match_title(date: str, opponent: str, competition: str) -> str:
+    """Build the canonical match-page title string. Single source of
+    truth; both the renderer (`_match_page_title`) and the link-builder
+    filter (`match_title_filter` registered for Jinja) call this so the
+    two outputs are guaranteed to match.
+
+    Yellow-triage fix (2026-06-13): date is run through `to_il_date` so
+    titles render as `25/08/2024` not `Sun Aug 25, 2024` — the
+    pre-2024 sites were still embedding raw English TM dates in match
+    titles. Fix is strictly cheaper now (zero pages live this cycle)
+    than after the all-time push."""
+    from data_pipeline.helpers import to_il_date
+    formatted_date = to_il_date(date) or date or "תאריך לא ידוע"
+    safe_opponent = opponent or "לא ידוע"
+    title = f"{formatted_date} נגד {safe_opponent}"
+    if competition:
+        title += f" ({competition})"
+    return _wikitext_sanitize_title(title)
+
+
+def _match_page_title(match: dict) -> str:
+    """Generate a wiki page title for a match report."""
+    return _format_match_title(
+        match.get("date", ""),
+        match.get("opponent", ""),
+        match.get("competition", ""),
+    )
 
 
 def import_matches(
@@ -137,7 +186,10 @@ def import_matches(
             if site is None:
                 raise RuntimeError("site is required when dry_run=False")
 
-            page = site.pages[title]
+            # Phase 3a R2: route through the gate before probing existence so
+            # the report layer reflects Draft-namespace reality.
+            routed = review_gate.route_title(site, title)
+            page = site.pages[routed]
             if page.exists:
                 existing = page.text()
                 if _content_hash(existing.strip()) == _content_hash(content.strip()):

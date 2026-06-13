@@ -24,6 +24,14 @@ def normalize_player(player) -> Player:
     if is_all_hebrew(facts.get("Name in home country", "")):
         name_hebrew = facts.get("Name in home country")
 
+    # Phase 3a R2: derived fields from the existing facts dict + market_value_history.
+    # All nullable so historical players whose profiles omit them keep validating.
+    preferred_foot = _parse_preferred_foot(facts.get("Foot"))
+    height_cm = _parse_height_cm(facts.get("Height"))
+    contract_expires = facts.get("Contract expires") or None
+    current_market_value = _latest_market_value(player.get("market_value_history", []))
+    other_positions = [p for p in player.get("positions", {}).get("other", []) if p]
+
     return Player(
         id=player["profile_url"].split("/")[-1],
         name_english=player["name_english"],
@@ -36,7 +44,57 @@ def normalize_player(player) -> Player:
         current_jersey_number=None if player["number"] == "-" else int(player["number"]),
         homegrown=is_homegrown(player),
         retired=is_retired(player),
+        preferred_foot=preferred_foot,
+        height_cm=height_cm,
+        contract_expires=contract_expires,
+        # is_captain comes from the squad-page captain icon — wired through the
+        # squad spider when present, otherwise default False.
+        is_captain=bool(player.get("is_captain", False)),
+        current_market_value=current_market_value,
+        other_positions=other_positions,
     )
+
+
+def _parse_preferred_foot(raw: str | None) -> str | None:
+    """TM's `Foot` fact is one of {"right", "left", "both"} (lowercased). The
+    label can also be empty when TM doesn't know; return None in that case.
+    """
+    if not raw:
+        return None
+    val = raw.strip().lower()
+    if val not in {"right", "left", "both"}:
+        return None
+    return val
+
+
+def _parse_height_cm(raw: str | None) -> int | None:
+    """TM renders height as "1,78 m" or "1.78 m" depending on locale. Convert to
+    an int in centimetres; return None when the value is missing or malformed.
+    """
+    if not raw:
+        return None
+    cleaned = raw.replace(",", ".").replace("\xa0", " ").strip()
+    # Strip the unit; tolerate "1.78 m" or "1.78m".
+    for suffix in (" m", "m"):
+        if cleaned.endswith(suffix):
+            cleaned = cleaned[: -len(suffix)].strip()
+            break
+    try:
+        metres = float(cleaned)
+    except ValueError:
+        return None
+    return int(round(metres * 100))
+
+
+def _latest_market_value(history: list) -> str | None:
+    """Return the most recent market-value string from the player's history, or
+    None when the history is empty (pre-2003 players or otherwise absent).
+    History entries are dicts with "date" and "value" keys, sorted ascending by
+    date in the spider.
+    """
+    if not history:
+        return None
+    return history[-1].get("value") or None
 
 def normalize_transfers(player) -> List[Transfer]:
     uid = player["profile_url"].split("/")[-1]

@@ -179,7 +179,18 @@ class ImportDefaultPages extends Maintenance {
             // came from someone other than this importer (detected via the
             // "Auto-import:" edit-summary prefix). Hidden/missing comments are
             // treated as human edits — fail toward preserving content.
-            if ( $pageExists && $force && !$this->latestRevisionIsAutoImport( $title ) ) {
+            //
+            // EXCEPTION: install.php seeds NS_MAIN pages (e.g. עמוד ראשי when
+            // --lang=he) with the boilerplate "MediaWiki has been successfully
+            // installed" content, actor='MediaWiki default', empty comment. On
+            // a fresh database this is the first revision we see, and without
+            // this exception the guard preserves the install boilerplate
+            // forever — the Wiki7 homepage never gets written. The signature is
+            // unmistakable: a real human edit by an account named 'MediaWiki
+            // default' with literally empty comment cannot occur on this wiki.
+            if ( $pageExists && $force
+                 && !$this->latestRevisionIsAutoImport( $title )
+                 && !$this->latestRevisionIsInstallDefault( $title ) ) {
                 $this->output( "  PRESERVED (edited since last import): $pageTitle\n" );
                 $skipped++;
                 continue;
@@ -232,6 +243,15 @@ class ImportDefaultPages extends Maintenance {
                         $this->output( "  CREATED: $pageTitle\n" );
                         $created++;
                     }
+                    // Seed pages are foundational — they bypass the review-gate
+                    // flow ApprovedRevs imposes on other content. Auto-approve
+                    // the just-written revision so anon readers see it
+                    // immediately. Without this, a fresh install leaves
+                    // ApprovedRevs serving rev 1 (install.php's boilerplate),
+                    // because $egApprovedRevsAutomaticApprovals=false. The
+                    // first-layer guard fix (latestRevisionIsInstallDefault
+                    // above) writes the right content; this approves it.
+                    $this->approveLatest( $title );
                 } else {
                     $status = $updater->getStatus();
                     $this->error( "  ERROR creating '$pageTitle': " . $status->getMessage()->text() );
@@ -268,6 +288,56 @@ class ImportDefaultPages extends Maintenance {
             return false;
         }
         return str_starts_with( $comment->text, 'Auto-import:' );
+    }
+
+    /**
+     * True when the page's latest revision is install.php's auto-seeded
+     * default — actor='MediaWiki default' with empty comment. This is the
+     * boilerplate install.php writes for NS_MAIN pages (e.g. עמוד ראשי when
+     * --lang=he) and is safe to overwrite. A real edit cannot match: an
+     * actual user named 'MediaWiki default' cannot log in (the install script
+     * creates the revision via a synthetic actor, not a real account), and
+     * legitimate revisions carry non-empty edit summaries.
+     */
+    private function latestRevisionIsInstallDefault( Title $title ): bool {
+        $rev = $this->getServiceContainer()
+            ->getRevisionLookup()
+            ->getRevisionByTitle( $title );
+        if ( !$rev ) {
+            return false;
+        }
+        $user = $rev->getUser();
+        if ( !$user || $user->getName() !== 'MediaWiki default' ) {
+            return false;
+        }
+        $comment = $rev->getComment();
+        return !$comment || $comment->text === '';
+    }
+
+    /**
+     * Approve the latest revision of a seed page so ApprovedRevs serves it to
+     * anon readers. Silently no-ops if ApprovedRevs isn't loaded or the page's
+     * namespace isn't gated — same effect as the page simply not being
+     * approval-gated. Uses ApprovedRevs's own API so its hooks fire (cache
+     * invalidation, log entry, etc.) rather than a raw SQL upsert.
+     */
+    private function approveLatest( Title $title ): void {
+        if ( !class_exists( \ApprovedRevs::class ) ) {
+            return;
+        }
+        $wikiPage = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $title );
+        $latestRevId = $wikiPage->getLatest();
+        if ( !$latestRevId ) {
+            return;
+        }
+        $user = $this->getServiceContainer()->getUserFactory()->newFromName( 'Admin' );
+        try {
+            \ApprovedRevs::setApprovedRevID( $title, $latestRevId, $user );
+        } catch ( \Exception $e ) {
+            // Approval is best-effort; failure here doesn't block the import
+            // (the operator can still run approveAllPages.php as a fallback).
+            $this->output( "    (note: auto-approve failed for $title: " . $e->getMessage() . ")\n" );
+        }
     }
 
     /**

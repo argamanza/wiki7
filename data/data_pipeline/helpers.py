@@ -5,6 +5,142 @@ from typing import List, Optional, Set
 import pycountry
 
 
+# Iter-cycle 1 review walk (2026-06-12): TM emits transfer-fee values as
+# free-text strings rather than structured types. The fixed-vocab strings
+# below leak into Hebrew transfer tables in their English form unless
+# translated. Numeric values (€350k, €1.20m) pass through unchanged — the
+# € symbol is football-fan convention.
+_TRANSFER_FEE_HEBREW = {
+    "free transfer": "העברה חופשית",
+    "loan transfer": "השאלה",
+    "end of loan": "סוף השאלה",
+    "loan fee": "דמי השאלה",
+    "?": "",
+    "-": "",
+}
+
+
+# Iter-cycle 1 review walk (2026-06-12): TM emits youth-team tenures with
+# age-group / academy suffixes ("Benfica U17", "Sporting Yth.", etc). The
+# player_page transfers table previously listed these inline with senior
+# transfers — Wikipedia-style infoboxes typically split "Youth career"
+# (U-teams + academies) from senior career to make the pro debut visible.
+# B-teams / II / Reserves are NOT classified here as youth — they're a
+# senior reserve tier and the player on them is already professional.
+# English youth markers — TM-supplied form, present before Hebrew mapping.
+_YOUTH_SUFFIX_RE_EN = re.compile(
+    r"\b(?:U\d{2}|Sub-?\d{2}|Yth|Youth|Juvenil|Junior|Cadete)\.?\s*$",
+    flags=re.IGNORECASE,
+)
+
+# Hebrew youth markers — present AFTER apply_hebrew_mapping has rewritten
+# the club names. "תחת N" literally "under N" is the Hebrew rendering of
+# "U-N"; "נוער" is the Hebrew word for "youth". TM-translation pipeline
+# emits "Benfica U17" → "בנפיקה תחת 17" and "Sporting Yth" → "ספורטינג
+# נוער", so the youth classifier must recognise both forms — it's called
+# on whichever stage of the data the renderer sees. Iter-cycle 1 walk
+# (2026-06-12) surfaced this when 53 Hebrew-form youth transfers were
+# being silently bucketed as senior.
+_YOUTH_SUFFIX_RE_HE = re.compile(
+    r"(?:תחת\s+\d{2}|נוער)\s*$",
+)
+
+
+def is_youth_club_name(name: str | None) -> bool:
+    """True iff this club name names a youth / academy team.
+
+    Matches youth markers as a TRAILING token in either English (TM raw
+    form: "Benfica U17", "Sporting Yth.", "Sporting Sub-15") or Hebrew
+    (post-translation form: "בנפיקה תחת 17", "ספורטינג נוער"). Tolerates
+    the trailing-dot variant and case-insensitive matches for English.
+
+    Returns False for empty / None inputs — those are senior-by-default
+    so a missing club name doesn't accidentally bucket the transfer into
+    "Youth career".
+    """
+    if not name:
+        return False
+    if _YOUTH_SUFFIX_RE_EN.search(name):
+        return True
+    return bool(_YOUTH_SUFFIX_RE_HE.search(name))
+
+
+# Match-outcome resolution from HBS's perspective. §6 ③ fix from the
+# 2026-06-12 review: `match_report.j2` and `competition_season.j2` both
+# categorised matches as "win/loss/draw" purely from comparing home_goals
+# vs away_goals, which silently assumed HBS was always the home team. For
+# away matches that flipped the categorisation — an away win came out as
+# a loss, an away loss as a win. About half of all matches were
+# miscategorised.
+#
+# The result string from TM is always "<home_goals>:<away_goals>" so the
+# venue is the only signal we need to remap goals to HBS's perspective:
+#   venue=H → HBS = home_goals, opp = away_goals
+#   venue=A → HBS = away_goals, opp = home_goals
+def hbs_match_outcome(result: str | None, venue: str | None) -> str:
+    """Categorise a match result as `'win'`, `'loss'`, `'draw'`, or `''`
+    from HBS's perspective.
+
+    `result` is TM's "home_goals:away_goals" string (e.g. "2:1"). `venue`
+    is `'H'` or `'A'` indicating where HBS played. Returns `''` when the
+    inputs can't be parsed — the caller should fall through to "uncoloured /
+    uncategorised" rather than guessing.
+
+    Used by both `match_report.j2` (single-match page category) and
+    `competition_season.j2` (per-row colouring).
+    """
+    if not result or not venue:
+        return ""
+    s = result.strip()
+    if ":" not in s:
+        return ""
+    home_str, _, away_str = s.partition(":")
+    try:
+        home_goals = int(home_str.strip())
+        away_goals = int(away_str.strip())
+    except (ValueError, TypeError):
+        return ""
+    v = venue.strip().upper()
+    if v == "H":
+        hbs_goals, opp_goals = home_goals, away_goals
+    elif v == "A":
+        hbs_goals, opp_goals = away_goals, home_goals
+    else:
+        return ""
+    if hbs_goals > opp_goals:
+        return "win"
+    if hbs_goals < opp_goals:
+        return "loss"
+    return "draw"
+
+
+def to_il_fee(raw: str | None) -> str:
+    """Translate a TM transfer-fee string to Hebrew form, or pass numeric
+    values through unchanged.
+
+    TM emits a small fixed vocabulary for non-numeric fees ("free transfer",
+    "loan transfer", "End of loan") plus the special-cased `Loan fee:<br/>
+    <i>€X</i>` HTML shape for loan-with-fee deals. Numeric € values stay
+    in original form (football convention; localising to ₪ would add
+    FX-rate noise).
+    """
+    if not raw or not isinstance(raw, str):
+        return ""
+    s = raw.strip()
+    if not s:
+        return ""
+    # Loan-fee HTML shape: extract the inner €X amount.
+    m = re.match(r"Loan fee:.*?<i[^>]*>(€[^<]+)</i>", s, re.IGNORECASE)
+    if m:
+        return f"דמי השאלה: {m.group(1)}"
+    # Bare lookup against fixed vocab (case-insensitive).
+    he = _TRANSFER_FEE_HEBREW.get(s.lower())
+    if he is not None:
+        return he
+    # Numeric € amounts + everything else: pass through.
+    return s
+
+
 def is_all_hebrew(text: str) -> bool:
     return bool(re.fullmatch(r'[\u0590-\u05FF\s]+', text))
 
@@ -124,3 +260,123 @@ def is_retired(player: dict) -> bool:
         if "retired" in to_club:
             return True
     return False
+
+
+# 2-digit year pivot. Choosing 30 means:
+#   yy < 30 → 20yy (so 24 → 2024, 29 → 2029)
+#   yy >= 30 → 19yy (so 49 → 1949, 87 → 1987, 99 → 1999)
+# Rationale (§6 ③ fix, 2026-06-12 review): HBS was founded ~1949/50, so the
+# corpus carries seasons + birth dates back to the late 1940s. A naïve "always
+# 20XX" or "cutoff at 50" pivot mis-binned the founding-era data:
+#   - to_il_date("25/07/87") used to expand to "25/07/2087" (year 2087)
+#   - transfers/platzierungen spiders mapped "49/50" to 2049, not 1949
+# The 30 cutoff gives a ~5-year forward window (2025-2029 still bin to 20XX);
+# bump it to 25 by 2030 if pre-2000 data hasn't aged out by then.
+YY_PIVOT_CUTOFF = 30
+
+
+def pivot_two_digit_year(yy: int, cutoff: int = YY_PIVOT_CUTOFF) -> int:
+    """Expand a 2-digit year to 4 digits using the project's standard pivot.
+
+    `yy >= cutoff` → 19YY; otherwise → 20YY. The default cutoff (30) maps
+    24/25/29 to the 2000s and 30/49/87/99 to the 1900s — appropriate for
+    a corpus whose oldest content reaches the late 1940s.
+
+    Idempotent for already-4-digit values: pass them through unchanged
+    (`pivot_two_digit_year(2024)` returns 2024).
+    """
+    if yy >= 100:
+        return yy
+    return 1900 + yy if yy >= cutoff else 2000 + yy
+
+
+def to_il_date(raw: str | None) -> str:
+    """Convert a date string to Israeli DD/MM/YYYY format.
+
+    Tolerates several common input shapes seen on TM:
+      - ISO `YYYY-MM-DD`             → `DD/MM/YYYY`
+      - Already-Israeli `DD/MM/YYYY` → pass through unchanged
+      - Dot format `DD.MM.YYYY`      → normalised to slashes
+      - TM match-date `Thu 25/07/24` → `25/07/2024` (strip day prefix,
+                                        expand 2-digit year)
+      - Bare `DD/MM/YY`              → `DD/MM/YYYY` (expand 2-digit year)
+      - Empty / `?` / `-` / None    → empty string
+
+    Iter-cycle 1 review walk (2026-06-12): Israeli convention is
+    DD/MM/YYYY with slashes. Used on government forms, banks, sports
+    media. The pipeline previously rendered ISO `YYYY-MM-DD` on every
+    date surface (birth_date, transfer_date, market-value date) which
+    reviewers flagged as non-idiomatic. Day-of-week prefix on match
+    dates is stripped to keep the output uniform — the date itself is
+    the canonical thing readers reference; the day-of-week can be
+    derived if needed.
+
+    2-digit year expansion uses `pivot_two_digit_year()` — yy < 30 →
+    20yy, yy >= 30 → 19yy. The old "always 20yy" path expanded
+    "25/07/87" to "25/07/2087" (the §6 ③ corruption from the
+    2026-06-12 review).
+
+    Returns the original string if parsing fails (defensive — don't
+    blank a date the user might still want to see, even if oddly formed).
+    """
+    if not raw or not isinstance(raw, str):
+        return ""
+    s = raw.strip()
+    if not s or s in ("?", "-"):
+        return ""
+    # Strip TM's day-of-week prefix ("Thu 25/07/24" → "25/07/24"). The day-
+    # name is English; in a Hebrew-target wiki it'd be jarring. The date is
+    # the canonical thing readers care about.
+    s = re.sub(r"^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+", "", s, flags=re.IGNORECASE)
+    # Already DD/MM/YYYY?
+    if re.fullmatch(r"\d{2}/\d{2}/\d{4}", s):
+        return s
+    # DD/MM/YY → pivot 2-digit year to 4 digits (cutoff 30; see helper).
+    m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{2})", s)
+    if m:
+        yyyy = pivot_two_digit_year(int(m.group(3)))
+        return f"{m.group(1)}/{m.group(2)}/{yyyy}"
+    # DD.MM.YYYY → slashes
+    m = re.fullmatch(r"(\d{2})\.(\d{2})\.(\d{4})", s)
+    if m:
+        return f"{m.group(1)}/{m.group(2)}/{m.group(3)}"
+    # ISO YYYY-MM-DD
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(3)}/{m.group(2)}/{m.group(1)}"
+    # Permissive parse via dateutil — handles less-common shapes
+    try:
+        return parse(s).date().strftime("%d/%m/%Y")
+    except Exception:
+        return s
+
+
+def to_season_display(season: str | int) -> str:
+    """Convert a bare-integer start-year season ("2024" or 2024) to TM's
+    human-readable display format ("2024/25").
+
+    Phase 3a R2: the pipeline's internal join key is the bare integer
+    start-year (matches the spider's --season arg, TM's saison_id URL
+    param, the filesystem dir layout, and the Cargo `season` column).
+    Human-visible surfaces — page titles, h1 headings, category names,
+    infobox-rendered season strings — normalise via this helper to the
+    slash format. Single helper means all the page-title strings emit
+    the same shape; single integer-start-year join key means all the
+    data-layer code stays simple.
+
+    Tolerates either str or int input. Returns the original string
+    unchanged when conversion isn't possible (defensive: a season
+    label that was already in slash form, or a malformed value).
+    """
+    if season is None:
+        return ""
+    s = str(season).strip()
+    if not s:
+        return ""
+    # Already in slash form? Pass through.
+    if "/" in s:
+        return s
+    if not s.isdigit():
+        return s
+    start = int(s)
+    return f"{start}/{str(start + 1)[-2:]}"
