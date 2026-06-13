@@ -321,6 +321,16 @@ $egApprovedRevsShowApproveLatest = true;
 # back-approved one-by-one. ApprovedRevs's "show APPROVED to public, hold LATEST for
 # reviewers" mode covers our UPDATE case correctly without the blanking flag.
 
+# The approval-status subtitle is reviewer chrome, not reader-facing. ApprovedRevs
+# grants `viewlinktolatest` to `*` by default, so anonymous readers see
+# "This is the approved version, and it's also the latest" on every approved page
+# (internal editorial noise) and — when a bot update is pending — a link pointing
+# straight at the unapproved latest revision. Revoke from anon; keep it for the
+# groups that actually review. Mirrors the runcargoqueries anon-revocation above.
+$wgGroupPermissions['*']['viewlinktolatest']        = false;
+$wgGroupPermissions['reviewer']['viewlinktolatest'] = true;
+$wgGroupPermissions['sysop']['viewlinktolatest']    = true;
+
 # === End Phase 3.5 review-gate =====================================================
 
 # === SEO ============================================================================
