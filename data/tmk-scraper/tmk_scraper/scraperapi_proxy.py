@@ -112,18 +112,24 @@ def redact(maybe_proxy_url: Any) -> str:
 
 class _RedactingLogFilter(logging.Filter):
     """logging.Filter that runs `redact()` on every record's message AND
-    arg values. Installed at the root logger so it catches:
+    arg values.
+
+    Reviewer-pass blocker-4-followup (2026-06-13): the first version of
+    this helper attached the filter to the root LOGGER. Python's logging
+    semantics make that ineffective for the records that actually leak:
+    filters on a logger only run for records emitted DIRECTLY on that
+    logger. Records from child loggers (`scrapy.downloadermiddlewares.*`,
+    run_pipeline's own `getLogger(__name__)` relay) propagate UP to
+    root's HANDLERS without passing through the root logger's filters.
+    So the filter has to live on the HANDLERS — see
+    `attach_redacting_filter_to_handlers` for the install path.
+
+    Catches once attached to handlers:
       - Scrapy's `Gave up retrying <GET …api_key=KEY…>` ERROR
       - DownloaderMiddleware's per-request DEBUG/INFO lines
       - run_pipeline's stderr-relay of spider failures (it forwards the
         last 10 lines verbatim, which include the proxy URL)
       - any other log path that picks up a request URL we didn't predict.
-
-    Reviewer-pass blocker (2026-06-13): the §6 ② fix dropped LOG_LEVEL to
-    INFO and migrated spiders to the helper, but Scrapy's own ERROR-level
-    request-URL logs survive any LOG_LEVEL choice. A filter is the right
-    layer to cover both Scrapy's logs AND any handler that pulls them
-    through (subprocess stderr capture in run_pipeline, etc).
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -141,18 +147,37 @@ class _RedactingLogFilter(logging.Filter):
         return True
 
 
-_FILTER_INSTALLED = False
+def _handler_has_redactor(handler: logging.Handler) -> bool:
+    return any(isinstance(f, _RedactingLogFilter) for f in handler.filters)
 
 
-def install_redacting_log_filter() -> None:
-    """Idempotent install of the redacting filter on the root logger.
-    Call once at process start (settings.py or the run_pipeline entry
-    point) — every subsequent emit is filtered. The filter is cheap (a
-    substring check + a regex on hits), so installing it unconditionally
-    has no meaningful perf cost.
+def attach_redacting_filter_to_handlers(logger: logging.Logger | None = None) -> int:
+    """Attach the redacting filter to every handler on `logger` (default:
+    the root logger). Returns the number of handlers it was newly
+    attached to (skipping any that already had it — idempotent).
+
+    Call this AFTER your logging is configured:
+      - In run_pipeline: right after `logging.basicConfig`.
+      - In the Scrapy spider process: from an extension's
+        `engine_started` signal (or `from_crawler`) — settings.py
+        import time is too early; Scrapy hasn't installed its handler yet.
+
+    The filter is cheap (substring check + regex only on hits), so
+    attaching unconditionally has no meaningful perf cost.
     """
-    global _FILTER_INSTALLED
-    if _FILTER_INSTALLED:
-        return
-    logging.getLogger().addFilter(_RedactingLogFilter())
-    _FILTER_INSTALLED = True
+    target = logger if logger is not None else logging.getLogger()
+    attached = 0
+    for h in target.handlers:
+        if not _handler_has_redactor(h):
+            h.addFilter(_RedactingLogFilter())
+            attached += 1
+    return attached
+
+
+# Backward-compat alias kept for any §6 ② call sites still pointing at
+# the old name. Note the semantic change: this now routes to the
+# handler-attach path (the only effective one for propagated records).
+# The §6 ② settings.py + run_pipeline call sites are updated to call
+# `attach_redacting_filter_to_handlers` directly in the right places.
+def install_redacting_log_filter() -> int:
+    return attach_redacting_filter_to_handlers()

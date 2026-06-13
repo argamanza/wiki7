@@ -170,16 +170,166 @@ class TestRedactingLogFilter:
         assert out == "Normal log line, no key here"
 
     def test_install_is_idempotent(self):
-        """Calling install_redacting_log_filter twice should not double-
-        register the filter on the root logger."""
+        """Calling the install helper repeatedly must NOT double-register
+        on any single handler. The handler-level idempotency check
+        (`_handler_has_redactor`) is the load-bearing piece."""
         import logging
-        from tmk_scraper.scraperapi_proxy import install_redacting_log_filter, _RedactingLogFilter
+        from tmk_scraper.scraperapi_proxy import (
+            attach_redacting_filter_to_handlers,
+            _RedactingLogFilter,
+        )
         root = logging.getLogger()
-        before_count = sum(1 for f in root.filters if isinstance(f, _RedactingLogFilter))
-        install_redacting_log_filter()
-        install_redacting_log_filter()
-        install_redacting_log_filter()
-        after_count = sum(1 for f in root.filters if isinstance(f, _RedactingLogFilter))
-        # Either it was already installed (before > 0, after unchanged) or
-        # newly installed (before 0, after 1). Never more than one instance.
-        assert after_count <= max(1, before_count)
+        # Ensure at least one handler exists for the test to assert against.
+        if not root.handlers:
+            root.addHandler(logging.StreamHandler())
+        attach_redacting_filter_to_handlers()
+        attach_redacting_filter_to_handlers()
+        attach_redacting_filter_to_handlers()
+        for h in root.handlers:
+            count = sum(1 for f in h.filters if isinstance(f, _RedactingLogFilter))
+            assert count <= 1, f"Handler had {count} redactors — install is not idempotent"
+
+
+class TestRedactionFilterCatchesPropagatedRecords:
+    """Reviewer-pass blocker-4-followup (2026-06-13): the first install
+    attached the filter to the root LOGGER, which does NOT see records
+    propagated up from child loggers. The handler IS what sees them, so
+    the filter has to live on the handler.
+
+    These tests prove the new install path catches a propagated record
+    AND that the OLD install path leaked. The first test explicitly
+    emulates Scrapy's RetryMiddleware emit shape — a logger deep in
+    `scrapy.downloadermiddlewares.retry`."""
+
+    def _make_captured_root_handler(self):
+        """Build an isolated root setup with one StringIO handler.
+
+        Strips any pre-existing handlers AND any pre-existing redactor
+        filters that previous tests may have left on the root logger.
+        Because `_RedactingLogFilter.filter` mutates the record in-place,
+        even a leftover handler with the redactor on a DIFFERENT stream
+        will scrub the message before the test's fresh handler emits it
+        — yielding misleading "already redacted" assertions.
+
+        Returns (root, stream, handler, _restore) where `_restore()`
+        puts the original handlers back."""
+        import io
+        import logging
+        from tmk_scraper.scraperapi_proxy import _RedactingLogFilter
+
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setLevel(logging.DEBUG)
+        root = logging.getLogger()
+        # Snapshot original state for restore.
+        original_handlers = list(root.handlers)
+        original_filters = list(root.filters)
+        original_level = root.level
+        # Strip everything → fresh isolated state.
+        for h in original_handlers:
+            root.removeHandler(h)
+        for f in list(root.filters):
+            if isinstance(f, _RedactingLogFilter):
+                root.removeFilter(f)
+        root.addHandler(handler)
+        root.setLevel(logging.DEBUG)
+
+        def _restore():
+            root.removeHandler(handler)
+            # Restore originals (idempotent — only re-add if not present).
+            for h in original_handlers:
+                if h not in root.handlers:
+                    root.addHandler(h)
+            for f in original_filters:
+                if f not in root.filters:
+                    root.addFilter(f)
+            root.setLevel(original_level)
+
+        return root, stream, handler, _restore
+
+    def test_filter_redacts_child_logger_propagated_to_root_handler(self):
+        """The exact gap the reviewer found: a child logger emits at
+        ERROR (Scrapy's RetryMiddleware shape), the record propagates up
+        to root's handler, the OLD install attached the filter to the
+        root LOGGER (not the handler), so nothing redacted the output.
+
+        With the new install path the filter lives on the handler →
+        sees the propagated record → redacts. This is the regression
+        test the §6 ② commit lacked."""
+        import logging
+        from tmk_scraper.scraperapi_proxy import attach_redacting_filter_to_handlers
+        root, stream, handler, _restore = self._make_captured_root_handler()
+        try:
+            attach_redacting_filter_to_handlers()
+            child = logging.getLogger("scrapy.downloadermiddlewares.retry")
+            child.propagate = True  # default, but explicit for the test
+            child.error(
+                "Gave up retrying <GET https://api.scraperapi.com/"
+                "?api_key=SECRET_TEST_KEY_DO_NOT_LOG&url=tm.com>"
+            )
+            handler.flush()
+            output = stream.getvalue()
+        finally:
+            _restore()
+        assert "SECRET_TEST_KEY_DO_NOT_LOG" not in output, (
+            f"Filter did NOT redact propagated child-logger record. "
+            f"Handler output:\n{output!r}"
+        )
+        assert "api_key=REDACTED" in output
+
+    def test_filter_redacts_args_on_propagated_child_record(self):
+        """The other emit shape: child logger uses %-formatting with
+        args carrying the proxy URL. Same propagation path."""
+        import logging
+        from tmk_scraper.scraperapi_proxy import attach_redacting_filter_to_handlers
+        root, stream, handler, _restore = self._make_captured_root_handler()
+        try:
+            attach_redacting_filter_to_handlers()
+            child = logging.getLogger("scrapy.downloadermiddlewares.retry")
+            child.error(
+                "Request failed: %s",
+                "https://api.scraperapi.com/?api_key=KEY_IN_ARGS&url=tm.com",
+            )
+            handler.flush()
+            output = stream.getvalue()
+        finally:
+            _restore()
+        assert "KEY_IN_ARGS" not in output, (
+            f"Filter did NOT redact propagated child-logger record args. "
+            f"Handler output:\n{output!r}"
+        )
+        assert "REDACTED" in output
+
+    def test_proves_old_logger_attach_was_ineffective(self):
+        """Pin the Python logging semantic that justifies the new install
+        path: attaching the filter to the root LOGGER (the old behavior)
+        does NOT redact records from child loggers. The reviewer caught
+        this exact gap — the §6 ② install was semantically wrong.
+
+        Note: `_RedactingLogFilter.filter` mutates the LogRecord in place,
+        so a previously-attached HANDLER with the filter would scrub the
+        message before our fresh handler sees it. `_make_captured_root_
+        handler` strips all pre-existing handlers + redactor filters to
+        guarantee isolation."""
+        import logging
+        from tmk_scraper.scraperapi_proxy import _RedactingLogFilter
+        root, stream, handler, _restore = self._make_captured_root_handler()
+        # Simulate the OLD install path (filter on logger, NOT handler).
+        old_filter = _RedactingLogFilter()
+        root.addFilter(old_filter)
+        try:
+            child = logging.getLogger("scrapy.downloadermiddlewares.retry")
+            child.error(
+                "Gave up retrying <GET https://api.scraperapi.com/"
+                "?api_key=NOT_REDACTED_BY_OLD_PATH&url=tm.com>"
+            )
+            handler.flush()
+            output = stream.getvalue()
+        finally:
+            root.removeFilter(old_filter)
+            _restore()
+        # Confirm: the OLD path leaked. This is what the reviewer saw.
+        assert "NOT_REDACTED_BY_OLD_PATH" in output, (
+            "Test setup is wrong — old install path was supposed to leak. "
+            f"Handler output:\n{output!r}"
+        )

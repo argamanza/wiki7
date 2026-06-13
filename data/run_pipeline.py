@@ -137,8 +137,19 @@ def _run_spider(
     if result.returncode != 0:
         logger.error("Spider '%s' failed (exit code %d)", spider_name, result.returncode)
         if result.stderr:
+            # Reviewer-pass blocker-4-followup (2026-06-13): belt-and-
+            # suspenders. Even with the handler-level redacting filter
+            # installed correctly, redact at the CAPTURE SITE too —
+            # `result.stderr` is a string we already hold, so the
+            # redaction here doesn't depend on any logging internals.
+            # If a future logging refactor accidentally bypasses the
+            # filter, the captured stderr still won't leak the key.
+            try:
+                from tmk_scraper.scraperapi_proxy import redact as _redact
+            except Exception:
+                _redact = lambda s: s  # noqa: E731 — fallback when tmk_scraper not importable
             for line in result.stderr.strip().split("\n")[-10:]:
-                logger.error("  %s", line)
+                logger.error("  %s", _redact(line))
         return False
 
     if not output_path.exists():
@@ -262,8 +273,14 @@ def run_club_scrape(only: set[str] | None = None, resume: bool = True) -> bool:
         if result.returncode != 0:
             logger.error("Club spider '%s' failed (exit code %d)", spider_name, result.returncode)
             if result.stderr:
+                # Belt-and-suspenders redaction at the capture site —
+                # see _run_spider above for the rationale.
+                try:
+                    from tmk_scraper.scraperapi_proxy import redact as _redact
+                except Exception:
+                    _redact = lambda s: s  # noqa: E731
                 for line in result.stderr.strip().split("\n")[-10:]:
-                    logger.error("  %s", line)
+                    logger.error("  %s", _redact(line))
             return False
 
         logger.info("Club spider '%s' completed -> %s", spider_name, output_path)
@@ -727,15 +744,19 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
         format="%(asctime)s %(name)-20s %(levelname)-8s %(message)s",
         datefmt="%H:%M:%S",
     )
-    # Reviewer-pass blocker (2026-06-13): install the redacting log filter
-    # at the root logger BEFORE any subprocess stderr relay can emit. The
-    # filter also lives in tmk-scraper/settings.py so Scrapy's own logs
-    # are filtered too; installing here covers any path where this script
-    # logs Scrapy-captured stderr directly (run_pipeline.py:139-141).
+    # Reviewer-pass blocker-4-followup (2026-06-13): attach the redacting
+    # filter to root's HANDLERS, not the root logger itself. Python's
+    # logging semantics: a filter on a logger only sees records emitted
+    # DIRECTLY on that logger; records propagated up from child loggers
+    # (scrapy.* + this module's own getLogger(__name__) when relaying
+    # captured stderr) bypass parent filters and hit parent handlers
+    # directly. The filter has to live on the HANDLERS to catch them.
+    # `basicConfig` above just installed the StreamHandler, so this is
+    # the right moment.
     try:
         sys.path.insert(0, str(SCRAPER_DIR))
-        from tmk_scraper.scraperapi_proxy import install_redacting_log_filter
-        install_redacting_log_filter()
+        from tmk_scraper.scraperapi_proxy import attach_redacting_filter_to_handlers
+        attach_redacting_filter_to_handlers()
     except Exception:
         # Filter is defense-in-depth — don't crash the pipeline if the
         # tmk-scraper package isn't importable from this entry point.

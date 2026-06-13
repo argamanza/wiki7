@@ -17,16 +17,18 @@ SCRAPERAPI_KEY = os.environ.get("SCRAPERAPI_KEY", "")
 # real debugging session.
 LOG_LEVEL = "INFO"
 
-# Reviewer-pass blocker (2026-06-13): LOG_LEVEL=INFO alone is NOT
-# sufficient. Scrapy's RetryMiddleware logs "Gave up retrying <GET
-# …api_key=KEY…>" at ERROR regardless of LOG_LEVEL, and that ERROR
-# stream is what run_pipeline.py:139-141 captures and re-emits. Install
-# the redacting root-logger filter unconditionally so every emit path
-# (Scrapy itself, retry middleware, downloader middleware, run_pipeline's
-# stderr relay) goes through `redact()`. Cheap (substring check + regex
-# on hits only); no perf cost at INFO.
-from tmk_scraper.scraperapi_proxy import install_redacting_log_filter  # noqa: E402
-install_redacting_log_filter()
+# Reviewer-pass blocker (2026-06-13) + blocker-4-followup (2026-06-13):
+# LOG_LEVEL=INFO alone is NOT sufficient — Scrapy's RetryMiddleware logs
+# "Gave up retrying <GET …api_key=KEY…>" at ERROR regardless of
+# LOG_LEVEL. The first fix tried `install_redacting_log_filter()` at
+# settings.py import time, but that's BEFORE Scrapy configures its log
+# handler — so nothing got attached to anything that matters. The
+# correct hook is a Scrapy extension that fires on `engine_started`
+# (after Scrapy logging is fully configured). RedactingLogExtension does
+# exactly that.
+EXTENSIONS = {
+    "tmk_scraper.extensions.RedactingLogExtension": 0,
+}
 
 # === Concurrency ===
 CONCURRENT_REQUESTS = 20
