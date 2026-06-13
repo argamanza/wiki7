@@ -1,3 +1,4 @@
+{{ bot_section_start('infobox') }}
 {{"{{"}}Player infobox
 | name_english = {{ player.name_english }}
 | name_hebrew = {{ player.name_hebrew or '' }}
@@ -24,8 +25,10 @@
 | contract_expires = {{ player.contract_expires | il_date }}
 | current_market_value = {{ player.current_market_value or '' }}
 {{"}}"}}
+{{ bot_section_end('infobox') }}
 
 {% if transfers_youth %}
+{{ bot_section_start('youth-career') }}
 == קריירת נוער ==
 {# Iter-cycle 1 walk (2026-06-12): transfers where the destination club is
    a youth / academy team. The pro-debut transfer (youth → senior) lives in
@@ -38,8 +41,10 @@
 {% endfor %}
 
 |}
+{{ bot_section_end('youth-career') }}
 {% endif %}
 
+{{ bot_section_start('career') }}
 == קריירה ==
 {% if transfers_senior %}
 {| class="wikitable sortable" style="direction:rtl; text-align:right;"
@@ -73,8 +78,10 @@
 {{"}}"}}|{{"}}"}}
 {% endfor %}
 {% endif %}
+{{ bot_section_end('career') }}
 
 {% if stats %}
+{{ bot_section_start('stats') }}
 == סטטיסטיקה עונתית ==
 {| class="wikitable sortable"
 ! עונה !! הופעות !! שערים !! בישולים !! {{"{{"}}Tooltip|Y|כרטיסים צהובים{{"}}"}} !! {{"{{"}}Tooltip|2Y|כרטיס צהוב שני{{"}}"}} !! {{"{{"}}Tooltip|R|כרטיסים אדומים{{"}}"}} !! דקות
@@ -106,9 +113,11 @@
 | minutes_played = {{ s.minutes_played or 0 }}
 {{"}}"}}|{{"}}"}}
 {% endfor %}
+{{ bot_section_end('stats') }}
 {% endif %}
 
 {% if market_values %}
+{{ bot_section_start('market-values') }}
 == היסטוריית שווי שוק ==
 {| class="wikitable sortable"
 ! תאריך !! שווי !! קבוצה
@@ -127,8 +136,10 @@
 | team = {{ mv.team or '' }}
 {{"}}"}}|{{"}}"}}
 {% endfor %}
+{{ bot_section_end('market-values') }}
 {% endif %}
 
+{{ bot_section_start('categories') }}
 [[קטגוריה:שחקנים]]
 {% if player.current_squad %}[[קטגוריה:סגל נוכחי]]{% endif %}
 {% if player.homegrown %}[[קטגוריה:חניכי מועדון]]{% endif %}
@@ -139,3 +150,4 @@
 {% elif 'קישור' in pos or 'Midfield' in pos or 'Midfielder' in pos %}[[קטגוריה:קישור]]
 {% elif 'התקפה' in pos or 'Wing' in pos or 'Forward' in pos or 'Striker' in pos %}[[קטגוריה:התקפה]]
 {% endif %}
+{{ bot_section_end('categories') }}

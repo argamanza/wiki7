@@ -15,20 +15,36 @@ These pin the merge invariants that Pattern B exists to deliver:
   8. Marker-detection is robust to whitespace + case variation.
 """
 
+import pytest
+
 from wiki_import.wikitext_merger import (
     BOT_EDIT_SUMMARY_PREFIX,
-    MARKER_END,
-    MARKER_START,
+    BOT_MERGE_SUMMARY_PREFIX,
     extract_managed_sections,
     is_bot_authored,
+    is_clean_rewrite_eligible,
+    make_end_marker,
+    make_start_marker,
     merge,
     surgical_merge,
+    validate_section_id,
 )
 
 
 def _wrap(section_id: str, body: str) -> str:
     """Helper — wrap `body` in start/end markers for `section_id`."""
-    return f"{MARKER_START.format(id=section_id)}\n{body}\n{MARKER_END.format(id=section_id)}"
+    return f"{make_start_marker(section_id)}\n{body}\n{make_end_marker(section_id)}"
+
+
+def _save_summary_for(action: str) -> str:
+    """The summary the caller (`_edit_page`) is contracted to stamp
+    based on the merge action. Encodes the load-bearing convention so
+    test scenarios mimic the production save shape exactly."""
+    if action == "clean_rewrite":
+        return f"{BOT_EDIT_SUMMARY_PREFIX} Wiki7Bot full rewrite"
+    if action == "surgical_merge":
+        return f"{BOT_MERGE_SUMMARY_PREFIX} Wiki7Bot section update; reviewer content preserved"
+    raise AssertionError(f"no save expected for action={action!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -37,19 +53,30 @@ def _wrap(section_id: str, body: str) -> str:
 
 
 class TestIsBotAuthored:
+    """`is_bot_authored` is the OWNERSHIP check — matches either
+    `Auto-import:` or `Auto-merge:` because both prefixes mean "bot
+    saved this revision". Different from `is_clean_rewrite_eligible`
+    which only matches `Auto-import:` — see `TestIsCleanRewriteEligible`."""
+
     def test_auto_import_prefix(self):
         assert is_bot_authored("Auto-import: Created player page for X") is True
+
+    def test_auto_merge_prefix_is_also_ours(self):
+        """Reviewer-pass fix (2026-06-13): a previous surgical-merge
+        save (which uses `Auto-merge:`) IS still bot-authored for
+        ownership purposes — only the CLEAN-REWRITE decision is
+        stricter."""
+        assert is_bot_authored("Auto-merge: Wiki7Bot section update") is True
 
     def test_auto_import_with_just_colon(self):
         assert is_bot_authored("Auto-import:") is True
 
+    def test_auto_merge_with_just_colon(self):
+        assert is_bot_authored("Auto-merge:") is True
+
     def test_leading_whitespace_tolerated(self):
-        """A reviewer's manual edit summary that happened to copy-paste
-        an `Auto-import:` line shouldn't be classified as ours just
-        because of leading whitespace — but the convention is that the
-        prefix is always at the START. Tolerate a leading newline/space
-        which can sneak in from manual entry."""
         assert is_bot_authored("  Auto-import: X") is True
+        assert is_bot_authored("\n\tAuto-merge: X") is True
 
     def test_non_matching_prefix(self):
         assert is_bot_authored("Manual edit: fix typo") is False
@@ -63,9 +90,32 @@ class TestIsBotAuthored:
         assert is_bot_authored("   ") is False
 
     def test_auto_import_substring_not_at_start_is_NOT_ours(self):
-        """A reviewer's "Note: Auto-import: changed by ..." should NOT
-        match — the prefix must be at the START."""
         assert is_bot_authored("Note: Auto-import: changed something") is False
+        assert is_bot_authored("Note: Auto-merge: changed something") is False
+
+
+class TestIsCleanRewriteEligible:
+    """Reviewer-pass fix (2026-06-13): the STRICTER discrimination —
+    only `Auto-import:` qualifies. `Auto-merge:` does NOT (would
+    create a two-run wedge that clobbers reviewer content). See
+    `TestTwoRunWedge` below for the regression test."""
+
+    def test_auto_import_prefix_eligible(self):
+        assert is_clean_rewrite_eligible("Auto-import: anything") is True
+
+    def test_auto_merge_prefix_NOT_eligible(self):
+        """The load-bearing distinction. A page whose last edit was a
+        surgical-merge save MUST NOT be clean-rewritten on the next run;
+        the surgical-merge result encodes reviewer content that would
+        be lost."""
+        assert is_clean_rewrite_eligible("Auto-merge: anything") is False
+
+    def test_reviewer_summary_NOT_eligible(self):
+        assert is_clean_rewrite_eligible("Manual edit") is False
+
+    def test_empty_or_none_NOT_eligible(self):
+        assert is_clean_rewrite_eligible(None) is False
+        assert is_clean_rewrite_eligible("") is False
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +401,221 @@ class TestEndToEndShape:
 class TestSharedConvention:
     def test_bot_edit_summary_prefix_value(self):
         """Pin the literal prefix string. PHP-side
-        (`docker/import-pages.php`) and Python-side agree on
-        `Auto-import:` — if this ever changes, BOTH sides need updating.
-        This test is the regression alarm."""
+        (`docker/import-pages.php` lines 222 + 270) and Python-side
+        agree on `Auto-import:` — if this ever changes, BOTH sides need
+        updating. This test is the regression alarm."""
         assert BOT_EDIT_SUMMARY_PREFIX == "Auto-import:"
+
+    def test_bot_merge_summary_prefix_value(self):
+        """Pin the literal merge prefix string. Reviewer-pass taxonomy
+        fix (2026-06-13). PHP-side currently only knows about
+        `Auto-import:` — its preserve-edit guard treats `Auto-merge:`
+        as reviewer-touched (correct semantic — a merged page DID have
+        reviewer content), so no PHP change needed. But if either side
+        ever renames either prefix, both sides must update in lockstep
+        and the parity assumption needs revisiting."""
+        assert BOT_MERGE_SUMMARY_PREFIX == "Auto-merge:"
+
+
+class TestTwoRunWedgeRegression:
+    """Reviewer-pass fix (2026-06-13): the CRITICAL B.3 design trap. The
+    original single-prefix design would have lost reviewer edits on the
+    third bot run:
+
+      Run 1: bot CREATES page → save with Auto-import:
+      Run 2: reviewer COPYEDITS outside markers → save (no prefix)
+      Run 3: bot re-renders → surgical_merge → save with Auto-import:
+             (the buggy original design)
+      Run 4: bot re-renders → sees Auto-import: → clean_rewrite →
+             reviewer paragraph GONE.
+
+    The two-prefix taxonomy (`Auto-import:` vs `Auto-merge:`) fixes it.
+    These tests run the exact sequence and assert the reviewer's edit
+    survives across multiple bot runs."""
+
+    def test_two_consecutive_bot_runs_preserve_reviewer_paragraph(self):
+        # Run 1: bot creates the page.
+        new_v1 = (
+            _wrap("infobox", "INFOBOX_V1")
+            + "\n"
+            + _wrap("career", "CAREER_V1")
+        )
+        existing_text = None
+        last_summary = None
+        merged_1, action_1 = merge(existing_text, new_v1, last_summary)
+        assert action_1 == "clean_rewrite"
+        assert merged_1 == new_v1
+        # Save uses the action-appropriate prefix.
+        last_summary = _save_summary_for(action_1)
+        existing_text = merged_1
+
+        # Reviewer copyedits between bot runs. Adds a paragraph
+        # OUTSIDE the markers and updates the summary.
+        REVIEWER_PROSE = "Reviewer-added analysis paragraph."
+        existing_text = (
+            _wrap("infobox", "INFOBOX_V1")
+            + f"\n\n{REVIEWER_PROSE}\n\n"
+            + _wrap("career", "CAREER_V1")
+        )
+        last_summary = "Added prose summary"
+
+        # Run 2: bot re-renders with template tweaks. Reviewer-prose
+        # is outside markers; must survive.
+        new_v2 = (
+            _wrap("infobox", "INFOBOX_V2")
+            + "\n"
+            + _wrap("career", "CAREER_V2")
+        )
+        merged_2, action_2 = merge(existing_text, new_v2, last_summary)
+        assert action_2 == "surgical_merge", (
+            "Last edit was reviewer → must surgical-merge, not clean-rewrite"
+        )
+        assert REVIEWER_PROSE in merged_2
+        assert "INFOBOX_V2" in merged_2 and "CAREER_V2" in merged_2
+        # Save with the merge prefix.
+        last_summary = _save_summary_for(action_2)
+        existing_text = merged_2
+
+        # Run 3 — the wedge case. NO reviewer changes since run 2. Old
+        # single-prefix design would see Auto-import: as last summary,
+        # clean-rewrite, and CLOBBER the reviewer paragraph. The
+        # taxonomy fix means the save from run 2 used `Auto-merge:`,
+        # which is NOT clean-rewrite-eligible — the merger does a
+        # surgical_merge that yields identical text → no_change.
+        new_v3 = (
+            _wrap("infobox", "INFOBOX_V2")  # no template changes since v2
+            + "\n"
+            + _wrap("career", "CAREER_V2")
+        )
+        merged_3, action_3 = merge(existing_text, new_v3, last_summary)
+        assert action_3 == "no_change", (
+            f"Last edit was Auto-merge: → must NOT be clean-rewrite-"
+            f"eligible. Got action={action_3!r}; merged_3 differs from "
+            f"existing_text — reviewer paragraph would be lost on save."
+        )
+        # The reviewer paragraph survives the third run.
+        assert REVIEWER_PROSE in merged_3
+
+    def test_run_4_after_real_template_change_still_preserves_reviewer(self):
+        """Same wedge defense, but with a REAL template change on run
+        4 so it MUST surgical_merge (not no_change). Verifies the
+        Auto-merge: → surgical_merge path also preserves prose."""
+        REVIEWER_PROSE = "Reviewer-added analysis."
+
+        existing_after_review_and_merge = (
+            _wrap("infobox", "INFOBOX_V2")
+            + f"\n\n{REVIEWER_PROSE}\n\n"
+            + _wrap("career", "CAREER_V2")
+        )
+        # Save from a prior surgical_merge — i.e. the wedge scenario.
+        last_summary = _save_summary_for("surgical_merge")
+
+        # Template legitimately changed (new field rendered into infobox).
+        new_v3 = (
+            _wrap("infobox", "INFOBOX_V3_with_new_field")
+            + "\n"
+            + _wrap("career", "CAREER_V2")
+        )
+        merged_3, action_3 = merge(
+            existing_after_review_and_merge, new_v3, last_summary,
+        )
+        assert action_3 == "surgical_merge"
+        # Real template change applied.
+        assert "INFOBOX_V3_with_new_field" in merged_3
+        # AND reviewer prose preserved.
+        assert REVIEWER_PROSE in merged_3
+
+
+class TestValidateSectionId:
+    """Reviewer-pass constraint #4 (B.2 review, 2026-06-13): section
+    ids are a permanent contract — must be space-free + kebab/snake-
+    case + alpha-leading. `validate_section_id` fails fast at template-
+    render time so a typo surfaces immediately, not in production."""
+
+    def test_valid_simple_id(self):
+        assert validate_section_id("infobox") == "infobox"
+
+    def test_valid_kebab_case(self):
+        assert validate_section_id("youth-career") == "youth-career"
+
+    def test_valid_snake_case(self):
+        assert validate_section_id("match_categories") == "match_categories"
+
+    def test_valid_mixed_kebab_snake_with_digit(self):
+        assert validate_section_id("section-2") == "section-2"
+
+    def test_invalid_contains_space(self):
+        with pytest.raises(ValueError, match="invalid section_id"):
+            validate_section_id("youth career")
+
+    def test_invalid_leading_digit(self):
+        with pytest.raises(ValueError):
+            validate_section_id("1section")
+
+    def test_invalid_leading_hyphen(self):
+        with pytest.raises(ValueError):
+            validate_section_id("-section")
+
+    def test_invalid_empty(self):
+        with pytest.raises(ValueError):
+            validate_section_id("")
+
+    def test_make_start_marker_validates(self):
+        with pytest.raises(ValueError):
+            make_start_marker("invalid id with spaces")
+
+    def test_make_end_marker_validates(self):
+        with pytest.raises(ValueError):
+            make_end_marker("invalid id with spaces")
+
+
+class TestMarkerWarningText:
+    """Reviewer-pass constraint #1 (B.2 review, 2026-06-13): markers
+    must bake in a human-readable warning. Edits INSIDE managed sections
+    are silently lost on re-import; the markers are invisible in read
+    view; the warning is the only in-place signal an editor gets when
+    they go to source view."""
+
+    def test_start_marker_contains_do_not_edit_warning(self):
+        marker = make_start_marker("infobox")
+        assert "DO NOT EDIT" in marker
+        assert "Wiki7Bot overwrites" in marker
+
+    def test_start_marker_id_still_extractable(self):
+        """The warning text must not interfere with id extraction —
+        the regex still finds it cleanly."""
+        marker = make_start_marker("youth-career")
+        sections = extract_managed_sections(marker + "\nBODY\n" + make_end_marker("youth-career"))
+        assert "youth-career" in sections
+
+
+class TestEndBeforeStartDefensive:
+    """🟢 Reviewer-pass minor: _find_section_spans previously silently
+    corrupted on inverted markers. Now it skips + warns."""
+
+    def test_end_before_start_skipped(self):
+        text = (
+            f"{make_end_marker('weird')}\n"
+            "stuff in middle\n"
+            f"{make_start_marker('weird')}\n"
+            "body\n"
+        )
+        sections = extract_managed_sections(text)
+        # Either skipped (preferred — defensive) or empty. Must NOT
+        # produce a negative-length / nonsense span.
+        assert "weird" not in sections
+
+    def test_end_before_start_does_not_crash_merger(self):
+        """Even with malformed markers, surgical_merge should not raise."""
+        bad_existing = (
+            f"{make_end_marker('a')}\n"
+            "middle\n"
+            f"{make_start_marker('a')}\n"
+            "body\n"
+        )
+        good_new = _wrap("a", "NEW_A_CONTENT")
+        # Should not raise. Output preserves the malformed existing
+        # (we don't try to splice into spans we can't identify) and
+        # appends the new section.
+        result = surgical_merge(bad_existing, good_new)
+        assert "NEW_A_CONTENT" in result

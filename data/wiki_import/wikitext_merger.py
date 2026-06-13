@@ -9,20 +9,44 @@ preserved verbatim. This lets reviewers add hand-curated paragraphs,
 fix layout, attach images, etc. without losing the work on every
 re-import.
 
-## "Was this ours" discrimination (carried-forward constraint b)
+## "Was this ours" — two-prefix taxonomy (reviewer-pass fix, 2026-06-13)
 
-Per the operator's directive (2026-06-13), discrimination uses the same
-`Auto-import:`-prefix convention `docker/import-pages.php` already uses
-for its own preserve-edit guard:
+Discrimination uses TWO prefixes, not one. The reviewer caught a
+two-run wedge in the original single-prefix design: bot creates with
+`Auto-import:`, reviewer copyedits OUTSIDE markers (no prefix on
+their save), bot runs again and surgical-merges (saving with
+`Auto-import:` per the original design), THIRD bot run sees
+`Auto-import:` as the last summary, decides clean-rewrite is safe,
+and overwrites the reviewer's paragraph.
 
-  - If the LAST edit on the page started with `Auto-import:`, the whole
-    page is bot output from a prior run — clean-rewrite is safe.
-  - Otherwise, a reviewer has touched the page since the last bot save;
-    do a surgical merge, preserving everything outside markers.
+The fix is a two-prefix taxonomy:
 
-The `BOT_EDIT_SUMMARY_PREFIX` constant is the single source of truth for
-this prefix string; PHP-side and Python-side code agree on it by sharing
-the literal `"Auto-import:"`.
+  - `Auto-import:` — bot OWNS this page; the whole content is bot
+    output. Clean-rewrite is safe. Used when:
+      * The page didn't exist before (first save).
+      * The previous content was identical to what we'd produce now
+        (a no-op re-import on a never-touched page).
+
+  - `Auto-merge:` — bot OWNS the managed sections; a reviewer has
+    touched something outside markers, so the surgical-merge result
+    must NOT be eligible for clean-rewrite on the next run. Used
+    every time `merge()` returns `surgical_merge`.
+
+Both prefixes are "ours" for ownership purposes (the move-notification
+gate, the §6 ⑨ M2 preserve-edit guard, etc.). The merger
+distinguishes them ONLY for the clean-rewrite decision via
+`is_clean_rewrite_eligible()`. Caller must use the correct prefix
+based on the action returned by `merge()`:
+
+  - action == "clean_rewrite" → save with `Auto-import:` prefix
+  - action == "surgical_merge" → save with `Auto-merge:` prefix
+  - action == "no_change" → don't save at all
+
+The PHP side (`docker/import-pages.php`) only knows about
+`Auto-import:` today — its preserve-edit guard treats `Auto-merge:` as
+a "reviewer-touched" signal, which is the correct semantic (a merged
+page DID have reviewer content). The constants are pinned by
+`TestSharedConvention` to alarm if either side drifts.
 
 ## Why regex (not mwparserfromhell)
 
@@ -75,29 +99,65 @@ from typing import Literal
 logger = logging.getLogger(__name__)
 
 
-# Carried-forward constraint (b): the `Auto-import:` prefix is the
-# system-wide "was this ours" signal. Same string `import-pages.php` uses.
+# Two-prefix taxonomy (reviewer-pass 2026-06-13). Both prefixes mean
+# "bot owns this revision" for ownership purposes; only Auto-import:
+# means "whole page is bot output, clean-rewrite is safe". See
+# `is_clean_rewrite_eligible` + module docstring.
+#
+# IMPORTANT: PHP-side `docker/import-pages.php` reads `BOT_EDIT_SUMMARY_PREFIX`
+# (line 222 + 270 — both literal `"Auto-import:"`). If either side
+# changes the prefix, BOTH must change in lockstep; the
+# `TestSharedConvention` test pins this. See `wiki7-reviewer-pass-lessons`
+# memory entry: `Auto-import:` is the system-wide "was this ours" signal.
 BOT_EDIT_SUMMARY_PREFIX = "Auto-import:"
+BOT_MERGE_SUMMARY_PREFIX = "Auto-merge:"
 
 
-# Marker shape. Two-line regex captures the section id.
-# Tolerant of extra whitespace around the colon and inside the comment
-# delimiters so a reviewer who reformats the wikitext doesn't break the
-# match. Section id is the first non-whitespace token after "start:" / "end:".
+# Marker shape — multi-line tolerant (the warning text baked into the
+# START marker spans multiple lines for readability in wikitext editors).
+# Non-greedy `.*?` with re.DOTALL matches the SHORTEST `-->` after the id
+# so adjacent start/end markers on the same line don't confuse parsing.
 _MARKER_START_RE = re.compile(
-    r"<!--\s*wiki7-bot-managed-section\s+start:\s*(?P<id>\S+)\s*-->",
-    re.IGNORECASE,
+    r"<!--\s*wiki7-bot-managed-section\s+start:\s*(?P<id>[A-Za-z][A-Za-z0-9_-]*).*?-->",
+    re.IGNORECASE | re.DOTALL,
 )
 _MARKER_END_RE = re.compile(
-    r"<!--\s*wiki7-bot-managed-section\s+end:\s*(?P<id>\S+)\s*-->",
+    r"<!--\s*wiki7-bot-managed-section\s+end:\s*(?P<id>[A-Za-z][A-Za-z0-9_-]*)\s*-->",
     re.IGNORECASE,
 )
 
+# Section id syntax (constraint from B.2 marker placement review,
+# 2026-06-13): kebab-case, alphanumeric + hyphen + underscore, must
+# start with a letter, no spaces. Whitespace in ids would make the
+# multi-line marker regex ambiguous AND clash with the ad-hoc
+# `start:\s+(id)` shape; safer to flat-out reject. Used by
+# `validate_section_id()` for fail-fast at template-render time.
+_SECTION_ID_SYNTAX_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 
-# Sentinel patterns that callers can use to insert markers around a
-# section body. Kept as a module-level helper so the rendering templates
-# don't have to hand-paste the (already-correct) comment shape.
-MARKER_START = "<!-- wiki7-bot-managed-section start: {id} -->"
+
+# Marker constants — used by templates to wrap a bot-managed span.
+#
+# Marker placement constraints (B.2 reviewer review, 2026-06-13):
+#   1. The START marker bakes in a HUMAN-READABLE warning so editors
+#      who go to wikitext source view see "do not edit inside" without
+#      having to consult external docs. Edits inside managed sections
+#      are silently lost on re-import; the warning is the user's only
+#      in-place signal.
+#   2. Section ids are a PERMANENT CONTRACT. Renaming an id orphans
+#      the existing section across every page that uses it AND appends
+#      a duplicate with the new id. Treat renames as schema migrations
+#      with a one-time MovePage-style cleanup. `TestSharedConvention`
+#      should pin the active id set; CI fails if a template drifts.
+#   3. Markers MUST be flat — never nested. Nested ids would double-
+#      count under the section-extraction logic. The merger's
+#      `_find_section_spans` enforces flatness implicitly by tracking
+#      a single open id at a time.
+#   4. Ids must be space-free; enforced by the regex + `validate_section_id`.
+MARKER_START = (
+    "<!-- wiki7-bot-managed-section start: {id} | "
+    "DO NOT EDIT INSIDE — Wiki7Bot overwrites this section on every "
+    "re-import. Edit outside the markers, or update the data pipeline. -->"
+)
 MARKER_END = "<!-- wiki7-bot-managed-section end: {id} -->"
 
 
@@ -106,15 +166,102 @@ MARKER_END = "<!-- wiki7-bot-managed-section end: {id} -->"
 MergeAction = Literal["clean_rewrite", "surgical_merge", "no_change"]
 
 
-def is_bot_authored(last_edit_summary: str | None) -> bool:
-    """True iff the last edit summary starts with the bot-import prefix.
+def validate_section_id(section_id: str) -> str:
+    """Return `section_id` if it's a valid kebab-case identifier; raise
+    `ValueError` otherwise. Use at template-render time so a typo
+    surfaces immediately instead of producing a marker the regex can't
+    parse later.
 
-    Used by the merger to decide between clean-rewrite (whole page is
-    bot output, safe to replace) and surgical-merge (a reviewer has
-    touched the page since our last save).
+    Valid: `infobox`, `career`, `youth-career`, `match_categories`,
+    `fixtures-table`.
+    Invalid: `youth career` (space), `1infobox` (leading digit),
+    `-infobox` (leading hyphen), `''`, `None`.
+    """
+    if not section_id or not _SECTION_ID_SYNTAX_RE.match(section_id):
+        raise ValueError(
+            f"invalid section_id {section_id!r}: must be kebab/snake-case, "
+            "alphanumeric + `-` + `_`, starting with a letter, no spaces. "
+            "Section ids are a permanent contract — see "
+            "data/wiki_import/wikitext_merger.py for the schema rules."
+        )
+    return section_id
+
+
+def make_start_marker(section_id: str) -> str:
+    """Build a START marker for `section_id`, validating first."""
+    return MARKER_START.format(id=validate_section_id(section_id))
+
+
+def make_end_marker(section_id: str) -> str:
+    """Build an END marker for `section_id`, validating first."""
+    return MARKER_END.format(id=validate_section_id(section_id))
+
+
+# Permanent contract: the section ids each bot-managed template emits.
+#
+# Rename WARNING (B.2 review constraint, 2026-06-13): renaming an id
+# orphans the old section across every existing page AND appends a
+# duplicate at the new id. Treat any change to this dict as a SCHEMA
+# MIGRATION: ship a one-time MovePage-style cleanup before deploying
+# the rename. CI contract test (`TestKnownTemplateSections`) fails if a
+# template renders an id outside its registered set.
+#
+# Conditional sections (e.g. `stats` only present when the player has
+# rendered statistics) are still in the registered set — the contract
+# is "the template MAY emit this id", not "MUST emit it".
+KNOWN_TEMPLATE_SECTIONS: dict[str, frozenset[str]] = {
+    "player_page.j2": frozenset({
+        "infobox",       # always
+        "youth-career",  # only when transfers_youth present
+        "career",        # always (carries senior transfers + Cargo store)
+        "stats",         # only when stats present
+        "market-values", # only when market_values present
+        "categories",    # always
+    }),
+    # Other templates added as B.2 expands beyond player pages —
+    # match_report, competition_season, season_overview, etc.
+}
+
+
+def is_bot_authored(last_edit_summary: str | None) -> bool:
+    """True iff the last edit summary starts with EITHER `Auto-import:`
+    or `Auto-merge:` — i.e. the bot owns this revision in some form.
+
+    This is the "ownership" check used by:
+      - Wiki7ReviewGate's PageMoveComplete handler (notify on bot moves only)
+      - `import-pages.php`'s preserve-edit guard (PHP currently only
+        knows `Auto-import:`; it treats `Auto-merge:` as reviewer-touched,
+        which is the CORRECT semantic — a merged page DID have reviewer
+        content)
+      - Any future "is this revision bot output" check
+
+    For the more specific "is this safe to clean-rewrite over" check, use
+    `is_clean_rewrite_eligible()` — only `Auto-import:` qualifies.
 
     Defensive against None / empty / whitespace-prefixed strings — only
     a prefix match on the leading non-whitespace token counts.
+    """
+    if not last_edit_summary:
+        return False
+    s = last_edit_summary.lstrip()
+    return (
+        s.startswith(BOT_EDIT_SUMMARY_PREFIX)
+        or s.startswith(BOT_MERGE_SUMMARY_PREFIX)
+    )
+
+
+def is_clean_rewrite_eligible(last_edit_summary: str | None) -> bool:
+    """True iff the last edit summary marks the page as fully bot-owned
+    content (the `Auto-import:` prefix specifically). Reviewer-pass fix
+    (2026-06-13): this is STRICTER than `is_bot_authored` — a previous
+    surgical-merge save (which uses `Auto-merge:`) is NOT clean-rewrite-
+    eligible, because that save preserved reviewer content. Treating
+    `Auto-merge:` as clean-rewrite-eligible would create a two-run
+    wedge where a reviewer's outside-marker edit gets clobbered on the
+    third bot run.
+
+    Used internally by `merge()` only. External callers should use
+    `is_bot_authored` for ownership decisions.
     """
     if not last_edit_summary:
         return False
@@ -128,13 +275,24 @@ def _find_section_spans(text: str) -> dict[str, tuple[int, int]]:
     is the position of the character AFTER the END marker (so
     `text[start_index:end_index]` is the section INCLUDING both markers).
 
-    Skips a section if it has a start marker but no matching end marker
-    (defensive against a partial / mid-edit page), logging a warning.
-    The reviewer can clean up the partial markers manually.
+    Defensive against the four classes of malformed input the reviewer
+    flagged (B.2 review, 2026-06-13):
 
-    Repeated start markers for the same section id resolve to the
-    FIRST occurrence (a duplicated marker pair is treated as a
-    reviewer error; we defensively pick the first).
+      - START marker without matching END: skip + warn (page may be
+        mid-edit; better to leave it alone than corrupt it).
+      - END marker without matching START: skip + warn.
+      - **END marker BEFORE its START** (inverted order): skip + warn.
+        Pre-fix this silently produced a negative-length span that
+        corrupted the splice. Caught by the reviewer 2026-06-13.
+      - Duplicate markers for same id (multiple starts OR multiple
+        ends): first occurrence wins, rest skip + warn.
+
+    Flat-marker enforcement (constraint #3): markers must NEVER be
+    nested. A start marker for section X followed by another start
+    marker for section Y before X's end marker is nested. The current
+    pass logs a warning and treats the inner span as orphaned (skipped).
+    Pattern B v1 keeps templates flat by convention; CI contract test
+    is the long-term enforcement.
     """
     spans: dict[str, tuple[int, int]] = {}
     starts: dict[str, int] = {}
@@ -158,6 +316,18 @@ def _find_section_spans(text: str) -> dict[str, tuple[int, int]]:
                 "wikitext_merger: END marker for section %r at offset %d "
                 "with no matching START; skipping.",
                 section_id, m.start(),
+            )
+            continue
+        # Reviewer-pass fix (2026-06-13): defend against inverted
+        # marker order. Without this, an end-before-start would produce
+        # text[start:end] with end < start → empty string → silent
+        # corruption when spliced.
+        if m.end() <= start_offset:
+            logger.warning(
+                "wikitext_merger: END marker for section %r at offset %d "
+                "precedes its START at offset %d; skipping (inverted "
+                "markers — reviewer needs to fix manually).",
+                section_id, m.start(), start_offset,
             )
             continue
         if section_id in spans:
@@ -271,8 +441,14 @@ def merge(
     if not existing_text or not existing_text.strip():
         return new_text, "clean_rewrite"
 
-    # Last edit was ours → safe to replace the whole page.
-    if is_bot_authored(last_edit_summary):
+    # Reviewer-pass fix (2026-06-13): use the STRICTER
+    # `is_clean_rewrite_eligible` check, not `is_bot_authored`. Only the
+    # `Auto-import:` prefix marks a page as fully-bot-owned (safe to
+    # replace whole). `Auto-merge:` means a prior surgical merge
+    # preserved reviewer content — replacing the whole page would
+    # silently lose those reviewer edits on the next run. See module
+    # docstring for the two-run wedge this defends against.
+    if is_clean_rewrite_eligible(last_edit_summary):
         return new_text, "clean_rewrite"
 
     merged = surgical_merge(existing_text, new_text)

@@ -57,6 +57,14 @@ def _render_template(template_name: str, **kwargs) -> str:
     # value dates throughout player_page.j2.
     env.filters["il_date"] = to_il_date
     env.filters["il_fee"] = to_il_fee
+    # Pattern B.2 (reviewer-pass 2026-06-13): expose the validated marker
+    # builders as Jinja globals so templates wrap each bot-managed section
+    # in `{{ bot_section_start('id') }}` / `{{ bot_section_end('id') }}`.
+    # Each call validates the id (typo → ValueError at render time, not
+    # in production) and bakes in the "DO NOT EDIT INSIDE" warning.
+    from wiki_import.wikitext_merger import make_start_marker, make_end_marker
+    env.globals["bot_section_start"] = make_start_marker
+    env.globals["bot_section_end"] = make_end_marker
     template = env.get_template(template_name)
     return template.render(**kwargs)
 
