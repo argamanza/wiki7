@@ -78,23 +78,119 @@ def _render_template(template_name: str, **kwargs) -> str:
     retry=retry_if_exception_type((mwclient.errors.APIError, ConnectionError)),
     reraise=True,
 )
-def _edit_page(site: mwclient.Site, title: str, content: str, summary: str) -> bool:
-    """Create or update a wiki page. Returns True if the page was changed.
+def _fetch_last_revision_summary(page: mwclient.page.Page) -> str | None:
+    """Read the REAL last-revision edit summary from the live page,
+    via the MediaWiki API.
 
-    When WIKI_GATE_ENABLED=1, new mainspace pages are routed to the Draft:
-    namespace (see review_gate.route_title); existing mainspace pages are
-    edited in place (Approved Revs holds the new revision back from public).
+    Pattern B.3 contract (reviewer-pass blocker, 2026-06-13): the entire
+    surgical-merge wedge defense depends on this summary being accurate.
+    A query that grabs the wrong revision's comment silently reopens the
+    Auto-import: vs Auto-merge: wedge (the two-run wedge described in
+    `wikitext_merger.py` module docstring) — the next bot run would see
+    an outdated summary, take the wrong path, and lose reviewer content.
+
+    Uses `page.revisions(limit=1, prop="comment")` — fetches the most
+    recent revision's comment directly via the API, bypassing any cached
+    page state. Returns None if the page has no revisions or the API
+    call fails (caller treats None as "not bot-authored", i.e.
+    surgical-merges, which is the safe default).
+    """
+    try:
+        revs = list(page.revisions(limit=1, prop="comment"))
+    except mwclient.errors.APIError as exc:
+        logger.warning(
+            "_fetch_last_revision_summary: API error reading %s: %s",
+            page.name, exc,
+        )
+        return None
+    if not revs:
+        return None
+    return revs[0].get("comment", "")
+
+
+def _save_with_merger(
+    page: mwclient.page.Page,
+    new_content: str,
+    summary_detail: str,
+) -> str:
+    """Pattern B.3 — merger-aware save. Returns one of:
+
+      - "created"  — new page; saved with `Auto-import:` prefix.
+      - "updated"  — clean-rewrite path (last save was ours OR existing
+                     equals new); saved with `Auto-import:`.
+      - "merged"   — surgical-merge path (reviewer touched the page
+                     since the last bot save); saved with `Auto-merge:`
+                     prefix to mark the revision NOT clean-rewrite-
+                     eligible on the next run.
+      - "skipped"  — surgical merge yielded identical text; no save.
+
+    The action → prefix mapping IS the wedge defense. Stamping a
+    surgical-merge save with `Auto-import:` would tell the next bot
+    run "safe to clean-rewrite" and silently lose the reviewer's
+    outside-marker content. See `wikitext_merger.merge` docstring.
+
+    The page is assumed to be already routed (gate-resolved + redirect-
+    resolved) by the caller. This function does NOT call
+    `resolve_redirect` itself.
+    """
+    from wiki_import.wikitext_merger import (
+        BOT_EDIT_SUMMARY_PREFIX,
+        BOT_MERGE_SUMMARY_PREFIX,
+        merge,
+    )
+
+    if not page.exists:
+        summary = f"{BOT_EDIT_SUMMARY_PREFIX} {summary_detail}".strip()
+        page.save(new_content, summary=summary)
+        logger.info("Created page: %s", page.name)
+        return "created"
+
+    existing = page.text()
+    # B.3 contract: read the REAL last-revision summary from the live
+    # API. Falling back to a stale/cached value silently reopens the
+    # wedge. See _fetch_last_revision_summary docstring + module test.
+    last_summary = _fetch_last_revision_summary(page)
+    merged, action = merge(existing, new_content, last_summary)
+
+    if action == "no_change":
+        logger.debug("Page '%s' unchanged after merge; skipping save", page.name)
+        return "skipped"
+
+    if action == "clean_rewrite":
+        prefix = BOT_EDIT_SUMMARY_PREFIX
+        result = "updated"
+    elif action == "surgical_merge":
+        prefix = BOT_MERGE_SUMMARY_PREFIX
+        result = "merged"
+    else:
+        raise AssertionError(f"unknown merge action {action!r}")
+
+    summary = f"{prefix} {summary_detail}".strip()
+    page.save(merged, summary=summary)
+    logger.info("Saved page: %s (action=%s)", page.name, action)
+    return result
+
+
+def _edit_page(site: mwclient.Site, title: str, content: str, summary_detail: str) -> bool:
+    """Legacy create/update entry point used by the non-state-aware path.
+
+    Pattern B.3 (2026-06-13): now routes through `_save_with_merger` so
+    reviewer edits outside bot-managed sections survive every re-import.
+    The `summary_detail` parameter is appended to the action-appropriate
+    prefix (`Auto-import:` or `Auto-merge:`) by `_save_with_merger`.
+
+    Returns True if the page was changed (created / updated / merged),
+    False if the save was skipped (no_change).
     """
     title = review_gate.route_title(site, title)
-    page = site.pages[title]
-    if page.exists:
-        existing = page.text()
-        if _content_hash(existing.strip()) == _content_hash(content.strip()):
-            logger.debug("Page '%s' is unchanged, skipping", title)
-            return False
-    page.save(content, summary=summary)
-    logger.info("Saved page: %s", title)
-    return True
+    # Pattern B constraint (a): resolve redirects BEFORE reading content.
+    # Surgical-merging onto a redirect is nonsense; the merger always
+    # wants the real content page.
+    from wiki_import.page_router import resolve_redirect
+    resolved_title, _was_redirect = resolve_redirect(site, title)
+    page = site.pages[resolved_title]
+    result = _save_with_merger(page, content, summary_detail)
+    return result != "skipped"
 
 
 def _build_player_page(player: dict, transfers: list, market_values: list, stats: list = None) -> str:
@@ -205,26 +301,32 @@ def import_players(
                 action = None
                 final_ns = None
 
+            # Pattern B.3 (2026-06-13): merger-aware save. The state-aware
+            # path skipped the legacy `_edit_page` for gate-routing reasons,
+            # but now needs the same merger pipeline so reviewer edits
+            # outside bot-managed sections survive re-imports. Title is
+            # already gate-routed + redirect-resolved by
+            # `resolve_target_title` (see Pattern A's redirect-aware
+            # `resolve_redirect` integration), so we go straight to
+            # `_save_with_merger` without re-routing.
             page = site.pages[final_full]
-            if page.exists:
-                existing = page.text()
-                if _content_hash(existing.strip()) == _content_hash(content.strip()):
-                    logger.debug("Page '%s' unchanged, skipping", final_full)
-                    summary["skipped"] += 1
-                    # Still update state file so last_seen / namespace stays
-                    # current (no-op upsert is cheap).
-                    if state is not None:
-                        state.upsert(tm_id, bare_title, final_ns)
-                    continue
-                # Use the routed title directly — the legacy _edit_page does its
-                # own gate-routing which we now want to skip when state is in play.
-                page.save(content, summary=f"Updated player page for {bare_title}")
-                logger.info("Saved page: %s", final_full)
-                summary["updated"] += 1
-            else:
-                page.save(content, summary=f"Created player page for {bare_title}")
-                logger.info("Saved page: %s", final_full)
+            save_result = _save_with_merger(
+                page, content, f"player page for {bare_title}",
+            )
+            if save_result == "skipped":
+                summary["skipped"] += 1
+            elif save_result == "created":
                 summary["created"] += 1
+            elif save_result == "updated":
+                summary["updated"] += 1
+            elif save_result == "merged":
+                # Surgical merge — bot-managed sections updated, reviewer
+                # content outside markers preserved. Counted in `updated`
+                # tally too for the operator-facing summary, but logged
+                # separately for visibility.
+                summary["updated"] += 1
+                summary.setdefault("merged", 0)
+                summary["merged"] += 1
 
             # State file: record where the page lives now. Done AFTER save
             # succeeded — if save throws, state stays consistent with reality.
