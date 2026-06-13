@@ -10,6 +10,14 @@ The point of iter-cycle review is **not** to perfect a single season. It's to fi
 
 When in doubt: skim widely, sample deeply, escalate patterns.
 
+## 🚨 The "Helder-Lopes trap" — read before reviewing
+
+**To fix a player's name or page title, edit `data_pipeline/output/<season>/mappings.he.yaml` (set `src: manual` on the entry) — renaming the page on the wiki or editing the infobox to "correct" the Hebrew name gets overwritten on the next import.**
+
+Pattern B's surgical wikitext merger preserves prose, hatnotes, categories, and any content OUTSIDE bot-managed sections (`<!-- wiki7-bot-managed-section start: ... -->` / `end: ...`). But the infobox sits INSIDE a managed section, and the page title comes from `player.name_hebrew` which the bot re-renders from the mapping every run. Fix the *source* (the mapping file), not the *rendered output*.
+
+The named "Helder-Lopes" case: a reviewer correcting a wikidata-pulled gibberish name ("הלדר לפופסיק" → "הלדר לופש") by editing the wiki page got their fix evaporated on the next import; once the mapping was set to `src: manual` with the right value, the bot auto-MovePages the draft to the corrected title AND renders the infobox with the corrected name, every run. See [[wiki7-translation-strategy]] memory for the `src: manual` precedence rules.
+
 ## Pre-review setup (one-time per fresh docker)
 
 The full recipe lives in [`operational-bootstrap.md`](operational-bootstrap.md). The TL;DR is:
