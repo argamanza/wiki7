@@ -32,8 +32,9 @@ Thumbs.db
 htmlcov/
 
 # Data pipeline output
+# (data/data_pipeline/output/ is governed by data/data_pipeline/.gitignore,
+#  which tracks reviewer-curated mappings.he.yaml but ignores the rest.)
 data/output/
-data/data_pipeline/output/
 data/tmk-scraper/output/
 
 # Pipeline state (per-environment; tracks TM-ID -> wiki-page identity)
