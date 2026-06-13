@@ -26,7 +26,12 @@ The full recipe lives in [`operational-bootstrap.md`](operational-bootstrap.md).
 # 1. Reset wiki + clear pipeline output
 docker exec docker-mediawiki-1 php /var/www/html/maintenance/run.php \
   /var/www/html/extensions/Wiki7ReviewGate/maintenance/resetContent.php --scope=all --confirm
-rm -rf data/data_pipeline/output/<season>/ data/data_pipeline/output/merged/
+# Preserve tracked mappings.he.yaml (git-versioned reviewer corrections); nuke everything else.
+find data/data_pipeline/output/<season>/ data/data_pipeline/output/merged/ -type f \
+  ! -name 'mappings.he.yaml' -delete 2>/dev/null
+# (If you really want a full wipe and don't care about the curated translations:
+#  `rm -rf data/data_pipeline/output/<season>/ data/data_pipeline/output/merged/`
+#  followed by `git restore data/data_pipeline/output/*/mappings.he.yaml`.)
 
 # 2. Run pipeline (skip-scrape if the cached scrape is current)
 cd data && export WIKI_URL='http://localhost:8080' WIKI_BOT_USER='Wiki7Bot' \

@@ -1,0 +1,3510 @@
+positions:
+  Attacking Midfield:
+    he: קשר התקפי
+    src: manual
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Central Midfield:
+    he: קשר
+    src: manual
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Centre-Back:
+    he: בלם
+    src: manual
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Centre-Forward:
+    he: חלוץ
+    src: manual
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Defensive Midfield:
+    he: קשר הגנתי
+    src: manual
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Goalkeeper:
+    he: שוער
+    src: manual
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Left Winger:
+    he: קשר שמאלי
+    src: manual
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Left-Back:
+    he: מגן שמאלי
+    src: manual
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Right Winger:
+    he: קשר ימני
+    src: manual
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Right-Back:
+    he: מגן ימני
+    src: manual
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Second Striker:
+    he: חלוץ שני
+    src: manual
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+clubs:
+  1.FC Nuremberg:
+    he: נירנברג
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  AEK Athens:
+    he: אאק אתונה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Aberdeen FC:
+    he: אברדין (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q187326
+    note: ''
+  Aktobe:
+    he: אקטובה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Al-Faisaly:
+    he: אל-פייסלי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2829334
+    note: ''
+  Al-Nasr:
+    he: א-נסר (דובאי)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q812723
+    note: ''
+  Apol. Limassol:
+    he: אפולון לימסול
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Arouca:
+    he: ארוקה (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1386869
+    note: ''
+  Arsenal Tula:
+    he: ארסנל טולה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2817362
+    note: ''
+  Atl. Nacional:
+    he: אטלטיקו נסיונל
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Austria Vienna:
+    he: אוסטריה וינה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131209
+    note: ''
+  Avaí FC:
+    he: אוואי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q374069
+    note: ''
+  Avs FS:
+    he: אבס
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  B TLV Bat Yam:
+    he: בני תל אביב בת ים
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  B. Jerusalem:
+    he: בית"ר ירושלים
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  B. Tubruk U19:
+    he: בני טוברוק תחת 19
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Basaksehir:
+    he: איסטנבול בשאקשהיר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q857938
+    note: ''
+  Beira-Mar:
+    he: ביירה-מאר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q688300
+    note: ''
+  Beitar TA Ramla:
+    he: בית"ר תל אביב חולון
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2616129
+    note: ''
+  Benfica:
+    he: בנפיקה ליסבון
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131499
+    note: ''
+  Benfica B:
+    he: בנפיקה ב'
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Benfica U15:
+    he: בנפיקה תחת 15
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Benfica U17:
+    he: בנפיקה תחת 17
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Benfica U19:
+    he: בנפיקה תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Benfica Yth:
+    he: בנפיקה נוער
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Bnei Sakhnin:
+    he: בני סכנין
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1130570
+    note: ''
+  Bnei Yehuda:
+    he: בני יהודה תל אביב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q737714
+    note: ''
+  Boa Esporte:
+    he: בואה אספורטה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Boavista:
+    he: בואבישטה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q219703
+    note: ''
+  Bourg-en-Bresse:
+    he: בורג-אן-ברס
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Braga:
+    he: ספורטינג בראגה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q75684
+    note: ''
+  Bristol City:
+    he: בריסטול סיטי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q19456
+    note: ''
+  Buildcon FC:
+    he: בילדקון
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  C. Rizespor:
+    he: צ'איקור ריזספור
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  CD América:
+    he: קלוב דפורטיבו אמריקה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  CS Mindelense:
+    he: מינדלנסה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Candal U19:
+    he: קנדל תחת 19
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Chaves:
+    he: שאבש
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Cherno More:
+    he: צ'רנו מורה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Châteauroux B:
+    he: שאטורו ב'
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Cruzeiro:
+    he: קרוזיירו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q188277
+    note: ''
+  Cruzeiro U20:
+    he: קרוזיירו תחת 20
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Defensa:
+    he: דפנסה וחוסטיסיה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1024338
+    note: ''
+  Deportes Tolima:
+    he: דפורטס טולימה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q332532
+    note: ''
+  Deportivo Pasto:
+    he: דפורטיבו פאסטו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q332858
+    note: ''
+  Desportivo Aves:
+    he: דשפורטיבו אבש
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Espinho:
+    he: אשפינייו
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  FC Arges:
+    he: ארג'ש
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  FC Ashdod:
+    he: מועדון ספורט אשדוד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1138191
+    note: ''
+  FC Ashdod U19:
+    he: מ.ס. אשדוד תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  FC Neve Yosef:
+    he: הפועל נווה יוסף
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  FC Rapid 1923:
+    he: ראפיד בוקרשט
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q245162
+    note: ''
+  FC Villefranche:
+    he: וילפרנש
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  FK Sochi:
+    he: סוצ'י (כדורגל, 2018)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q54834034
+    note: ''
+  Farense:
+    he: פארנסה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q744353
+    note: ''
+  Fermana:
+    he: פרמנה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Feyenoord:
+    he: פיינורד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q134241
+    note: ''
+  Genoa:
+    he: גנואה (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2074
+    note: ''
+  Groningen U19:
+    he: חרונינחן תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Groningen U21:
+    he: חרונינחן תחת 21
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H Kfar Saba U19:
+    he: הפועל כפר סבא תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H Rishon leZion:
+    he: הפועל ראשון לציון
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. Acre U19:
+    he: הפועל עכו תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. B. Sheva U19:
+    he: הפועל באר שבע תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. Beer Sheva:
+    he: הפועל באר שבע
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. Herzliya U19:
+    he: הפועל הרצליה תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. Jerusalem:
+    he: הפועל ירושלים
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. Kfar Saba:
+    he: הפועל כפר סבא
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. Kfar Shalem:
+    he: הפועל כפר שלם
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. Nof HaGalil:
+    he: הפועל נוף הגליל
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. Petah Tikva:
+    he: הפועל פתח תקווה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. R Sharon U19:
+    he: הפועל רמת השרון תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. Ramat Gan:
+    he: הפועל רמת גן
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. Tel Aviv U19:
+    he: הפועל תל אביב תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H. Umm al-Fahm:
+    he: הפועל אום אל-פחם
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  H.Ramat Gan U19:
+    he: הפועל רמת גן תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Hakoah Amidar:
+    he: הכח עמידר רמת גן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q388401
+    note: ''
+  Hapoel Acre:
+    he: הפועל עכו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1513003
+    note: ''
+  Hapoel Ashkelon U19:
+    he: הפועל אשקלון תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Hapoel Bnei Lod:
+    he: הפועל בני לוד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2617801
+    note: ''
+  Hapoel Hadera:
+    he: הפועל חדרה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q6073188
+    note: ''
+  Hapoel Haifa:
+    he: הפועל חיפה (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q455991
+    note: ''
+  Hapoel Herzliya:
+    he: הפועל הרצליה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q5652171
+    note: ''
+  Hapoel PT U19:
+    he: הפועל פתח תקווה תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Hapoel Raanana:
+    he: הפועל רעננה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2347701
+    note: ''
+  Hapoel Tel Aviv:
+    he: הפועל תל אביב (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q206585
+    note: ''
+  Happy Heart FA:
+    he: האפי הארט
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Hibernian FC:
+    he: היברניאן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q192597
+    note: ''
+  Huracán:
+    he: הורקאן (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q327172
+    note: ''
+  I. Kiryat Gat:
+    he: איחוד קריית גת
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Indep. Medellín:
+    he: אינדפנדיאנטה מדיין
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Ironi Ashdod:
+    he: עירוני אשדוד
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Ironi Modiin:
+    he: עירוני מודיעין
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Ironi Tiberias:
+    he: עירוני טבריה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2912223
+    note: ''
+  Jaguares FC:
+    he: חגוארס
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  KV Kortrijk:
+    he: קורטרייק (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q618620
+    note: ''
+  Kairat Almaty:
+    he: קאיראט אלמטי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q420594
+    note: ''
+  Kairat-Akademia:
+    he: קאיראט אלמטי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q420594
+    note: ''
+  Kairat-Zhas:
+    he: קייראט-זאס
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Kansas City:
+    he: קנזס סיטי
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Kir. Shmona U19:
+    he: הפועל קריית שמונה תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Kiryat Shmona:
+    he: הפועל קריית שמונה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  LB Châteauroux:
+    he: לה ברי שאטורו
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Legia Warszawa:
+    he: לגיה ורשה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Leicester:
+    he: לסטר סיטי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q19481
+    note: ''
+  Ludogorets:
+    he: לודוגורץ ראזגרד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1339086
+    note: ''
+  M. Ahi Nazareth:
+    he: מכבי אחי נצרת
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  M. Bnei Reineh:
+    he: מכבי בני ריינה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  M. Netanya U19:
+    he: מכבי נתניה תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  M. P. Tikva U19:
+    he: מכבי פתח תקווה תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  M. Petah Tikva:
+    he: מכבי פתח תקווה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  M. Tel Aviv:
+    he: מכבי תל אביב
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  M. Tel Aviv U19:
+    he: מכבי תל אביב תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Maccabi Haifa:
+    he: מכבי חיפה (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2129100
+    note: ''
+  Maccabi Netanya:
+    he: מכבי נתניה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q426513
+    note: ''
+  Mirandela:
+    he: מירנדלה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Mlada Boleslav:
+    he: מלדה בולסלב
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Montegiorgio:
+    he: מונטג'ורג'יו
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  'Moreirense ':
+    he: מוריירנסה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1346314
+    note: ''
+  Motor Lublin:
+    he: מוטור לובלין
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Mouscron:
+    he: מוסקרון
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Ness Ziona:
+    he: נס ציונה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Oliveira Douro:
+    he: אוליבירה דורו
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Once Caldas:
+    he: אונסה קלדס
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q47533
+    note: ''
+  Otelul Galati:
+    he: אוצלול גאלאץ
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q220863
+    note: ''
+  Otelul Galati U19:
+    he: אוטלול גלאץ' תחת 19
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  PAOK:
+    he: פאוק
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Padroense U17:
+    he: פדרואנסה תחת 17
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Paços Ferreira:
+    he: פאסוש די פריירה (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q371136
+    note: ''
+  Perugia U19:
+    he: פרוג'ה תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Plymouth:
+    he: פלימות' ארגייל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q48947
+    note: ''
+  Polissya:
+    he: פוליסיה ז'יטומיר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2036903
+    note: ''
+  Portimonense:
+    he: פורטימוננסה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q621120
+    note: ''
+  Quarteirense:
+    he: קווארטיירנסה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Quindío:
+    he: דפורטס קינדיו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q332537
+    note: ''
+  R Charleroi SC:
+    he: שרלרואה (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q19585
+    note: ''
+  Racing Club:
+    he: ראסינג קלוב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q276533
+    note: ''
+  Racing Club U20:
+    he: ראסינג קלוב תחת 20
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Ramat haSharon:
+    he: רמת השרון
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Red Star:
+    he: הכוכב האדום בלגרד (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q173009
+    note: ''
+  SC Dimona:
+    he: שח"מ דימונה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  SC Kfar Qasem:
+    he: מועדון ספורט כפר קאסם
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q18126320
+    note: ''
+  SZ Juniors:
+    he: שח"מ ציוני ג'וניורס
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Santos Laguna:
+    he: סנטוס לגונה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q745246
+    note: ''
+  Slaven Belupo:
+    he: סלאבן בלופו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q368909
+    note: ''
+  Sport Recife:
+    he: רסיפה (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q219098
+    note: ''
+  Sporting:
+    he: ספורטינג חיחון
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q12278
+    note: ''
+  Sporting B:
+    he: ספורטינג בראגה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q75684
+    note: ''
+  Sporting Sub-15:
+    he: ספורטינג תחת 15
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Sporting U17:
+    he: ספורטינג תחת 17
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Sporting U19:
+    he: ספורטינג תחת 19
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Sporting Yth.:
+    he: ספורטינג נוער
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  T. Kfar Kana:
+    he: תבור כפר כנא
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  TSV Hartberg:
+    he: TSV הארטברג
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q699746
+    note: ''
+  Taraz U19:
+    he: טראז תחת 19
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Taraz-M:
+    he: טראז-מ
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Tondela:
+    he: טונדלה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  UD Las Palmas:
+    he: לאס פאלמאס (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q11979
+    note: ''
+  US Boulogne:
+    he: בולון
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  USL Dunkerque:
+    he: דנקרק
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Uni. Popayán:
+    he: יוניברסידד דה פופיאן
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Wisla Kraków:
+    he: ויסלה קרקוב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q190943
+    note: ''
+  Without Club:
+    he: ללא קבוצה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Wolfsberger AC:
+    he: וולפסברג (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q694484
+    note: ''
+  Újpest FC:
+    he: אויפשט (כדורגל)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q244595
+    note: ''
+nationalities:
+  Argentina:
+    he: ארגנטינה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q414
+    note: ''
+  Armenia:
+    he: ארמניה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q399
+    note: ''
+  Brazil:
+    he: ברזיל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q155
+    note: ''
+  Bulgaria:
+    he: בולגריה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q219
+    note: ''
+  Cameroon:
+    he: קמרון
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1009
+    note: ''
+  Colombia:
+    he: קולומביה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q739
+    note: ''
+  France:
+    he: צרפת
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q142
+    note: ''
+  Israel:
+    he: ישראל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q801
+    note: ''
+  Kazakhstan:
+    he: קזחסטן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q232
+    note: ''
+  Poland:
+    he: פולין
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q36
+    note: ''
+  Portugal:
+    he: פורטוגל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q45
+    note: ''
+  Romania:
+    he: רומניה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q218
+    note: ''
+  Spain:
+    he: ספרד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q29
+    note: ''
+  Zambia:
+    he: זמביה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q953
+    note: ''
+competitions:
+  Gvia haMedina:
+    he: גביע המדינה בכדורגל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1165593
+    note: ''
+  Ligat ha'Al:
+    he: ליגת העל בכדורגל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q477309
+    note: ''
+  Ligat ha'Al -  Championship round:
+    he: ליגת העל - שלב האליפות
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  UEFA Conference League Qualifying:
+    he: קדם ליגת הקונפרנס של אופ"א
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+names:
+  Alon Turgeman:
+    he: אלון תורג'מן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q4734347
+    note: ''
+  Antonio Sefer:
+    he: אנטוניו ספר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q106439441
+    note: ''
+  Arnold Garita:
+    he: פול גריטה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q18206089
+    note: ''
+  Artur Shushenachev:
+    he: ארתור שושנאצ'ב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q87987976
+    note: ''
+  Déinner Quiñones:
+    he: דיינר קיניונס
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q16303078
+    note: ''
+  Hélder Lopes:
+    he: הלדר לופש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q5964151
+    note: ''
+  Iuri Medeiros:
+    he: יורי מדיירוש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q10542816
+    note: ''
+  Kings Kangwa:
+    he: קינגס קאנגווה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q65548517
+    note: ''
+  Lucas Ventura:
+    he: לוקאס ונטורה
+    src: wikipedia
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Mariano Bareiro:
+    he: מריאנו באריירו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q19007022
+    note: ''
+  Miguel Vítor:
+    he: מיגל ויטור
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q927027
+    note: ''
+  Ponck:
+    he: פונק
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Yoan Stoyanov:
+    he: יוני סטויאנוב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q110937388
+    note: ''
+  Abdallah Jaber:
+    he: עבדאללה ג'אבר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q18705306
+    note: ''
+  Abdoulaye Cisse:
+    he: עבדולאי סיסה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Abdoulaye Cissé:
+    he: עבדוליי סיסה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q18748206
+    note: ''
+  Abdoulaye Seck:
+    he: עבדוליי סק
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q17494543
+    note: ''
+  Aboubacar Doumbia:
+    he: אבובקר דומביה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Adi Yona:
+    he: עדי יונה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q118854215
+    note: ''
+  Adir Levi:
+    he: אדיר לוי (כדורגלן)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131824880
+    note: ''
+  Ahmad Salman:
+    he: אחמד סלמן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q111508528
+    note: ''
+  Ahmad Taha:
+    he: אחמד טאהא
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Alexandre Ramalingom:
+    he: אלכסנדר רמאלינגום
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q55956117
+    note: ''
+  Alfredo Stephens:
+    he: אלפרדו סטיבנס
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q20755346
+    note: ''
+  Ali Mohamed:
+    he: עלי מוחמד (כדורגלן)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q27243375
+    note: ''
+  Alon Azugi:
+    he: אלון אזוגי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q122207959
+    note: ''
+  Alon Buzorgi:
+    he: אלון בוזורגי
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Amir Agayev:
+    he: אמיר עגייב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q16147230
+    note: ''
+  Amit Cohen:
+    he: עמית כהן (כדורגלן)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q96482152
+    note: ''
+  Amit Glazer:
+    he: עמית גלזר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q100272668
+    note: ''
+  Anas Mahamid:
+    he: אנס מחאמיד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q27986178
+    note: ''
+  Andreias Calcan:
+    he: אנדריאש קלקן
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Andrew Idoko:
+    he: אנדרו אידוקו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q130305453
+    note: ''
+  Anis Porat Ayash:
+    he: אניס פורת עיאש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q124635880
+    note: ''
+  Arad Bar:
+    he: ארד בר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q110281841
+    note: ''
+  Ariel Cohen:
+    he: אריאל כהן
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Ariel Harush:
+    he: אריאל הרוש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q600600
+    note: ''
+  Asen Donchev:
+    he: אסן דונצ'ב
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Assaf Tzur:
+    he: אסף צור
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q64030802
+    note: ''
+  Aviel Zargari:
+    he: אביאל זרגרי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q96372847
+    note: ''
+  Aviv Kanarik:
+    he: אביב קנריק
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Aviv Salem:
+    he: אביב סלם
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q124204908
+    note: ''
+  Awaka Eshata:
+    he: אווקה אשטה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q111508499
+    note: ''
+  Ayid Habshi:
+    he: עאיד חבשי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q16840349
+    note: ''
+  Bar Cohen:
+    he: בר כהן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q115208632
+    note: ''
+  Bar Lin:
+    he: בר לין
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131753080
+    note: ''
+  Barak Bakhar:
+    he: ברק בכר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q4858229
+    note: ''
+  Basam Zaarura:
+    he: בסאם זערורה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131830742
+    note: ''
+  Basel Shaban:
+    he: באסל שאבן
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Bashar Abdach:
+    he: בשאר עבדאח
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Ben Vahaba:
+    he: בן וואהבה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Benson Sakala:
+    he: בנסון סקאלה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Berk Beyhan:
+    he: ברק בייהאן
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Bilal Shaheen:
+    he: בילאל שאהין
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Breno:
+    he: ברנו
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Cedric Don:
+    he: סדריק דון
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Cristian Martinez:
+    he: קריסטיאן מרטינז
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Cristian Martínez:
+    he: קריסטיאן מרטינז
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Cédric Don:
+    he: סדריק דון
+    src: wikipedia
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Dan Azaria:
+    he: דן עזריה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q105242152
+    note: ''
+  Dan Einbinder:
+    he: דן איינבינדר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q3919907
+    note: ''
+  Dani Martín:
+    he: דני מרטין
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Daniel Dappa:
+    he: דניאל דאפה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131753571
+    note: ''
+  Daniel Dimov:
+    he: דניאל דימוב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q3655873
+    note: ''
+  Daniel Elmaliah:
+    he: דניאל אלמליח
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Daniel Langhamer:
+    he: דניאל לנגהמר
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Daniel Marecek:
+    he: דניאל מארצ'ק
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Daniel Tenenbaum:
+    he: דניאל טננבאום
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q19957238
+    note: ''
+  Dean David:
+    he: דין דוד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q23888352
+    note: ''
+  Deinner Quinones:
+    he: דיינר קיניונס
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q16303078
+    note: ''
+  Denis Kulikov:
+    he: דניס קוליקוב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q123923505
+    note: ''
+  Dia Saba:
+    he: דיא סבע
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q15229440
+    note: ''
+  Diaa Lababidi:
+    he: דיא לבאבידי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q84770345
+    note: ''
+  Dmitriy Antilevskiy:
+    he: דמיטרי אנטילבסקי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q27506623
+    note: ''
+  Dolev Haziza:
+    he: דולב חזיזה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q62116807
+    note: ''
+  Dominik Kostka:
+    he: דומיניק קוסטקה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Dor Hugi:
+    he: דור חוגי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q18705281
+    note: ''
+  Dor Malul:
+    he: דור מלול
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1960216
+    note: ''
+  Dor Micha:
+    he: דור מיכה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2892652
+    note: ''
+  Dor Peretz:
+    he: דור פרץ
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q21055479
+    note: ''
+  Dor Turgeman:
+    he: דור תורג'מן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q112865876
+    note: ''
+  Dramane Salou:
+    he: דראמן סאלו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q47532590
+    note: ''
+  Dudu:
+    he: דודו (פירושונים)
+    src: wikipedia
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Dudu Twitto:
+    he: דודו טוויטו
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Duvan Diby:
+    he: דובאן דיבי
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Ebenezer Mamatah:
+    he: אבנעזר ממאטה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q115789299
+    note: ''
+  Eden Shamir:
+    he: עדן שמיר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q24038345
+    note: ''
+  Elad Madmon:
+    he: אלעד מדמון
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q126956911
+    note: ''
+  Eli Balilti:
+    he: אלי בלילתי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q84727699
+    note: ''
+  Elia Gethon:
+    he: אליה גתון
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Eloge Yao:
+    he: אלוז' יאו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q22162798
+    note: ''
+  Emmanuel Agyei:
+    he: עמנואל אגיי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q129859586
+    note: ''
+  Eran Zahavi:
+    he: ערן זהבי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q736391
+    note: ''
+  Ethane Azoulay:
+    he: איתן אזולאי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q111301495
+    note: ''
+  Eugene Ansah:
+    he: יוג'ין אנסה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q15720502
+    note: ''
+  Eyad Abu Abaid:
+    he: איאד אבו עביד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q18421889
+    note: ''
+  Eyal Golasa:
+    he: אייל גולסה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1385650
+    note: ''
+  Ezekiel Henty:
+    he: אזקיאל הנטי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q16235357
+    note: ''
+  Fares Abu Akel:
+    he: פיראס אבו עקל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q61217012
+    note: ''
+  Fernand Mayembo:
+    he: פרנאן מאיימבו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q28070428
+    note: ''
+  Franco Mazurek:
+    he: פרנקו מסורק
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q15617954
+    note: ''
+  Freddy Vargas:
+    he: פרדי ורגאס
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q104835140
+    note: ''
+  Gabi Kanichowsky:
+    he: גבי קניקובסקי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q60951207
+    note: ''
+  Gad Amos:
+    he: גד עמוס
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q115211755
+    note: ''
+  Gadi Kinda:
+    he: גדי קינדה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q3756852
+    note: ''
+  George Diba:
+    he: ג'ורג' דיבה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q107413965
+    note: ''
+  Gil Cohen:
+    he: גיל כהן (כדורגלן)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q104107937
+    note: ''
+  Gilad Abramov:
+    he: גלעד אברמוב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q107479087
+    note: ''
+  Godsway Donyoh:
+    he: גודסוויי דוניו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q4027443
+    note: ''
+  Goni Naor:
+    he: גוני נאור
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q108488800
+    note: ''
+  Goran Antonic:
+    he: גוראן אנטוניץ'
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q16885497
+    note: ''
+  Grigoriy Morozov:
+    he: גריגורי מורוזוב
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Guy Dezent:
+    he: גיא דזנט
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q125025853
+    note: ''
+  Guy Hadida:
+    he: גיא חדידה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q61678258
+    note: ''
+  Guy Herman:
+    he: גיא הרמן
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Guy Melamed:
+    he: גיא מלמד (1992)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q22347654
+    note: ''
+  Hamza Shibli:
+    he: חמזה שיבלי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q118206673
+    note: ''
+  Harel Shalom:
+    he: הראל שלום
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q116762482
+    note: ''
+  Haroon Shapso:
+    he: הארון שפסו
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Hatem Abd Elhamed:
+    he: חאתם אלחמיד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q762999
+    note: ''
+  Hay Buzaglo:
+    he: חי בוזגלו
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Helder Lopes:
+    he: הלדר לופש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q5964151
+    note: ''
+  Henrique Jocu:
+    he: אנריקה ז'וקו
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Henrique Jocú:
+    he: אנריקה ז'וקו
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Henry Addo:
+    he: הנרי אדו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q111248666
+    note: ''
+  Heri Tavares:
+    he: הרי טאוארש
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Hisham Layous:
+    he: הישאם לאיוס
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q66058221
+    note: ''
+  Ibeh Ransom:
+    he: איבה רנסום ג'ידצ'וקוו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q126723612
+    note: ''
+  Ibrahim Sangare:
+    he: אבראהים סנגארה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q27832634
+    note: ''
+  Ibrahim Sangaré:
+    he: אבראהים סנגארה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q27832634
+    note: ''
+  Idan Ahadnani:
+    he: עידן אחדני
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Idan Dahan:
+    he: עידן דהן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q107445100
+    note: ''
+  Idan Nachmias:
+    he: עידן נחמיאס
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q63201920
+    note: ''
+  Idan Vered:
+    he: עידן ורד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q452528
+    note: ''
+  Ido Cohen:
+    he: עידו כהן
+    src: wikipedia
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Ido Levy:
+    he: עידו לוי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q10514949
+    note: ''
+  Ido Shahar:
+    he: עידו שחר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q109398759
+    note: ''
+  Ignacio Pais:
+    he: איגנסיו פאיס
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Igor Zlatanovic:
+    he: איגור זלטנוביץ'
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q26704490
+    note: ''
+  Ihab Ganayem:
+    he: איהאב גנאים
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q63201355
+    note: ''
+  Ilay Elmkies:
+    he: עילאי אלמקייס
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q71142658
+    note: ''
+  Ilay Feingold:
+    he: עילי פיינגולד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q118218622
+    note: ''
+  Ilay Hajaj:
+    he: עילאי חג'ג'
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q119499801
+    note: ''
+  Ilay Tamam:
+    he: איליי טמם
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q115728590
+    note: ''
+  Ilay Trost:
+    he: עילאי טרוסט
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q124054832
+    note: ''
+  Ismail Isa:
+    he: איסמאיל עיסא
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Ismaila Soro:
+    he: איסמאילה סורו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q38664927
+    note: ''
+  Israel Coll:
+    he: ישראל קול
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q17635069
+    note: ''
+  Issouf Sissokho:
+    he: איסוף סיסוקו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q106067399
+    note: ''
+  Itamar Noy:
+    he: איתמר נוי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q113198022
+    note: ''
+  Itamar Shviro:
+    he: איתמר שבירו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q100272159
+    note: ''
+  Itay Ben Hemo:
+    he: איתי בן המו
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Itay Ben Shabat:
+    he: איתי בן שבת
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q118190298
+    note: ''
+  Itay Buganim:
+    he: איתי בוגנים
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q110551175
+    note: ''
+  Itay Ehud:
+    he: איתי אהוד
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Itzik Sholmyster:
+    he: איציק שולמייסטר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131840298
+    note: ''
+  Iyad Khalaili:
+    he: איאד ח'ליילי
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Jakub Fulnek:
+    he: יאקוב פולנק
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  James Adeniyi:
+    he: ג'יימס אדני
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q16146321
+    note: ''
+  Jan Buryan:
+    he: יאן בוריאן
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Janio Bikel:
+    he: ז'אניו ביקל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q19576917
+    note: ''
+  Jardel:
+    he: ז'ארדל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1188407
+    note: ''
+  Javon East:
+    he: ג'בון איסט
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q50822495
+    note: ''
+  Jean Marcelin:
+    he: ז'אן מרסלן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q58494945
+    note: ''
+  Jeando Fuchs:
+    he: ז'אנדו פוקס
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q23540979
+    note: ''
+  Jekob Jeno:
+    he: ז'קוב ז'נו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q87461657
+    note: ''
+  Jelle Duin:
+    he: ילה דוין
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q47086365
+    note: ''
+  Jordan Botaka:
+    he: ז'ורדן בוטאקה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q14851962
+    note: ''
+  Jordy Soladio:
+    he: ז'ורדי סולאדיו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q107333859
+    note: ''
+  Joris Van Overeem:
+    he: יוריס ואן אובריים
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q3183928
+    note: ''
+  Joris van Overeem:
+    he: יוריס ואן אובריים
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q3183928
+    note: ''
+  Karem Jaber:
+    he: כרם ג'אבר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q109319055
+    note: ''
+  Karlo Brucic:
+    he: קרלו ברוצ'יץ'
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q3813089
+    note: ''
+  Karol Niemczycki:
+    he: קארול ניימצ'יצקי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q53319753
+    note: ''
+  Kenny Saief:
+    he: קני סייף
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q16235815
+    note: ''
+  Konstantinos Sotiriou:
+    he: קונסטנטינוס סוטריו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q105124233
+    note: ''
+  Lee Yam Dan:
+    he: לי-ים דן
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Lee-Yam Dan:
+    he: לי-ים דן
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Leroy Mondzenga:
+    he: לרוי מונדזנגה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Li On Mizrahi:
+    he: לי און מזרחי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q110495977
+    note: ''
+  Liam Hermesh:
+    he: ליאם חרמש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131752926
+    note: ''
+  Lidor Cohen:
+    he: לידור כהן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q16875061
+    note: ''
+  Liel Chane:
+    he: ליאל צ'אנה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Liel Deri:
+    he: ליאל דרי
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Lior Refaelov:
+    he: ליאור רפאלוב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q964300
+    note: ''
+  Lior Rokach:
+    he: ליאור רוקח
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Liran Hazan:
+    he: לירן חזן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q124631048
+    note: ''
+  Liran Rotman:
+    he: לירן רוטמן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q96739181
+    note: ''
+  Liran Sardal:
+    he: לירן סרדל
+    src: wikipedia
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Lisav Naif Eissat:
+    he: ליסב עיסאת
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131840182
+    note: ''
+  Loai Halaf:
+    he: לואי חלף
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q124305009
+    note: ''
+  Luiyi De Lucas:
+    he: לואיי דה לוקאס
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q58756992
+    note: ''
+  Lukas Masek:
+    he: לוקאש מאשק
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Mahmoud Jaber:
+    he: מחמוד ג'אבר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q110832613
+    note: ''
+  Maksim Grechkin:
+    he: מקסים גרצ'קין
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q60827530
+    note: ''
+  Mamadou Mbodj:
+    he: ממאדו אמבוג'
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q18209226
+    note: ''
+  Mansour Badjie:
+    he: מנסור באדג'י
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Maor Kandil:
+    he: מאור קנדיל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q42426897
+    note: ''
+  Maor Levi:
+    he: מאור לוי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q107426684
+    note: ''
+  Marco Wolff:
+    he: מרקו וולף
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q126369567
+    note: ''
+  Marek Matejovsky:
+    he: מארק מאטייובסקי
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Marek Suchy:
+    he: מארק סוצ'י
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Martin Kralik:
+    he: מרטין קרליק
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Martin Ndzie:
+    he: מרטין אנדזי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q115787345
+    note: ''
+  Matan Hozez:
+    he: מתן חוזז
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q28540608
+    note: ''
+  Matej Pulkrab:
+    he: מאטיי פולקראב
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Mathew Anim Cudjoe:
+    he: מת'יו קודג'ו
+    src: wikipedia
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Matous Trmal:
+    he: מאטוש טרמל
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Matías Nahuel:
+    he: מתיאס נאוול
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q15627765
+    note: ''
+  Maxim Plakushchenko:
+    he: מקסים פלקושצ'נקו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q24007217
+    note: ''
+  Mayron George:
+    he: מיירון ג'ורג'
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q5673050
+    note: ''
+  Mazire Soula:
+    he: מאזירה סולה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Menashe Zalka:
+    he: מנשה זלקה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q63390373
+    note: ''
+  Merabi Bregvadze:
+    he: מרבי ברגבדזה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Michael Ohana:
+    he: מיכאל אוחנה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q23888354
+    note: ''
+  Miguel Silva:
+    he: מיגל סילבה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Miguel Vitor:
+    he: מיגל ויטור
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q927027
+    note: ''
+  Milan Makaric:
+    he: מילאן מקאריץ'
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q17517181
+    note: ''
+  Mohamad Shaker:
+    he: מוחמד שכר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q47002545
+    note: ''
+  Mohamed Djetei:
+    he: מוחמד ג'טיי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q25346169
+    note: ''
+  Mohammed Abu Nil:
+    he: מוחמד אבו ניל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q119521929
+    note: ''
+  Mohammed Hindi:
+    he: מוחמד הנדי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q111039887
+    note: ''
+  Moulat Gabra:
+    he: מולאת גברה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Muhammad Abu Rumi:
+    he: מוחמד אבו רומי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q119500129
+    note: ''
+  Nadav Niddam:
+    he: נדב נידם
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Nadav Zamir:
+    he: נדב זמיר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131825246
+    note: ''
+  Nael Khutba:
+    he: נאיל ח'וטבה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Naftali Balay:
+    he: נפתלי בלאי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q124305540
+    note: ''
+  Naor Sabag:
+    he: נאור סבג
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q73569411
+    note: ''
+  Nehoray Dabush:
+    he: נהוראי דבוש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q128810130
+    note: ''
+  Nemanja Ljubisavljevic:
+    he: נמניה ליוביסבלייביץ'
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q32539167
+    note: ''
+  Nemanja Stojic:
+    he: נמניה סטואיץ'
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q98276222
+    note: ''
+  Nikita Stoinov:
+    he: ניקיטה סטויאנוב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131010286
+    note: ''
+  Nikolay Zlatev:
+    he: ניקולאי זלאטב
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Nimrod Kostica:
+    he: נמרוד קוסטיקה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q132417875
+    note: ''
+  Nir Bitton:
+    he: ניר ביטון
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2896026
+    note: ''
+  Niv Antman:
+    he: ניב אנטמן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q20988608
+    note: ''
+  Niv Yehoshua:
+    he: ניב יהושע
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q124635804
+    note: ''
+  Noam Ben Harush:
+    he: נועם בן הרוש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q118214981
+    note: ''
+  Noam Cohen:
+    he: נעם כהן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q138348060
+    note: ''
+  Noam Malmud:
+    he: נועם מלמוד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q116919681
+    note: ''
+  Noam Muche:
+    he: נועם מוצ'ה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q118137414
+    note: ''
+  Ofek Nadir:
+    he: אופק נדיר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131829567
+    note: ''
+  Ofir Davidzada:
+    he: אופיר דוידזאדה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q6588963
+    note: ''
+  Ohad Almagor:
+    he: אוהד אלמגור
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131829691
+    note: ''
+  Ohad Levita:
+    he: אוהד לויטה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2694112
+    note: ''
+  Oleksandr Syrota:
+    he: אולכסנדר סירוטה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q96974481
+    note: ''
+  Omer Agvadish:
+    he: עומר אגבדיש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q113383820
+    note: ''
+  Omer Atzili:
+    he: עומר אצילי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q19366883
+    note: ''
+  Omer Itzhak:
+    he: עומר יצחק
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q137830092
+    note: ''
+  Omer Niron:
+    he: עומר ניראון
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q123202095
+    note: ''
+  Omer Senior:
+    he: עומר סניור
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q110241932
+    note: ''
+  Omri Altman:
+    he: עומרי אלטמן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q13416022
+    note: ''
+  Omri Ben Harush:
+    he: עומרי בן הרוש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q6944738
+    note: ''
+  Ondrej Baco:
+    he: אונדז'יי באצ'ו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q32146513
+    note: ''
+  Or Israelov:
+    he: אור ישראלוב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q110495993
+    note: ''
+  Or Roizman:
+    he: אור רויזמן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q121028839
+    note: ''
+  Orel Dgani:
+    he: אוראל דגני
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q4544711
+    note: ''
+  Oren Biton:
+    he: אורן ביטון
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q24663944
+    note: ''
+  Ori Azo:
+    he: אורי אזו
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Ori Dahan:
+    he: אורי דהן
+    src: wikipedia
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Osher Davida:
+    he: אושר דוידה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q108781900
+    note: ''
+  Ovadia Darwish:
+    he: עובדיה דרוויש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q124399705
+    note: ''
+  Oz Bilu:
+    he: עוז בילו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q110537340
+    note: ''
+  Patrick Twumasi:
+    he: פטריק טוומאסי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q15977201
+    note: ''
+  Patrik Vydra:
+    he: פטריק וידרה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Pedrao:
+    he: פדראו
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Pedrão:
+    he: פדראו
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Peter Michael:
+    he: פיטר מייקל
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Plamen Galabov:
+    he: פלמן גלבוב
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q15732035
+    note: ''
+  Plamen Iliev:
+    he: פלמן אילייב
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Qays Ghanem:
+    he: קייס גאנם
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q81942227
+    note: ''
+  Ran Binyamin:
+    he: רן בנימין
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q118211482
+    note: ''
+  Ran Kozuch:
+    he: רן קוזוך
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Ravid Abergil:
+    he: רביד אברג'יל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131824820
+    note: ''
+  Raz Meir:
+    he: רז מאיר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q26924846
+    note: ''
+  Raz Schwartz:
+    he: רז שוורץ
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Raz Shlomo:
+    he: רז שלמה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q67087732
+    note: ''
+  Renato Gojkovic:
+    he: רנאטו גויקוביץ'
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q22162802
+    note: ''
+  Ricardinho:
+    he: ריקארדיניו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q72886
+    note: ''
+  Roei Alkukin:
+    he: רועי אלקוקין
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q128851735
+    note: ''
+  Roei Shukrani:
+    he: רועי שוקרני
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q10520145
+    note: ''
+  Roei Zikri:
+    he: רועי זיקרי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q16235183
+    note: ''
+  Roey Elimelech:
+    he: רועי אלימלך
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q119648280
+    note: ''
+  Roi Mishpati:
+    he: רועי משפתי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q118459696
+    note: ''
+  Ron Unger:
+    he: רון אונגר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131829804
+    note: ''
+  Rotem Keller:
+    he: רותם קלר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q112843402
+    note: ''
+  Roy Korine:
+    he: רוי קורין
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q90305906
+    note: ''
+  Roy Levy:
+    he: רועי לוי (כדורגלן)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q105030733
+    note: ''
+  Roy Nawi:
+    he: רוי נאווי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q118218347
+    note: ''
+  Roy Revivo:
+    he: רוי רביבו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q116213056
+    note: ''
+  Rubi Levkovic:
+    he: רובי לבקוביץ'
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Ruslan Barsky:
+    he: רוסלן ברסקי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q53559574
+    note: ''
+  Saar Fadida:
+    he: סער פדידה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Sagiv Jehezkel:
+    he: שגיב יחזקאל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q17181080
+    note: ''
+  Saher Taji:
+    he: סאהר תאג'י
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q130685751
+    note: ''
+  Samba Diallo:
+    he: סמבה דיאלו
+    src: wikipedia
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Sambinha:
+    he: סמביניה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q16234976
+    note: ''
+  Sayed Abu Farkhi:
+    he: סייד אבו פרחי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q124653854
+    note: ''
+  Sekou Bangoura:
+    he: סקו בנגורה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Shahar Piven:
+    he: שחר פיבן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q61359658
+    note: ''
+  Shahar Rosen:
+    he: שחר רוזן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q129782529
+    note: ''
+  Shalev Harush:
+    he: שלו הרוש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q117744694
+    note: ''
+  Sharif Kaiuf:
+    he: שריף כיוף
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q119499353
+    note: ''
+  Shay Ben David:
+    he: שי בן דוד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q28968158
+    note: ''
+  Shay Konstantin:
+    he: שי קונסטנטין
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q24452258
+    note: ''
+  Shay Refael Sabah:
+    he: שי רפאל סבח
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Shlomi Azulay:
+    he: שלומי אזולאי (חלוץ)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q7499556
+    note: ''
+  Shon Edri:
+    he: שון עדרי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q113383706
+    note: ''
+  Shon Goldberg:
+    he: שון גולדברג
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q27914840
+    note: ''
+  Silva Kani:
+    he: סילבה קאני
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q96115609
+    note: ''
+  Simon Sluga:
+    he: סימון סלוגה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q16606329
+    note: ''
+  Snir Talias:
+    he: שניר טליאס
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Solomon John:
+    he: סולומון ג'ון
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Stanislav Bilenkyi:
+    he: סטניסלב בילינקי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q30101525
+    note: ''
+  Stav Lemkin:
+    he: סתיו למקין
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q112862568
+    note: ''
+  Stav Turiel:
+    he: סתיו טוריאל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q127599637
+    note: ''
+  Stephane Omeonga:
+    he: סטפן אומאונגה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q27909588
+    note: ''
+  Tal Kahila:
+    he: טל כהילה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Tamir Arbel:
+    he: תמיר ארבל
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q128851818
+    note: ''
+  Tamir Glazer:
+    he: תמיר גלזר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q111079876
+    note: ''
+  Thiemoko Diarra:
+    he: טימוקו דיארה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q127789145
+    note: ''
+  Timothy Awany:
+    he: טימותי אוואני
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q28474629
+    note: ''
+  Timothy Muzie:
+    he: טימוטי מוזי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q113953221
+    note: ''
+  Tomas Kral:
+    he: טומאש קראל
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Tomas Ladra:
+    he: טומאש לאדרה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Tomer Levi:
+    he: תומר לוי (כדורגלן)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q118928881
+    note: ''
+  Tsvetomir Panov:
+    he: צבטומיר פנוב
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Tyrese Asante:
+    he: טייריס אסאנטה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q111609806
+    note: ''
+  Usman Mohammed:
+    he: מוחמד אוסמן אדו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q23058405
+    note: ''
+  Vasil Kusej:
+    he: ואסיל קושיי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q57612416
+    note: ''
+  Vasil Panayotov:
+    he: וסיל פנאיוטוב
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Viktor Popov:
+    he: ויקטור פופוב
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Vital Nsimba:
+    he: ויטאל אנסימבה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q23882835
+    note: ''
+  Vitalie Damascan:
+    he: ויטלייה דאמאשקאן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q21621188
+    note: ''
+  Vlatko Drobarov:
+    he: ולאטקו דרובארוב
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Vojtech Stransky:
+    he: וויטך שטרנסקי
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Waheb Habiballah:
+    he: והיב חביבאללה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131413363
+    note: ''
+  Weslen Junior:
+    he: וסלן ג'וניור
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Weslley Patati:
+    he: וסלי פטאצ'י
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q113130088
+    note: ''
+  Wilson Harris:
+    he: וילסון האריס
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q55637781
+    note: ''
+  Xander Severina:
+    he: קסאנדר סברינה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q106368317
+    note: ''
+  Yadin Lugasi:
+    he: ידין לוגסי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q115201530
+    note: ''
+  Yair Mordechai:
+    he: יאיר מרדכי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q126949074
+    note: ''
+  Yali Shabo:
+    he: יהלי שבו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131840617
+    note: ''
+  Yanai Distalfeld:
+    he: ינאי דיסטלפלד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131829594
+    note: ''
+  Yarden Abuhatzera:
+    he: ירדן אבוחצירה
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Yarden Cohen:
+    he: ירדן כהן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q8049277
+    note: ''
+  Yarden Shua:
+    he: ירדן שועה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q64010616
+    note: ''
+  Yarin Levi:
+    he: ירין לוי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q129782521
+    note: ''
+  Yarin Sardal:
+    he: ירין סרדל
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Yazen Nassar:
+    he: יאזן נסאר
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Yoav Gerafi:
+    he: יואב ג'ראפי
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q49157770
+    note: ''
+  Yonatan Farber:
+    he: יונתן פרבר
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Yonatan Laish:
+    he: יונתן לייש
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q139079369
+    note: ''
+  Yonatan Teper:
+    he: יונתן טפר
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q131830586
+    note: ''
+  Yuval Sade:
+    he: יובל שדה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q112192561
+    note: ''
+  Zhivko Atanasov:
+    he: ז'יבקו אטנסוב
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Ziv Morgan:
+    he: זיו מורגן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q104591087
+    note: ''
+  Zohar Zasano:
+    he: זוהר זסנו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q107445395
+    note: ''
+birth_places:
+  Abu Snan:
+    he: אבו סנאן
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2572624
+    note: ''
+  Ashdod:
+    he: אשדוד
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q171639
+    note: ''
+  Ashkelon:
+    he: אשקלון
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q60956
+    note: ''
+  Bat Yam:
+    he: בת ים
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q208725
+    note: ''
+  Be'er Sheva:
+    he: באר שבע
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q41843
+    note: ''
+  Buenos Aires:
+    he: בואנוס איירס
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Douala:
+    he: דואלה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q132830
+    note: ''
+  Ein HaBesor:
+    he: עין הבשור
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2890894
+    note: ''
+  Elyakhin:
+    he: אליכין
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q2920239
+    note: ''
+  Galați:
+    he: גאלאץ
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q170996
+    note: ''
+  Hadera:
+    he: חדרה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q471886
+    note: ''
+  Hatzor HaGlilit:
+    he: חצור הגלילית
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Herzliya:
+    he: הרצליה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q152491
+    note: ''
+  Horta:
+    he: הורטה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Jerusalem:
+    he: ירושלים
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1218
+    note: ''
+  Kasama:
+    he: קסאמה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q600893
+    note: ''
+  Kfar Saba:
+    he: כפר סבא
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q152436
+    note: ''
+  Lehavim:
+    he: להבים
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q1589806
+    note: ''
+  Leopoldina:
+    he: לאופולדינה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Mindelo:
+    he: מינדלו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q495547
+    note: ''
+  Ness Ziona:
+    he: נס ציונה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q168162
+    note: ''
+  Petah Tikva:
+    he: פתח תקווה
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q190828
+    note: ''
+  Plovdiv:
+    he: פלובדיב
+    src: auto-llm
+    confidence: high
+    wikidata_qid: ''
+    note: ''
+  Sde Warburg:
+    he: שדה ורבורג
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q263306
+    note: ''
+  Shoham:
+    he: שוהם (יישוב)
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q304448
+    note: ''
+  Taraz:
+    he: טראז
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q486545
+    note: ''
+  Tel Aviv:
+    he: תל אביב-יפו
+    src: wikidata
+    confidence: high
+    wikidata_qid: Q33935
+    note: ''
+  Torres Vedras:
+    he: טורש וודראש
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Tumaco:
+    he: טומאקו
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
+  Vila Nova de Gaia:
+    he: וילה נובה דה גאיה
+    src: auto-llm
+    confidence: low
+    wikidata_qid: ''
+    note: ''
