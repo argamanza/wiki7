@@ -45,6 +45,14 @@ class RedactingLogExtension:
         return ext
 
     def engine_started(self):
+        # Reviewer-pass note (2026-06-13): there is a narrow window between
+        # Scrapy installing its log handler and this signal firing where a
+        # key-bearing line emitted at ERROR would slip past the filter.
+        # In practice every dangerous emit (RetryMiddleware "Gave up
+        # retrying", download errors) happens deep in the crawl after
+        # engine_started, and run_pipeline.py's capture-site redact() is
+        # a second net for the spider-stderr relay path. Theoretical
+        # only; not worth re-engineering.
         attached = attach_redacting_filter_to_handlers()
         self._logger.info(
             "RedactingLogExtension: attached redactor to %d handler(s)",
