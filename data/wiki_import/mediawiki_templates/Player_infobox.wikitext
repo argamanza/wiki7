@@ -40,7 +40,7 @@
 {{#if:{{{preferred_foot|}}}|
 {{!}}-
 ! רגל חזקה
-{{!}} {{{preferred_foot|}}}
+{{!}} {{#switch:{{{preferred_foot|}}}|right=ימין|left=שמאל|both=שתי הרגליים|#default={{{preferred_foot|}}}}}
 }}
 |-
 ! בסגל הנוכחי

@@ -362,6 +362,26 @@ class TestMediaWikiTemplates:
         assert "infobox" in stadium_infobox
         assert "קיבולת" in stadium_infobox
 
+    def test_player_infobox_strong_foot_translated_to_hebrew(self):
+        """Regression (iter-cycle walk 2026-06-14): the strong-foot ("רגל חזקה")
+        infobox row rendered TM's raw English enum — e.g. "left" instead of
+        "שמאל" — because the cell echoed {{{preferred_foot}}} verbatim. The fix
+        is a display-time {{#switch:}}; the Cargo store (line ~112) deliberately
+        keeps the English enum for queryability. This pins that EVERY value the
+        normalizer can emit (data_pipeline.normalize_enrich_players
+        ._parse_preferred_foot -> {right, left, both}) has a Hebrew case, so a
+        revert to the raw echo OR a new enum without a mapping is caught here.
+        """
+        from wiki_import.import_templates import MEDIAWIKI_TEMPLATE_DIR
+
+        infobox = (MEDIAWIKI_TEMPLATE_DIR / "Player_infobox.wikitext").read_text(encoding="utf-8")
+        # The visible cell must route through a switch, not echo the raw value.
+        assert "#switch:{{{preferred_foot|}}}" in infobox
+        # Every foot enum _parse_preferred_foot can return maps to Hebrew.
+        expected = {"right": "ימין", "left": "שמאל", "both": "שתי הרגליים"}
+        for enum, hebrew in expected.items():
+            assert f"{enum}={hebrew}" in infobox, f"strong-foot '{enum}' must map to '{hebrew}'"
+
     def test_dry_run_mediawiki_templates(self):
         from wiki_import.import_templates import import_mediawiki_templates
 
