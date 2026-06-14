@@ -77,6 +77,36 @@ def is_youth_club_name(name: str | None) -> bool:
 # venue is the only signal we need to remap goals to HBS's perspective:
 #   venue=H → HBS = home_goals, opp = away_goals
 #   venue=A → HBS = away_goals, opp = home_goals
+def hbs_perspective(result: str | None, venue: str | None) -> tuple[int, int] | None:
+    """Return `(hbs_goals, opp_goals)` for a match from HBS's perspective,
+    or `None` when the inputs can't be parsed.
+
+    `result` is TM's "home_goals:away_goals" string (e.g. "2:1"); `venue`
+    is `'H'`/`'A'` indicating where HBS played. The scoreline is the
+    authoritative source for goals conceded (it is robust to the occasional
+    duplicated/own-goal row in the per-event `goals[]` list — see
+    `compute_competition_stats`). Neutral (`'N'`) and any other venue
+    return `None` because we can't map a side to HBS without a venue signal.
+    """
+    if not result or not venue:
+        return None
+    s = result.strip()
+    if ":" not in s:
+        return None
+    home_str, _, away_str = s.partition(":")
+    try:
+        home_goals = int(home_str.strip())
+        away_goals = int(away_str.strip())
+    except (ValueError, TypeError):
+        return None
+    v = venue.strip().upper()
+    if v == "H":
+        return home_goals, away_goals
+    if v == "A":
+        return away_goals, home_goals
+    return None
+
+
 def hbs_match_outcome(result: str | None, venue: str | None) -> str:
     """Categorise a match result as `'win'`, `'loss'`, `'draw'`, or `''`
     from HBS's perspective.
@@ -89,24 +119,10 @@ def hbs_match_outcome(result: str | None, venue: str | None) -> str:
     Used by both `match_report.j2` (single-match page category) and
     `competition_season.j2` (per-row colouring).
     """
-    if not result or not venue:
+    perspective = hbs_perspective(result, venue)
+    if perspective is None:
         return ""
-    s = result.strip()
-    if ":" not in s:
-        return ""
-    home_str, _, away_str = s.partition(":")
-    try:
-        home_goals = int(home_str.strip())
-        away_goals = int(away_str.strip())
-    except (ValueError, TypeError):
-        return ""
-    v = venue.strip().upper()
-    if v == "H":
-        hbs_goals, opp_goals = home_goals, away_goals
-    elif v == "A":
-        hbs_goals, opp_goals = away_goals, home_goals
-    else:
-        return ""
+    hbs_goals, opp_goals = perspective
     if hbs_goals > opp_goals:
         return "win"
     if hbs_goals < opp_goals:

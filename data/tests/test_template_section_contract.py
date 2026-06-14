@@ -98,6 +98,29 @@ def _stub_stats(player_id: str) -> list[dict]:
             "second_yellow_cards": 0,
             "red_cards": 0,
             "minutes_played": 1800,
+            "clean_sheets": None,
+            "goals_conceded": None,
+            "own_goals": 1,
+            "subs_on": 2,
+            "subs_off": 3,
+            "ppg": 1.75,
+        },
+    ]
+
+
+def _stub_competition_stats(player_id: str) -> list[dict]:
+    return [
+        {
+            "player_id": player_id, "season": "2024", "competition": "ליגת העל",
+            "appearances": 18, "goals": 5, "assists": 3, "yellow_cards": 2,
+            "second_yellow_cards": 0, "red_cards": 0, "own_goals": 1,
+            "clean_sheets": None, "goals_conceded": None,
+        },
+        {
+            "player_id": player_id, "season": "2024", "competition": "גביע המדינה בכדורגל",
+            "appearances": 2, "goals": 0, "assists": 0, "yellow_cards": 0,
+            "second_yellow_cards": 0, "red_cards": 0, "own_goals": 0,
+            "clean_sheets": None, "goals_conceded": None,
         },
     ]
 
@@ -115,8 +138,9 @@ class TestPlayerPageSectionContract:
         transfers = _stub_transfers(player["id"], include_youth=True)
         market_values = _stub_market_values(player["id"])
         stats = _stub_stats(player["id"])
+        competition_stats = _stub_competition_stats(player["id"])
 
-        page = _build_player_page(player, transfers, market_values, stats)
+        page = _build_player_page(player, transfers, market_values, stats, competition_stats)
         rendered_ids = set(extract_managed_sections(page).keys())
 
         known = KNOWN_TEMPLATE_SECTIONS["player_page.j2"]
@@ -132,6 +156,8 @@ class TestPlayerPageSectionContract:
         # Sanity: at least the always-rendered sections are present.
         assert "infobox" in rendered_ids
         assert "categories" in rendered_ids
+        # keeper-stats branch: the per-competition section renders when present.
+        assert "competition-stats" in rendered_ids
 
     def test_minimal_render_subset_of_known(self):
         """Player with NO youth career, NO stats, NO MVs. The remaining

@@ -215,6 +215,7 @@ KNOWN_TEMPLATE_SECTIONS: dict[str, frozenset[str]] = {
         "youth-career",  # only when transfers_youth present
         "career",        # always (carries senior transfers + Cargo store)
         "stats",         # only when stats present
+        "competition-stats",  # only when per-competition stats present
         "market-values", # only when market_values present
         "categories",    # always
     }),

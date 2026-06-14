@@ -62,6 +62,145 @@ class TestPlayerPageRendering:
         assert summary["failed"] == 0
 
 
+class TestKeeperAndCompetitionStatsRendering:
+    """keeper-stats branch: conditional keeper columns + the per-competition
+    section render only for the right players, and Cargo stores carry the new
+    fields (NULL for outfielders)."""
+
+    KEEPER = {
+        "id": "GK1", "name_english": "Test Keeper", "name_hebrew": "שוער בדיקה",
+        "main_position": "שוער", "other_positions": [], "nationality": ["Israel"],
+        "current_squad": True, "homegrown": False, "retired": False, "is_captain": False,
+    }
+    OUTFIELD = dict(KEEPER, id="OF1", name_english="Test Forward",
+                    name_hebrew="חלוץ בדיקה", main_position="חלוץ מרכזי")
+
+    def _keeper_stats(self, pid):
+        return [{"player_id": pid, "season": "2024", "appearances": 30, "goals": 0,
+                 "assists": 0, "yellow_cards": 1, "second_yellow_cards": 0, "red_cards": 0,
+                 "minutes_played": 2700, "clean_sheets": 12, "goals_conceded": 25,
+                 "own_goals": 0, "subs_on": 0, "subs_off": 0, "ppg": 1.8}]
+
+    def _keeper_comp(self, pid):
+        return [{"player_id": pid, "season": "2024", "competition": "ליגת העל",
+                 "appearances": 28, "goals": 0, "assists": 0, "yellow_cards": 1,
+                 "second_yellow_cards": 0, "red_cards": 0, "own_goals": 0,
+                 "clean_sheets": 11, "goals_conceded": 23}]
+
+    def test_keeper_page_has_keeper_columns_and_competition_section(self):
+        from wiki_import.import_players import _build_player_page
+
+        page = _build_player_page(self.KEEPER, [], [], self._keeper_stats("GK1"),
+                                  self._keeper_comp("GK1"))
+        assert "רשתות נקיות" in page          # clean sheets header (keeper only)
+        assert "שערים שספג" in page           # goals conceded header
+        assert "סטטיסטיקה לפי מפעל" in page    # per-competition section
+        assert "ליגת העל" in page             # merged league row
+        # Cargo stores carry the keeper values + per-competition table.
+        assert "| clean_sheets = 12" in page
+        assert "Cargo/PlayerCompetitionStats" in page
+        assert "| goals_conceded = 23" in page
+
+    def test_outfielder_page_omits_keeper_columns(self):
+        from wiki_import.import_players import _build_player_page
+
+        stats = [{"player_id": "OF1", "season": "2024", "appearances": 25, "goals": 7,
+                  "assists": 4, "yellow_cards": 2, "second_yellow_cards": 0, "red_cards": 0,
+                  "minutes_played": 2100, "clean_sheets": None, "goals_conceded": None,
+                  "own_goals": 0, "subs_on": 1, "subs_off": 5, "ppg": 2.0}]
+        comp = [{"player_id": "OF1", "season": "2024", "competition": "ליגת העל",
+                 "appearances": 25, "goals": 7, "assists": 4, "yellow_cards": 2,
+                 "second_yellow_cards": 0, "red_cards": 0, "own_goals": 0,
+                 "clean_sheets": None, "goals_conceded": None}]
+        page = _build_player_page(self.OUTFIELD, [], [], stats, comp)
+        assert "רשתות נקיות" not in page       # no keeper header
+        assert "שערים שספג" not in page
+        # outfielder still gets subs/ppg + the per-competition section
+        assert "סטטיסטיקה לפי מפעל" in page
+        assert "נקודות למשחק" in page
+        # Cargo store NULLs the keeper fields (empty value after '=').
+        assert "| clean_sheets = \n" in page or "| clean_sheets =\n" in page
+
+    def test_own_goal_column_only_shown_when_present(self):
+        from wiki_import.import_players import _build_player_page
+
+        # No own goals anywhere → the column is suppressed.
+        stats = [{"player_id": "OF1", "season": "2024", "appearances": 10, "goals": 1,
+                  "assists": 0, "yellow_cards": 0, "second_yellow_cards": 0, "red_cards": 0,
+                  "minutes_played": 900, "clean_sheets": None, "goals_conceded": None,
+                  "own_goals": 0, "subs_on": 0, "subs_off": 0, "ppg": 1.0}]
+        page = _build_player_page(self.OUTFIELD, [], [], stats, [])
+        assert "שערים עצמיים" not in page
+        # With an own goal, the column appears.
+        stats[0]["own_goals"] = 1
+        page2 = _build_player_page(self.OUTFIELD, [], [], stats, [])
+        assert "שערים עצמיים" in page2
+
+    @staticmethod
+    def _wikitables(page):
+        """Yield the lines of each {| ... |} wikitable block in the page."""
+        tables, current = [], None
+        for line in page.splitlines():
+            s = line.strip()
+            if s.startswith("{|"):
+                current = []
+            elif current is not None and s == "|}":
+                tables.append(current)
+                current = None
+            elif current is not None:
+                current.append(line)
+        return tables
+
+    @staticmethod
+    def _cell_count(line):
+        """Cell count for a wikitable header (!!) or data (||) row, else None."""
+        s = line.strip()
+        if s.startswith("!"):
+            return s.count("!!") + 1
+        if s.startswith("|") and not s.startswith(("|-", "|+", "|}")):
+            return s.count("||") + 1
+        return None
+
+    def test_tables_well_formed_across_conditional_combinations(self):
+        """Regression guard for the {% endif +%} whitespace control: row
+        separators must never weld onto a content line, and every header/data/
+        totals row in a table must have the same cell count — for keeper and
+        outfielder, with and without own goals (all four column layouts)."""
+        from wiki_import.import_players import _build_player_page
+
+        keeper_comp = self._keeper_comp("GK1")
+        of_stats = [{"player_id": "OF1", "season": "2024", "appearances": 25, "goals": 7,
+                     "assists": 4, "yellow_cards": 2, "second_yellow_cards": 0, "red_cards": 0,
+                     "minutes_played": 2100, "clean_sheets": None, "goals_conceded": None,
+                     "own_goals": 0, "subs_on": 1, "subs_off": 5, "ppg": 2.0}]
+        of_comp = [{"player_id": "OF1", "season": "2024", "competition": "ליגת העל",
+                    "appearances": 25, "goals": 7, "assists": 4, "yellow_cards": 2,
+                    "second_yellow_cards": 0, "red_cards": 0, "own_goals": 0,
+                    "clean_sheets": None, "goals_conceded": None}]
+        of_stats_og = [dict(of_stats[0], own_goals=2)]
+        of_comp_og = [dict(of_comp[0], own_goals=2)]
+
+        cases = {
+            "keeper-with-og": (self.KEEPER, self._keeper_stats("GK1"), keeper_comp),
+            "outfield-no-og": (self.OUTFIELD, of_stats, of_comp),
+            "outfield-with-og": (self.OUTFIELD, of_stats_og, of_comp_og),
+        }
+        for label, (player, stats, comp) in cases.items():
+            page = _build_player_page(player, [], [], stats, comp)
+            # No welded separators/terminators anywhere in the tables.
+            for line in page.splitlines():
+                stripped = line.strip()
+                if "|-" in stripped and stripped != "|-":
+                    raise AssertionError(f"[{label}] welded row separator: {line!r}")
+            # Each wikitable: all rows share the header's cell count.
+            for table in self._wikitables(page):
+                counts = [c for c in (self._cell_count(ln) for ln in table) if c is not None]
+                assert counts, f"[{label}] empty table"
+                assert len(set(counts)) == 1, (
+                    f"[{label}] ragged table — cell counts {counts}"
+                )
+
+
 class TestMatchReportRendering:
     def test_render_match_report(self):
         from wiki_import.import_matches import import_matches
@@ -97,7 +236,8 @@ class TestCargoTemplates:
         summary = import_cargo_templates(dry_run=True)
         # Phase 3a R2: Player, Transfer, MarketValue, Match, PlayerStats, Coach,
         # Honour, SeasonStanding, HeadToHead.
-        assert summary["created"] == 9
+        # keeper-stats branch: + PlayerCompetitionStats (10th table).
+        assert summary["created"] == 10
         assert summary["failed"] == 0
 
     def test_cargo_template_content(self):

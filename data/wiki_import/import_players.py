@@ -25,6 +25,11 @@ DEFAULT_PLAYERS_PATH = Path(__file__).resolve().parent.parent / "data_pipeline" 
 DEFAULT_TRANSFERS_PATH = Path(__file__).resolve().parent.parent / "data_pipeline" / "output" / "transfers.jsonl"
 DEFAULT_MARKET_VALUES_PATH = Path(__file__).resolve().parent.parent / "data_pipeline" / "output" / "market_values.jsonl"
 DEFAULT_STATS_PATH = Path(__file__).resolve().parent.parent / "data_pipeline" / "output" / "stats.jsonl"
+DEFAULT_COMPETITION_STATS_PATH = Path(__file__).resolve().parent.parent / "data_pipeline" / "output" / "competition_stats.jsonl"
+
+# Per-competition rows render newest-season-first, then by descending
+# appearances, so a player's primary competition leads each season block.
+_COMPETITION_SORT = lambda r: (r.get("season", ""), -(r.get("appearances") or 0), r.get("competition", ""))  # noqa: E731
 
 
 def _load_jsonl(path: Path) -> list:
@@ -193,13 +198,18 @@ def _edit_page(site: mwclient.Site, title: str, content: str, summary_detail: st
     return result != "skipped"
 
 
-def _build_player_page(player: dict, transfers: list, market_values: list, stats: list = None) -> str:
+def _build_player_page(player: dict, transfers: list, market_values: list,
+                       stats: list = None, competition_stats: list = None) -> str:
     """Render a player wiki page from normalized data."""
     player_transfers = [t for t in transfers if t.get("player_id") == player["id"]]
     player_mvs = [mv for mv in market_values if mv.get("player_id") == player["id"]]
     player_stats = sorted(
         [s for s in (stats or []) if s.get("player_id") == player["id"]],
         key=lambda s: s.get("season", ""),
+    )
+    player_competition_stats = sorted(
+        [c for c in (competition_stats or []) if c.get("player_id") == player["id"]],
+        key=_COMPETITION_SORT,
     )
     # Iter-cycle 1 walk (2026-06-12): bucket transfers by destination-club
     # youth marker. A transfer is "youth" iff its `to_club` carries a
@@ -221,6 +231,7 @@ def _build_player_page(player: dict, transfers: list, market_values: list, stats
         transfers_senior=transfers_senior,
         market_values=player_mvs,
         stats=player_stats,
+        competition_stats=player_competition_stats,
     )
 
 
@@ -230,6 +241,7 @@ def import_players(
     transfers_path: Optional[Path] = None,
     market_values_path: Optional[Path] = None,
     stats_path: Optional[Path] = None,
+    competition_stats_path: Optional[Path] = None,
     dry_run: bool = False,
     state: Optional["PageIndexState"] = None,
 ) -> dict:
@@ -255,11 +267,13 @@ def import_players(
     resolved_transfers = transfers_path or DEFAULT_TRANSFERS_PATH
     resolved_mvs = market_values_path or DEFAULT_MARKET_VALUES_PATH
     resolved_stats = stats_path or DEFAULT_STATS_PATH
+    resolved_competition_stats = competition_stats_path or DEFAULT_COMPETITION_STATS_PATH
 
     players = _load_jsonl(resolved_players)
     transfers = _load_jsonl(resolved_transfers)
     market_values = _load_jsonl(resolved_mvs)
     stats = _load_jsonl(resolved_stats) if resolved_stats.exists() else []
+    competition_stats = _load_jsonl(resolved_competition_stats) if resolved_competition_stats.exists() else []
 
     summary = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "moved": 0, "errors": []}
 
@@ -267,7 +281,7 @@ def import_players(
         bare_title = player.get("name_hebrew") or player["name_english"]
         tm_id = str(player["id"])
         try:
-            content = _build_player_page(player, transfers, market_values, stats)
+            content = _build_player_page(player, transfers, market_values, stats, competition_stats)
 
             if dry_run:
                 logger.info("[DRY RUN] Would create/update page: %s (%d chars)", bare_title, len(content))
