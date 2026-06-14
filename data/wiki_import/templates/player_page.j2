@@ -143,11 +143,11 @@
 {% set cs_show_og = (competition_stats | map(attribute='own_goals') | map('default', 0) | sum) > 0 %}
 == סטטיסטיקה לפי מפעל ==
 {| class="wikitable sortable"
-! עונה !! מפעל !! הופעות !! שערים !! בישולים !! {{"{{"}}Tooltip|Y|כרטיסים צהובים{{"}}"}} !! {{"{{"}}Tooltip|2Y|כרטיס צהוב שני{{"}}"}} !! {{"{{"}}Tooltip|R|כרטיסים אדומים{{"}}"}}{% if cs_show_og %} !! {{"{{"}}Tooltip|עצמי|שערים עצמיים{{"}}"}}{% endif %}{% if csk %} !! {{"{{"}}Tooltip|ספג|שערים שספג{{"}}"}} !! {{"{{"}}Tooltip|רנ|רשתות נקיות{{"}}"}}{% endif +%}
+! עונה !! מפעל !! הופעות !! שערים !! בישולים !! {{"{{"}}Tooltip|Y|כרטיסים צהובים{{"}}"}} !! {{"{{"}}Tooltip|2Y|כרטיס צהוב שני{{"}}"}} !! {{"{{"}}Tooltip|R|כרטיסים אדומים{{"}}"}} !! {{"{{"}}Tooltip|דקות|דקות משחק (מחושב ממהלך המשחקים){{"}}"}}{% if cs_show_og %} !! {{"{{"}}Tooltip|עצמי|שערים עצמיים{{"}}"}}{% endif %}{% if csk %} !! {{"{{"}}Tooltip|ספג|שערים שספג{{"}}"}} !! {{"{{"}}Tooltip|רנ|רשתות נקיות{{"}}"}}{% endif +%}
 {% for c in competition_stats %}
 {% set c_season_display = c.season | season_display %}
 |-
-| [[עונת {{ c_season_display }}|{{ c_season_display }}]] || {{ c.competition }} || {{ c.appearances }} || {{ c.goals }} || {{ c.assists }} || {{ c.yellow_cards }} || {{ c.get('second_yellow_cards', 0) }} || {{ c.red_cards }}{% if cs_show_og %} || {{ c.get('own_goals') if c.get('own_goals') is not none else '-' }}{% endif %}{% if csk %} || {{ c.get('goals_conceded') if c.get('goals_conceded') is not none else '-' }} || {{ c.get('clean_sheets') if c.get('clean_sheets') is not none else '-' }}{% endif +%}
+| [[עונת {{ c_season_display }}|{{ c_season_display }}]] || {{ c.competition }} || {{ c.appearances }} || {{ c.goals }} || {{ c.assists }} || {{ c.yellow_cards }} || {{ c.get('second_yellow_cards', 0) }} || {{ c.red_cards }} || {{ c.get('minutes_played', 0) }}{% if cs_show_og %} || {{ c.get('own_goals') if c.get('own_goals') is not none else '-' }}{% endif %}{% if csk %} || {{ c.get('goals_conceded') if c.get('goals_conceded') is not none else '-' }} || {{ c.get('clean_sheets') if c.get('clean_sheets') is not none else '-' }}{% endif +%}
 {% endfor %}
 |}
 {# Cargo storage — one row per player×season×competition. Mainspace-only gate. #}
@@ -162,6 +162,7 @@
 | yellow_cards = {{ c.yellow_cards or 0 }}
 | second_yellow_cards = {{ c.get('second_yellow_cards', 0) }}
 | red_cards = {{ c.red_cards or 0 }}
+| minutes_played = {{ c.get('minutes_played') or 0 }}
 | own_goals = {{ c.get('own_goals') if c.get('own_goals') is not none else '' }}
 | clean_sheets = {{ c.get('clean_sheets') if c.get('clean_sheets') is not none else '' }}
 | goals_conceded = {{ c.get('goals_conceded') if c.get('goals_conceded') is not none else '' }}

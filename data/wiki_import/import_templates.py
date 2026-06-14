@@ -167,9 +167,10 @@ CARGO_TABLES = {
             "own_goals": "Integer",
             "clean_sheets": "Integer",       # keeper only (NULL otherwise)
             "goals_conceded": "Integer",     # keeper only (NULL otherwise)
-            # minutes_played deliberately omitted — the per-competition clock
-            # model does not reconcile; club-page season minutes is the only
-            # minutes figure (kept on player_stats).
+            # Clock-derived (90'/120'-AET, sub-window-adjusted) from the match
+            # corpus — TM has no scrapeable per-competition minutes. Excludes the
+            # unrecoverable missing-lineup matches, same basis as appearances.
+            "minutes_played": "Integer",
         },
     },
     "Template:Cargo/Coach": {

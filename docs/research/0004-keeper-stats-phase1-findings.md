@@ -426,6 +426,8 @@ Shipped on branch `keeper-stats/per-competition-derive` (off `master`), entirely
 
 **Local-wiki verification:** re-imported templates + 128 players to local docker, ran §9 Cargo recipe; ניב אליאסי renders both sections (2023 12 CS / 31 GC / 1.84 PPG, 2024 13 CS / 33 GC / 2.19 PPG); `cargo__player_stats` + `cargo__player_competition_stats` populated for mainspace players (drafts gated as designed).
 
-**Operator decisions applied:** PPG included (match-derived, season-only); league rounds merged; per-competition minutes **deferred/NULL** (clock model didn't reconcile) — *being revisited* (operator: minutes are important; validate compute vs scrape).
+**Operator decisions applied:** PPG included (match-derived, season-only); league rounds merged.
+
+**Per-competition minutes (follow-up, 2026-06-15):** added — computed via an AET-aware clock model (full=90', AET=120', sub-window-adjusted). Logic validated exactly against a scraped TM render (25/26 detailed grid); values validated vs the authoritative club-page season minutes (median drift 1', 88% within 45'; the ~23 drifters are the missing-lineup/red-card edge cases, reported not fail-loud). Eliasi 2023 sums to club exactly. Seasonal minutes were already present (club-page). Scrape findings: TM's season-filtered render is unreliable (returns no Svelte grid) so historical per-comp can't be scraped; the SSR club page carries authoritative PPG/subs/minutes (validated: subs exact, PPG within 0.04) — optionally source season PPG from it for exactness.
 
 **Schema-migration gotcha discovered:** `approveAllPages --force` does NOT refresh `page_props` for a *changed* Cargo template, so `cargoRecreateData` recreates with the stale schema — a column ADD needs a forced re-parse (`api purge&forcelinkupdate=1`) of the template BEFORE `cargoRecreateData`. New tables are unaffected. (Recorded in memory `wiki7-keeper-per-competition-stats`.)

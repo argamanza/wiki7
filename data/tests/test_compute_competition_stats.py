@@ -444,6 +444,56 @@ def test_self_check_clean_when_consistent():
     assert ccs.self_check(computed) == []
 
 
+def test_player_match_minutes_full_partial_aet():
+    assert ccs.player_match_minutes(True, True, None, None, 90) == 90       # full 90
+    assert ccs.player_match_minutes(True, True, None, None, 120) == 120     # full AET
+    assert ccs.player_match_minutes(True, True, None, 70, 90) == 70         # subbed off at 70
+    assert ccs.player_match_minutes(True, False, 70, None, 90) == 20        # subbed on at 70
+    assert ccs.player_match_minutes(True, False, 70, None, 120) == 50       # AET sub on
+    assert ccs.player_match_minutes(False, False, None, None, 90) == 0      # didn't play
+
+
+def test_per_competition_minutes_full_match_is_90():
+    m = _match(venue="H", result="1:0", home=[_player("p")])
+    out = ccs.compute_stats({"2024": [m]}, set())
+    assert out["comp"][("p", "2024", ccs.LEAGUE_LABEL)]["minutes_played"] == 90
+
+
+def test_per_competition_minutes_aet_is_120():
+    m = _match(venue="H", result="2:1", home=[_player("p")])
+    m["aet"] = True
+    out = ccs.compute_stats({"2024": [m]}, set())
+    assert out["comp"][("p", "2024", ccs.LEAGUE_LABEL)]["minutes_played"] == 120
+
+
+def test_per_competition_minutes_substitution_split():
+    m = _match(venue="H", result="1:0", home=[_player("starter")],
+               subs=[{"team": "home", "player_in_tm_id": "sub",
+                      "player_out_tm_id": "starter", "minute": 60}])
+    out = ccs.compute_stats({"2024": [m]}, set())
+    assert out["comp"][("starter", "2024", ccs.LEAGUE_LABEL)]["minutes_played"] == 60
+    assert out["comp"][("sub", "2024", ccs.LEAGUE_LABEL)]["minutes_played"] == 30
+
+
+def test_minutes_reconcile_warns_not_fails():
+    cell = dict(ccs._new_cell(), goals=0, minutes_played=2700)
+    computed = {"comp": {("p", "2024", ccs.LEAGUE_LABEL): cell}}
+    totals = {("p", "2024"): {"goals": 0, "red_cards": 0, "second_yellow_cards": 0,
+                              "appearances": 0, "assists": 0, "yellow_cards": 0,
+                              "minutes_played": 2900}}
+    summary = ccs.reconcile(computed, totals)   # 200' drift > tolerance → warn, no raise
+    assert len(summary["minutes_drift"]) == 1
+    assert summary["exact_breaks"] == []
+
+
+def test_build_competition_rows_includes_minutes():
+    computed = {"comp": {("of", "2024", ccs.LEAGUE_LABEL):
+                         dict(ccs._new_cell(), appearances=10, minutes_played=850)},
+                "season_extra": {}}
+    rows = ccs.build_competition_rows(computed, set())
+    assert rows[0]["minutes_played"] == 850
+
+
 def test_reconcile_skips_seasons_without_match_data():
     # Club stats for 2019 but we only computed 2024 → 2019 must NOT fail-loud
     # (derived=0 vs club=8 would otherwise be a goals break).

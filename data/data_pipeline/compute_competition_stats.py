@@ -81,19 +81,31 @@ RECONCILE_EXACT = ("goals", "red_cards", "second_yellow_cards")
 # unrecoverable missing-lineup matches).
 RECONCILE_WARN = ("appearances", "assists", "yellow_cards")
 RECONCILE_WARN_TOLERANCE = 1
+# Minutes are clock-derived (90', 120' for AET, sub-window-adjusted) and can't
+# match the club-page season total exactly — TM counts stoppage time and we
+# can't model red-card early exits. Reported (not fail-loud) when the per-comp
+# sum drifts past this from the club-page season minutes. Validated: median
+# drift 1', and the large outliers are the known missing-lineup matches.
+RECONCILE_MINUTES_TOLERANCE = 45
 
 # Match-derived season-total keys added to each stats.jsonl row. Keeper keys
 # are left None for outfielders so Cargo stores NULL (renders "-").
 KEEPER_KEYS = ("clean_sheets", "goals_conceded")
 EXTRA_KEYS = ("subs_on", "subs_off", "own_goals", "ppg")
 
-# Per-competition row schema (minutes deliberately omitted — the clock model
-# does not reconcile; the club-page season minutes stays the only minutes figure).
+# Per-competition row schema. minutes_played is clock-DERIVED here (the club
+# page only has season totals, and TM's per-competition render is unreliable to
+# scrape) — it follows the same match-corpus basis as the other per-comp fields,
+# so it excludes the unrecoverable missing-lineup matches just like appearances.
 COMPETITION_FIELDS = (
     "appearances", "goals", "assists",
     "yellow_cards", "second_yellow_cards", "red_cards",
-    "own_goals", "clean_sheets", "goals_conceded",
+    "own_goals", "clean_sheets", "goals_conceded", "minutes_played",
 )
+
+# Minutes a player gets for a full match: 90', or 120' when extra time is played.
+FULL_TIME = 90
+EXTRA_TIME = 120
 
 _START_POS = (0, 0)              # kickoff — a starting keeper's window start
 _END_POS = (10_000, 0)           # sentinel "final whistle" for an un-subbed keeper
@@ -191,7 +203,25 @@ def match_goals(match: dict, perspective: tuple[int, int] | None = None) -> tupl
 def _new_cell() -> dict:
     return {f: 0 for f in ("appearances", "goals", "assists",
                            "yellow_raw", "second_yellow_cards", "red_cards",
-                           "own_goals", "clean_sheets", "goals_conceded")}
+                           "own_goals", "clean_sheets", "goals_conceded",
+                           "minutes_played")}
+
+
+def player_match_minutes(played: bool, started: bool, on_minute: int | None,
+                         off_minute: int | None, full_time: int) -> int:
+    """Minutes a single player gets for one match (clock model).
+
+    ``full_time`` is 90, or 120 when the match went to extra time. A starter who
+    isn't subbed off plays the full time; a sub-on plays from their entry minute
+    to full time; a player subbed off plays until their exit minute. Sub minutes
+    include stoppage time, clamped to ``full_time``. Does NOT model red-card
+    early exits (a rare over-count, surfaced by the minutes reconcile). Returns 0
+    if the player didn't play."""
+    if not played:
+        return 0
+    start = min(on_minute, full_time) if (on_minute is not None and not started) else 0
+    end = min(off_minute, full_time) if off_minute is not None else full_time
+    return max(0, end - start)
 
 
 def compute_stats(matches_by_season: dict[str, list], keeper_ids: set[str],
@@ -265,10 +295,21 @@ def compute_stats(matches_by_season: dict[str, list], keeper_ids: set[str],
             subs = [s for s in match.get("substitutions", []) if s.get("team") == side]
             subbed_on = {str(s["player_in_tm_id"]) for s in subs if s.get("player_in_tm_id")}
             subbed_off = {str(s["player_out_tm_id"]) for s in subs if s.get("player_out_tm_id")}
+            on_min = {str(s["player_in_tm_id"]): event_pos(s)[0] + event_pos(s)[1]
+                      for s in subs if s.get("player_in_tm_id")}
+            off_min = {str(s["player_out_tm_id"]): event_pos(s)[0] + event_pos(s)[1]
+                       for s in subs if s.get("player_out_tm_id")}
+            full_time = EXTRA_TIME if match.get("aet") else FULL_TIME
 
             played_ids = {pid for pid in (starter_ids | subbed_on) if allowed(pid)}
             for pid in played_ids:
-                comp[(pid, season, competition)]["appearances"] += 1
+                cell = comp[(pid, season, competition)]
+                cell["appearances"] += 1
+                cell["minutes_played"] += player_match_minutes(
+                    played=True, started=pid in starter_ids,
+                    on_minute=on_min.get(pid), off_minute=off_min.get(pid),
+                    full_time=full_time,
+                )
             for pid in subbed_on:
                 if allowed(pid):
                     subs_on[(pid, season)] += 1
@@ -437,11 +478,12 @@ def reconcile(computed: dict, season_totals: dict[tuple[str, str], dict],
         agg = derived[(pid, season)]
         for f in ("appearances", "goals", "assists",
                   "second_yellow_cards", "red_cards", "yellow_cards",
-                  "own_goals", "clean_sheets", "goals_conceded"):
+                  "own_goals", "clean_sheets", "goals_conceded", "minutes_played"):
             agg[f] = agg.get(f, 0) + cell.get(f, 0)
 
     exact_breaks: list[dict] = []
     warn_drift: list[dict] = []
+    minutes_drift: list[dict] = []
     checked = 0
     for key, truth in season_totals.items():
         if seasons_covered is not None and key[1] not in seasons_covered:
@@ -458,10 +500,16 @@ def reconcile(computed: dict, season_totals: dict[tuple[str, str], dict],
             if abs(d) > RECONCILE_WARN_TOLERANCE:
                 warn_drift.append({"player_season": key, "field": f,
                                    "derived": agg.get(f, 0), "club": truth.get(f), "delta": d})
+        if truth.get("minutes_played") is not None:
+            d = agg.get("minutes_played", 0) - int(truth["minutes_played"])
+            if abs(d) > RECONCILE_MINUTES_TOLERANCE:
+                minutes_drift.append({"player_season": key, "derived": agg.get("minutes_played", 0),
+                                      "club": truth.get("minutes_played"), "delta": d})
 
     summary = {
         "exact_breaks": exact_breaks,
         "warn_drift": warn_drift,
+        "minutes_drift": minutes_drift,
         "season_rows_checked": checked,
     }
     if exact_breaks:
@@ -553,12 +601,14 @@ def build_competition_rows(computed: dict, keeper_ids: set[str]) -> list[dict]:
         is_keeper = pid in keeper_ids
         row = {"player_id": pid, "season": season, "competition": competition}
         for f in ("appearances", "goals", "assists",
-                  "yellow_cards", "second_yellow_cards", "red_cards", "own_goals"):
+                  "yellow_cards", "second_yellow_cards", "red_cards",
+                  "own_goals", "minutes_played"):
             row[f] = cell.get(f, 0)
         row["clean_sheets"] = cell.get("clean_sheets", 0) if is_keeper else None
         row["goals_conceded"] = cell.get("goals_conceded", 0) if is_keeper else None
         if any(row[f] for f in ("appearances", "goals", "assists",
-                                "yellow_cards", "second_yellow_cards", "red_cards", "own_goals")) \
+                                "yellow_cards", "second_yellow_cards", "red_cards",
+                                "own_goals", "minutes_played")) \
                 or row["clean_sheets"] or row["goals_conceded"]:
             rows.append(row)
     return rows
@@ -651,11 +701,17 @@ def main(data_dir: Path, seasons: list[str], scraper_output_dir: Path) -> dict:
         "unusable_venue_matches": len(report["unusable_venue"]),
         "scoreline_goals_mismatch": len(report["scoreline_goals_mismatch"]),
         "reconcile_warn_drift": len(recon["warn_drift"]),
+        "reconcile_minutes_drift": len(recon["minutes_drift"]),
         "self_check_warnings": sc_warn,
     }
 
     # Data-loss vigilance: surface counts loudly, never silently zero.
     logger.info("compute_competition_stats: %s", summary)
+    if recon["minutes_drift"]:
+        logger.warning("compute_competition_stats: %d player-season(s) where derived per-competition "
+                       "minutes drift >%d' from the club-page season minutes (clock model can't model "
+                       "stoppage/red-cards; large drifts are the missing-lineup matches): %s",
+                       len(recon["minutes_drift"]), RECONCILE_MINUTES_TOLERANCE, recon["minutes_drift"][:8])
     if report["unusable_venue"]:
         logger.warning("compute_competition_stats: %d match(es) DROPPED for unusable venue "
                        "(no H/A signal — can't map to HBS's side): %s",
