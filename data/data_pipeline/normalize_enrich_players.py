@@ -136,6 +136,7 @@ def normalize_stats(stats_data: list) -> List[PlayerSeasonStats]:
             second_yellow_cards=s.get("second_yellow_cards", 0),
             red_cards=s.get("red_cards", 0),
             minutes_played=s.get("minutes_played", 0),
+            ppg=s.get("ppg"),
         )
         for s in stats_data
     ]

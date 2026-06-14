@@ -287,17 +287,19 @@ def test_league_regular_and_championship_merge_into_one_row():
     assert ("p", "2024", LEAGUE_CHAMP) not in out["comp"]
 
 
-def test_subs_on_off_and_ppg_season_extras():
+def test_subs_on_off_season_extras():
+    # Subs are computed (exact vs the club page AND immune to missing lineups,
+    # since substitutions[] is present even when a lineup is absent). PPG is NOT
+    # computed — it's scraped from the club page (source of truth).
     win = _match(venue="H", result="2:0", home=[_player("starter")],
                  subs=[{"team": "home", "player_in_tm_id": "benchie",
                         "player_out_tm_id": "starter", "minute": 80}])
     draw = _match(venue="A", result="1:1", away=[_player("starter"), _player("benchie")])
     out = ccs.compute_stats({"2024": [win, draw]}, set())
-    # benchie: 1 sub-on; starter: 1 sub-off; ppg over their appearances
     assert out["season_extra"][("benchie", "2024")]["subs_on"] == 1
     assert out["season_extra"][("starter", "2024")]["subs_off"] == 1
-    # starter played both (win=3, draw=1) over 2 apps → 2.0
-    assert out["season_extra"][("starter", "2024")]["ppg"] == 2.0
+    # PPG is no longer part of season_extra (scraped, not computed).
+    assert "ppg" not in out["season_extra"][("starter", "2024")]
 
 
 # --------------------------------------------------------------------------- #
@@ -352,13 +354,15 @@ def test_build_competition_rows_keeper_vs_outfielder():
 def test_augment_season_totals_adds_keys_without_touching_club_fields():
     computed = {
         "comp": {(KEEPER, "2024", ccs.LEAGUE_LABEL): dict(ccs._new_cell(), clean_sheets=5, goals_conceded=12, own_goals=0)},
-        "season_extra": {(KEEPER, "2024"): {"subs_on": 1, "subs_off": 0, "ppg": 1.5}},
+        "season_extra": {(KEEPER, "2024"): {"subs_on": 1, "subs_off": 0}},
     }
-    stats = [{"player_id": KEEPER, "season": "2024", "appearances": 30, "goals": 0}]
+    # ppg is a club-page (scraped) field — augment must leave it untouched.
+    stats = [{"player_id": KEEPER, "season": "2024", "appearances": 30, "goals": 0, "ppg": 1.83}]
     out = ccs.augment_season_totals(stats, computed, {KEEPER})[0]
     assert out["appearances"] == 30 and out["goals"] == 0   # untouched
     assert out["clean_sheets"] == 5 and out["goals_conceded"] == 12
-    assert out["subs_on"] == 1 and out["ppg"] == 1.5
+    assert out["subs_on"] == 1
+    assert out["ppg"] == 1.83   # scraped value preserved, not overwritten
 
 
 def test_augment_outfielder_keeper_keys_are_none():
@@ -384,16 +388,6 @@ def test_roster_gating_drops_non_roster_participants():
     assert ("known", "2024", ccs.LEAGUE_LABEL) in out["comp"]
     assert ("ghost", "2024", ccs.LEAGUE_LABEL) not in out["comp"]
     assert out["comp"][("known", "2024", ccs.LEAGUE_LABEL)]["goals"] == 1
-
-
-def test_penalty_tie_counts_as_draw_for_ppg():
-    # goals[] nets 2:0 but the result is a shootout → it was a DRAW at 90'+ET,
-    # so PPG must credit 1 point, not 3 (the WIN the raw goal count implies).
-    m = _match(venue="H", result="2:0 (penalties)", competition=CUP, home=[_player("p")],
-               goals=[{"team": HBS, "scorer_tm_id": "p", "minute": 80},
-                      {"team": HBS, "scorer_tm_id": "p", "minute": 95}])
-    out = ccs.compute_stats({"2024": [m]}, set())
-    assert out["season_extra"][("p", "2024")]["ppg"] == 1.0
 
 
 def test_keeper_subbed_off_with_zero_conceded_gets_no_clean_sheet():

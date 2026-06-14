@@ -18,6 +18,9 @@ HEADER_ALIASES = {
     "red": "red_cards",
     "minutes played": "minutes_played",
     "minutes": "minutes_played",
+    # Points per game (TM "Punkte/Spiel") — the authoritative team-outcome stat.
+    "points per game": "ppg",
+    "ppg": "ppg",
     # "In squad" is the total squad count, NOT actual match appearances.
     # Do NOT map it here — the real appearances column has title="Appearances".
 }
@@ -110,6 +113,7 @@ class StatsSpider(scrapy.Spider):
                 "yellow_cards": 8,
                 "second_yellow_cards": 9,
                 "red_cards": 10,
+                "ppg": 13,
                 "minutes_played": 14,
             }
 
@@ -145,12 +149,13 @@ class StatsSpider(scrapy.Spider):
             second_yellow_cards = self._extract_cell_int(all_cells, col_map.get("second_yellow_cards"))
             red_cards = self._extract_cell_int(all_cells, col_map.get("red_cards"))
             minutes_played = self._extract_cell_minutes(all_cells, col_map.get("minutes_played"))
+            ppg = self._extract_cell_float(all_cells, col_map.get("ppg"))
 
             self.logger.debug(
                 "Player %s (%s): apps=%d, goals=%d, assists=%d, yellow=%d, "
-                "2nd_yellow=%d, red=%d, min=%d",
+                "2nd_yellow=%d, red=%d, min=%d, ppg=%s",
                 name, player_id, appearances, goals, assists, yellow_cards,
-                second_yellow_cards, red_cards, minutes_played,
+                second_yellow_cards, red_cards, minutes_played, ppg,
             )
 
             stats_count += 1
@@ -164,6 +169,7 @@ class StatsSpider(scrapy.Spider):
                 "second_yellow_cards": second_yellow_cards,
                 "red_cards": red_cards,
                 "minutes_played": minutes_played,
+                "ppg": ppg,
             }
 
         self.logger.info("Scraped stats for %d players in season %s", stats_count, self.season)
@@ -187,6 +193,23 @@ class StatsSpider(scrapy.Spider):
             return int(raw)
         except ValueError:
             return 0
+
+    @staticmethod
+    def _extract_cell_float(cells, col_idx):
+        """Extract a float (e.g. PPG "2.21") from a cell, or None for '-'/missing."""
+        if col_idx is None or col_idx >= len(cells):
+            return None
+        cell = cells[col_idx]
+        raw = cell.css("a::text").get("").strip()
+        if not raw:
+            raw = cell.css("::text").get("").strip()
+        if not raw or raw == "-":
+            return None
+        try:
+            # TM may use a comma decimal on localised pages; normalise to a dot.
+            return float(raw.replace(",", "."))
+        except (ValueError, AttributeError):
+            return None
 
     @staticmethod
     def _extract_cell_minutes(cells, col_idx):

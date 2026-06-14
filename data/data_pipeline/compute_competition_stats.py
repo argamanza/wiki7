@@ -91,7 +91,9 @@ RECONCILE_MINUTES_TOLERANCE = 45
 # Match-derived season-total keys added to each stats.jsonl row. Keeper keys
 # are left None for outfielders so Cargo stores NULL (renders "-").
 KEEPER_KEYS = ("clean_sheets", "goals_conceded")
-EXTRA_KEYS = ("subs_on", "subs_off", "own_goals", "ppg")
+# Match-derived season-total keys augment adds to each stats.jsonl row. PPG is
+# NOT here — it's scraped from the club page (the source of truth).
+EXTRA_KEYS = ("subs_on", "subs_off", "own_goals")
 
 # Per-competition row schema. minutes_played is clock-DERIVED here (the club
 # page only has season totals, and TM's per-competition render is unreliable to
@@ -247,11 +249,11 @@ def compute_stats(matches_by_season: dict[str, list], keeper_ids: set[str],
     def allowed(pid: str | None) -> bool:
         return bool(pid) and (roster is None or pid in roster)
     comp: dict[tuple[str, str, str], dict] = defaultdict(_new_cell)
-    # season-scoped scratch for subs/ppg (not competition-split)
+    # season-scoped scratch for subs (not competition-split). PPG is NOT computed
+    # here — it's scraped from the SSR club page (the source of truth, immune to
+    # our missing-lineup matches); see PlayerSeasonStats.ppg.
     subs_on: dict[tuple[str, str], int] = defaultdict(int)
     subs_off: dict[tuple[str, str], int] = defaultdict(int)
-    points_sum: dict[tuple[str, str], int] = defaultdict(int)
-    appear_matches: dict[tuple[str, str], int] = defaultdict(int)
 
     report = {
         "missing_lineup": [],     # matches with no HBS lineup (starters lost)
@@ -278,7 +280,7 @@ def compute_stats(matches_by_season: dict[str, list], keeper_ids: set[str],
             # goals / cards are real) — only the scoreline may be unusable.
             perspective = hbs_perspective(match.get("result"), match.get("venue"))
             scoreline_clean = perspective is not None
-            hbs_goals, opp_goals = match_goals(match, perspective)
+            _hbs_goals, opp_goals = match_goals(match, perspective)
             competition = normalize_competition(match.get("competition"))
             if not competition:
                 competition = "—"
@@ -316,18 +318,6 @@ def compute_stats(matches_by_season: dict[str, list], keeper_ids: set[str],
             for pid in subbed_off:
                 if allowed(pid):
                     subs_off[(pid, season)] += 1
-
-            # PPG inputs — team points awarded to each player who featured. A
-            # penalty-shootout tie was a DRAW at 90'+ET (the shootout is a
-            # tiebreak, not a result) → 1 point, regardless of what the messy
-            # goals[] list nets to; force it whenever the scoreline isn't clean.
-            if not scoreline_clean:
-                match_points = 1
-            else:
-                match_points = 3 if hbs_goals > opp_goals else (1 if hbs_goals == opp_goals else 0)
-            for pid in played_ids:
-                points_sum[(pid, season)] += match_points
-                appear_matches[(pid, season)] += 1
 
             # Goals + assists + own goals (roster-gated).
             for goal in match.get("goals", []):
@@ -369,14 +359,10 @@ def compute_stats(matches_by_season: dict[str, list], keeper_ids: set[str],
         cell["yellow_cards"] = max(0, cell.pop("yellow_raw") - cell["second_yellow_cards"])
 
     season_extra: dict[tuple[str, str], dict] = {}
-    keys = set(subs_on) | set(subs_off) | set(appear_matches)
-    for key in keys:
-        apps = appear_matches.get(key, 0)
-        ppg = round(points_sum.get(key, 0) / apps, 2) if apps else None
+    for key in set(subs_on) | set(subs_off):
         season_extra[key] = {
             "subs_on": subs_on.get(key, 0),
             "subs_off": subs_off.get(key, 0),
-            "ppg": ppg,
         }
 
     return {"comp": dict(comp), "season_extra": season_extra, "report": report}
@@ -615,8 +601,10 @@ def build_competition_rows(computed: dict, keeper_ids: set[str]) -> list[dict]:
 
 
 def augment_season_totals(stats_rows: list[dict], computed: dict, keeper_ids: set[str]) -> list[dict]:
-    """Add match-derived keeper / own-goal / subs / PPG keys onto each existing
-    stats.jsonl row IN PLACE (the seven club-page fields are left untouched).
+    """Add match-derived keeper / own-goal / subs keys onto each existing
+    stats.jsonl row IN PLACE. The club-page fields (the seven scraped stats AND
+    the scraped ``ppg``) are left untouched — PPG is authoritative from the club
+    page, not recomputed here.
 
     Keeper keys are ``None`` for outfielders → Cargo NULL → renders "-".
     """
@@ -639,7 +627,7 @@ def augment_season_totals(stats_rows: list[dict], computed: dict, keeper_ids: se
         row["own_goals"] = agg.get("own_goals", 0)
         row["subs_on"] = ex.get("subs_on", 0)
         row["subs_off"] = ex.get("subs_off", 0)
-        row["ppg"] = ex.get("ppg")
+        # row["ppg"] intentionally NOT set — it comes from the club-page scrape.
     return stats_rows
 
 

@@ -31,6 +31,10 @@ class PlayerSeasonStats(BaseModel):
     second_yellow_cards: int = 0
     red_cards: int = 0
     minutes_played: int = 0
+    # Points per game (TM "Punkte/Spiel") — scraped from the SSR club page, the
+    # source of truth. A team-outcome metric; unaffected by our missing-lineup
+    # matches (unlike a match-derived PPG would be). None when TM shows "-".
+    ppg: Optional[float] = None
 
 
 class Coach(BaseModel):
