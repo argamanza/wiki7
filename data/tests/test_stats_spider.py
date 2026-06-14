@@ -31,6 +31,7 @@ class TestStatsSpiderParse:
         assert col_map["yellow_cards"] == 8
         assert col_map["second_yellow_cards"] == 9
         assert col_map["red_cards"] == 10
+        assert col_map["ppg"] == 13
         assert col_map["minutes_played"] == 14
 
     def test_parse_goalkeeper(self):
@@ -46,6 +47,7 @@ class TestStatsSpiderParse:
         assert gk["second_yellow_cards"] == 0
         assert gk["red_cards"] == 0
         assert gk["minutes_played"] == 900
+        assert gk["ppg"] == 1.5
 
     def test_parse_midfielder(self):
         response = _fake_response(FIXTURES_DIR / "leistungsdaten_sample.html")
@@ -59,6 +61,7 @@ class TestStatsSpiderParse:
         assert mid["second_yellow_cards"] == 1
         assert mid["red_cards"] == 0
         assert mid["minutes_played"] == 2450
+        assert mid["ppg"] == 2.1
 
     def test_parse_defender_with_cards(self):
         response = _fake_response(FIXTURES_DIR / "leistungsdaten_sample.html")
@@ -72,6 +75,7 @@ class TestStatsSpiderParse:
         assert defender["second_yellow_cards"] == 1
         assert defender["red_cards"] == 1
         assert defender["minutes_played"] == 1600
+        assert defender["ppg"] == 1.8
 
     def test_not_used_player_skipped(self):
         response = _fake_response(FIXTURES_DIR / "leistungsdaten_sample.html")
@@ -93,6 +97,7 @@ class TestStatsSpiderParse:
         assert young["second_yellow_cards"] == 0
         assert young["red_cards"] == 0
         assert young["minutes_played"] == 0
+        assert young["ppg"] is None   # "-" PPG → None (not 0.0)
 
     def test_total_players_parsed(self):
         response = _fake_response(FIXTURES_DIR / "leistungsdaten_sample.html")

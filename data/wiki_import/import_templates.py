@@ -134,6 +134,43 @@ CARGO_TABLES = {
             "second_yellow_cards": "Integer",
             "red_cards": "Integer",
             "minutes_played": "Integer",
+            # keeper-stats branch (compute_competition_stats): derived from our
+            # own match corpus FOR HBS. All nullable — keeper-only columns stay
+            # NULL for outfielders and pre-match-corpus historical rows, so
+            # existing season-total consumers (season_overview / squad_page /
+            # leaderboards) are unaffected.
+            "clean_sheets": "Integer",       # keeper only (NULL otherwise)
+            "goals_conceded": "Integer",     # keeper only (NULL otherwise)
+            "own_goals": "Integer",          # own goals scored BY the player
+            "subs_on": "Integer",            # times subbed on
+            "subs_off": "Integer",           # times subbed off
+            "ppg": "Float",                  # team points per appearance
+        },
+    },
+    # keeper-stats branch: per-competition split FOR HBS, derived from match
+    # events (NOT a TM render scrape). A SEPARATE table keyed
+    # player_id×season×competition so the season-total player_stats row stays
+    # authoritative and no season-keyed aggregator double-counts. The Israeli
+    # league regular season + championship round are merged into one row.
+    "Template:Cargo/PlayerCompetitionStats": {
+        "table": "player_competition_stats",
+        "fields": {
+            "player_id": "String",
+            "season": "String",
+            "competition": "String",
+            "appearances": "Integer",
+            "goals": "Integer",
+            "assists": "Integer",
+            "yellow_cards": "Integer",
+            "second_yellow_cards": "Integer",
+            "red_cards": "Integer",
+            "own_goals": "Integer",
+            "clean_sheets": "Integer",       # keeper only (NULL otherwise)
+            "goals_conceded": "Integer",     # keeper only (NULL otherwise)
+            # Clock-derived (90'/120'-AET, sub-window-adjusted) from the match
+            # corpus — TM has no scrapeable per-competition minutes. Excludes the
+            # unrecoverable missing-lineup matches, same basis as appearances.
+            "minutes_played": "Integer",
         },
     },
     "Template:Cargo/Coach": {

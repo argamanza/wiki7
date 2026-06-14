@@ -82,13 +82,21 @@
 
 {% if stats %}
 {{ bot_section_start('stats') }}
+{# keeper-stats branch: keeper-only columns (goals conceded / clean sheets) are
+   gated on the goalkeeper predicate — same test as the categories section. We
+   KEEP goals/assists for keepers (TM's "in addition" behaviour). own_goals is a
+   conditional whole-column, shown only when the player has at least one (it is
+   0 for nearly everyone — a column of zeros is noise). #}
+{% set pos = player.main_position or '' %}
+{% set is_keeper = 'שוער' in pos or 'Goalkeeper' in pos %}
+{% set show_og = (stats | map(attribute='own_goals') | map('default', 0) | sum) > 0 %}
 == סטטיסטיקה עונתית ==
 {| class="wikitable sortable"
-! עונה !! הופעות !! שערים !! בישולים !! {{"{{"}}Tooltip|Y|כרטיסים צהובים{{"}}"}} !! {{"{{"}}Tooltip|2Y|כרטיס צהוב שני{{"}}"}} !! {{"{{"}}Tooltip|R|כרטיסים אדומים{{"}}"}} !! דקות
+! עונה !! הופעות !! שערים !! בישולים !! {{"{{"}}Tooltip|Y|כרטיסים צהובים{{"}}"}} !! {{"{{"}}Tooltip|2Y|כרטיס צהוב שני{{"}}"}} !! {{"{{"}}Tooltip|R|כרטיסים אדומים{{"}}"}} !! דקות !! {{"{{"}}Tooltip|כניסה|נכנס מהספסל{{"}}"}} !! {{"{{"}}Tooltip|יציאה|הוחלף{{"}}"}} !! {{"{{"}}Tooltip|נק'/מ'|נקודות למשחק (מנקודת מבט הקבוצה){{"}}"}}{% if show_og %} !! {{"{{"}}Tooltip|עצמי|שערים עצמיים{{"}}"}}{% endif %}{% if is_keeper %} !! {{"{{"}}Tooltip|ספג|שערים שספג{{"}}"}} !! {{"{{"}}Tooltip|רנ|רשתות נקיות{{"}}"}}{% endif +%}
 {% for s in stats %}
 {% set row_season_display = s.season | season_display %}
 |-
-| [[עונת {{ row_season_display }}|{{ row_season_display }}]] || {{ s.appearances }} || {{ s.goals }} || {{ s.assists }} || {{ s.yellow_cards }} || {{ s.get('second_yellow_cards', 0) }} || {{ s.red_cards }} || {{ s.minutes_played }}
+| [[עונת {{ row_season_display }}|{{ row_season_display }}]] || {{ s.appearances }} || {{ s.goals }} || {{ s.assists }} || {{ s.yellow_cards }} || {{ s.get('second_yellow_cards', 0) }} || {{ s.red_cards }} || {{ s.minutes_played }} || {{ s.get('subs_on') if s.get('subs_on') is not none else '-' }} || {{ s.get('subs_off') if s.get('subs_off') is not none else '-' }} || {{ s.get('ppg') if s.get('ppg') is not none else '-' }}{% if show_og %} || {{ s.get('own_goals') if s.get('own_goals') is not none else '-' }}{% endif %}{% if is_keeper %} || {{ s.get('goals_conceded') if s.get('goals_conceded') is not none else '-' }} || {{ s.get('clean_sheets') if s.get('clean_sheets') is not none else '-' }}{% endif +%}
 {% endfor %}
 
 |-
@@ -96,10 +104,13 @@
    TypeError on any stats row with `X=None`. Real corpus has None values
    for historical-era rows where TM doesn't expose all per-season fields.
    Funnel through `map(attribute=...) | map('default', 0) | sum` so a
-   missing value bins to 0 instead of crashing the entire player page. #}
-! סה"כ !! {{ stats | map(attribute='appearances') | map('default', 0) | sum }} !! {{ stats | map(attribute='goals') | map('default', 0) | sum }} !! {{ stats | map(attribute='assists') | map('default', 0) | sum }} !! {{ stats | map(attribute='yellow_cards') | map('default', 0) | sum }} !! {{ stats | map(attribute='second_yellow_cards') | map('default', 0) | sum }} !! {{ stats | map(attribute='red_cards') | map('default', 0) | sum }} !! {{ stats | map(attribute='minutes_played') | map('default', 0) | sum }}
+   missing value bins to 0 instead of crashing the entire player page.
+   PPG is non-additive across seasons, so its total cell shows "—". #}
+! סה"כ !! {{ stats | map(attribute='appearances') | map('default', 0) | sum }} !! {{ stats | map(attribute='goals') | map('default', 0) | sum }} !! {{ stats | map(attribute='assists') | map('default', 0) | sum }} !! {{ stats | map(attribute='yellow_cards') | map('default', 0) | sum }} !! {{ stats | map(attribute='second_yellow_cards') | map('default', 0) | sum }} !! {{ stats | map(attribute='red_cards') | map('default', 0) | sum }} !! {{ stats | map(attribute='minutes_played') | map('default', 0) | sum }} !! {{ stats | map(attribute='subs_on') | map('default', 0) | sum }} !! {{ stats | map(attribute='subs_off') | map('default', 0) | sum }} !! —{% if show_og %} !! {{ stats | map(attribute='own_goals') | map('default', 0) | sum }}{% endif %}{% if is_keeper %} !! {{ stats | map(attribute='goals_conceded') | map('default', 0) | sum }} !! {{ stats | map(attribute='clean_sheets') | map('default', 0) | sum }}{% endif +%}
 |}
-{# Cargo storage — one row per season's stats. Mainspace-only gate. #}
+{# Cargo storage — one row per season's stats. Mainspace-only gate. Empty
+   string for an absent keeper/derived field → Cargo stores NULL (renders "-"
+   in #cargo_query consumers); never coerce keeper NULLs to 0. #}
 {% for s in stats %}
 {{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/PlayerStats
 | player_id = {{ player.id }}
@@ -111,9 +122,53 @@
 | second_yellow_cards = {{ s.get('second_yellow_cards', 0) }}
 | red_cards = {{ s.red_cards or 0 }}
 | minutes_played = {{ s.minutes_played or 0 }}
+| clean_sheets = {{ s.get('clean_sheets') if s.get('clean_sheets') is not none else '' }}
+| goals_conceded = {{ s.get('goals_conceded') if s.get('goals_conceded') is not none else '' }}
+| own_goals = {{ s.get('own_goals') if s.get('own_goals') is not none else '' }}
+| subs_on = {{ s.get('subs_on') if s.get('subs_on') is not none else '' }}
+| subs_off = {{ s.get('subs_off') if s.get('subs_off') is not none else '' }}
+| ppg = {{ s.get('ppg') if s.get('ppg') is not none else '' }}
 {{"}}"}}|{{"}}"}}
 {% endfor %}
 {{ bot_section_end('stats') }}
+{% endif %}
+
+{% if competition_stats %}
+{{ bot_section_start('competition-stats') }}
+{# keeper-stats branch: per-competition split FOR HBS, derived from match events
+   (the Israeli league regular season + championship round are merged into one
+   "ליגת העל" row). Keeper columns gated as above; minutes deliberately absent
+   (the per-competition clock model does not reconcile). #}
+{% set csk = 'שוער' in (player.main_position or '') or 'Goalkeeper' in (player.main_position or '') %}
+{% set cs_show_og = (competition_stats | map(attribute='own_goals') | map('default', 0) | sum) > 0 %}
+== סטטיסטיקה לפי מפעל ==
+{| class="wikitable sortable"
+! עונה !! מפעל !! הופעות !! שערים !! בישולים !! {{"{{"}}Tooltip|Y|כרטיסים צהובים{{"}}"}} !! {{"{{"}}Tooltip|2Y|כרטיס צהוב שני{{"}}"}} !! {{"{{"}}Tooltip|R|כרטיסים אדומים{{"}}"}} !! {{"{{"}}Tooltip|דקות|דקות משחק (מחושב ממהלך המשחקים){{"}}"}}{% if cs_show_og %} !! {{"{{"}}Tooltip|עצמי|שערים עצמיים{{"}}"}}{% endif %}{% if csk %} !! {{"{{"}}Tooltip|ספג|שערים שספג{{"}}"}} !! {{"{{"}}Tooltip|רנ|רשתות נקיות{{"}}"}}{% endif +%}
+{% for c in competition_stats %}
+{% set c_season_display = c.season | season_display %}
+|-
+| [[עונת {{ c_season_display }}|{{ c_season_display }}]] || {{ c.competition }} || {{ c.appearances }} || {{ c.goals }} || {{ c.assists }} || {{ c.yellow_cards }} || {{ c.get('second_yellow_cards', 0) }} || {{ c.red_cards }} || {{ c.get('minutes_played', 0) }}{% if cs_show_og %} || {{ c.get('own_goals') if c.get('own_goals') is not none else '-' }}{% endif %}{% if csk %} || {{ c.get('goals_conceded') if c.get('goals_conceded') is not none else '-' }} || {{ c.get('clean_sheets') if c.get('clean_sheets') is not none else '-' }}{% endif +%}
+{% endfor %}
+|}
+{# Cargo storage — one row per player×season×competition. Mainspace-only gate. #}
+{% for c in competition_stats %}
+{{"{{"}}#ifeq:{{"{{"}}NAMESPACENUMBER{{"}}"}}|0|{{"{{"}}Cargo/PlayerCompetitionStats
+| player_id = {{ player.id }}
+| season = {{ c.season or '' }}
+| competition = {{ c.competition or '' }}
+| appearances = {{ c.appearances or 0 }}
+| goals = {{ c.goals or 0 }}
+| assists = {{ c.assists or 0 }}
+| yellow_cards = {{ c.yellow_cards or 0 }}
+| second_yellow_cards = {{ c.get('second_yellow_cards', 0) }}
+| red_cards = {{ c.red_cards or 0 }}
+| minutes_played = {{ c.get('minutes_played') or 0 }}
+| own_goals = {{ c.get('own_goals') if c.get('own_goals') is not none else '' }}
+| clean_sheets = {{ c.get('clean_sheets') if c.get('clean_sheets') is not none else '' }}
+| goals_conceded = {{ c.get('goals_conceded') if c.get('goals_conceded') is not none else '' }}
+{{"}}"}}|{{"}}"}}
+{% endfor %}
+{{ bot_section_end('competition-stats') }}
 {% endif %}
 
 {% if market_values %}

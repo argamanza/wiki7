@@ -439,6 +439,35 @@ def run_hebrew_enrichment(data_dir: Path, seasons: list[str] | None = None, revi
         return False
 
 
+def run_compute_competition_stats(data_dir: Path, seasons: list[str]) -> bool:
+    """Derive keeper + per-competition stats FOR HBS from the match corpus.
+
+    Runs AFTER Hebrew enrichment (needs ``players.he.jsonl`` for keeper
+    identity + ``matches.he.json``) and BEFORE import. Writes
+    ``competition_stats.jsonl`` and augments ``stats.jsonl`` in place with the
+    derived keeper / own-goal / subs / PPG season totals. A failed integrity
+    reconcile (fail-loud fields) leaves both files untouched and returns False
+    so the run records the error and does not persist scrape-cache hashes —
+    data integrity over throughput.
+    """
+    logger.info("Deriving keeper + per-competition stats from match corpus...")
+    try:
+        from data_pipeline.compute_competition_stats import main as compute_main, ReconcileError
+        try:
+            summary = compute_main(data_dir, seasons, SCRAPER_OUTPUT_DIR)
+        except ReconcileError as exc:
+            logger.error(
+                "Per-competition stats reconciliation FAILED (data-integrity stop): %s. "
+                "stats.jsonl left untouched; no competition_stats.jsonl written.", exc,
+            )
+            return False
+        logger.info("Per-competition stats: %s", summary)
+        return True
+    except FileNotFoundError as exc:
+        logger.error("Per-competition stats derivation failed: %s", exc)
+        return False
+
+
 def run_import(
     seasons: list[str],
     dry_run: bool = False,
@@ -542,6 +571,7 @@ def run_import(
             transfers_path=transfers_path,
             market_values_path=mv_path,
             stats_path=resolved_data_dir / "stats.jsonl",
+            competition_stats_path=resolved_data_dir / "competition_stats.jsonl",
             dry_run=dry_run,
             state=state,
         )
@@ -952,6 +982,18 @@ def main(season, seasons, spiders, dry_run, skip_scrape, skip_normalize, skip_me
             sys.exit(0)
     elif skip_hebrew:
         logger.info("Skipping Hebrew enrichment step (--skip-hebrew)")
+
+    # Step 4.5: Derive keeper + per-competition stats from the match corpus.
+    # Needs players.he.jsonl + matches.he.json (post Hebrew enrichment), so it
+    # sits between enrichment and import. Skipped alongside import. Failure is
+    # recorded but non-fatal to the other page imports (they fall back to the
+    # un-augmented stats.jsonl).
+    if data_dir and not skip_import:
+        logger.info("=" * 60)
+        logger.info("STEP %s: KEEPER + PER-COMPETITION STATS", "4.5" if multi_season else "3.5")
+        logger.info("=" * 60)
+        if not run_compute_competition_stats(data_dir, season_list):
+            errors.append("Keeper/per-competition stats derivation failed")
 
     # Step 5: Import
     if not skip_import:
